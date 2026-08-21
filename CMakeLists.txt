@@ -29,6 +29,7 @@ add_subdirectory(third_party/syntax-highlighting EXCLUDE_FROM_ALL)
 add_executable(oler-ide
     src/app/main.cpp
     src/core/theme/CThemeManager.cpp
+    src/ui/editor/OlerEditor.cpp
     resources/themes/themes.qrc
 )
 target_include_directories(oler-ide PRIVATE src)

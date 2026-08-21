@@ -1,9 +1,9 @@
-# Oler IDE v2 �?Foundation Implementation Plan
+# Oler IDE v2 - Foundation Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 交付可运行的 Oler IDE v2 基础平台（空 QMainWindow + 4 主题切换 + KSyntax 代码高亮），验证 Qt 6.8.0 + MinGW 13.1.0 + KSyntax 6.8.0 三方 ABI 严格兼容链打通�?
-**Architecture:** Qt 6.8 C++17 desktop app, vendor 路线集成 ECM + KSyntaxHighlighting（`third_party/` + `add_subdirectory`），4 主题 QSS 切换 + KSyntax 仓库主题联动，单进程主窗体�?
+**Goal:** Ship a runnable Oler IDE v2 foundation (empty QMainWindow + 4 theme switching + KSyntax code highlighting), and verify the strict-ABI compatibility chain between Qt 6.8.0, MinGW 13.1.0, and KSyntax 6.8.0.
+**Architecture:** Qt 6.8 C++17 desktop app. Vendored ECM + KSyntaxHighlighting (`third_party/` + `add_subdirectory`). 4-theme QSS switching + KSyntax repository theme sync. Single-process main window.
 **Tech Stack:**
 - Qt 6.8.0 (MinGW 13.1.0 prebuilt, `C:\Qt\6.8.0\mingw_64\`)
 - MinGW 13.1.0 (Qt bundled, `C:\Qt\Tools\mingw1310_64\bin\g++.exe`)
@@ -14,46 +14,46 @@
 
 ## Global Constraints
 
-> 这些�?v1 教训固化,每步任务隐含遵守�?
-- **项目�?*: `D:\oler-ide-v2` (�?ASCII, 不用 subst/junction)
-- **编译器严�?*: 必须�?`C:\Qt\Tools\mingw1310_64\bin\g++.exe`, 系统 `D:\OI\mingw64\bin`(16.1.0) �?Strawberry 13.2.0 �?ABI 不兼�?- **vendor 路线**: `add_subdirectory(third_party/...) EXCLUDE_FROM_ALL`, 不依�?FetchContent+patch
-- **WIN32_EXECUTABLE FALSE**: MinGW 13.1.0 �?`libQt6EntryPoint.a` 引用 MSVC `__imp___argc`, 必须 FALSE
-- **文件删除 gated**: assistant 不能直接 `Remove-Item`/`rm`/`del`, �?`cmd /c rmdir /s /q <ASCII 绝对路径>` �?user 手动
-- **每步先汇�?*: >30min 工作量完成态先汇报, 杀进程/删文�?�?git 每次先确�?- **完工验证**: "完工"基于 user 真机确认或自动化测试通过, 不基�?我觉�?
+> These v1 lessons are baked in; every step implicitly obeys them.
+- **Project root**: `D:\oler-ide-v2` (ASCII only, no subst/junction)
+- **Strict compiler**: must be `C:\Qt\Tools\mingw1310_64\bin\g++.exe`. System `D:\OI\mingw64\bin` (16.1.0) and Strawberry 13.2.0 are ABI-incompatible. **Vendor route**: `add_subdirectory(third_party/...) EXCLUDE_FROM_ALL`, no FetchContent + patch.
+- **WIN32_EXECUTABLE FALSE**: MinGW 13.1.0's `libQt6EntryPoint.a` references MSVC's `__imp___argc`, so it MUST be FALSE.
+- **File deletion gated**: the assistant cannot directly run `Remove-Item` / `rm` / `del`. Use `cmd /c rmdir /s /q <ASCII-absolute-path>` and let the user run it.
+- **Report at every checkpoint**: any work item taking >30 min must be reported on completion; killing processes, deleting files, or rewriting git history requires explicit confirmation every time. **Done definition**: 'done' means confirmed by the user on a real machine OR validated by automated tests, never by the assistant's own confidence.
 - **License**: MIT
-- **API key 严禁 log/print/commit**: 接收�?prompt context, 验证�?inline python -c 不落�?- **PowerShell 5.1 注意**: 不支�?`&&`/`||`, �?`;`; 不支�?`cd /d` (cmd �?; CJK 字符串字面量�?`[char]0xHHHH` �? `Set-Location` 不识�?fresh drive, 用绝对路�?- **PS 5.1 ANSI 渲染**: 中文字面�?print 出乱码是显示问题, 内部 UTF-16 OK
-- **kill 残留**: 任何 Qt/MSVC/CMake 异常退出后�?`Get-Process | Where-Object {$_.Name -match 'cmake|ninja|g\+\+|gcc|moc|qmake'} | Stop-Process -Force`
+- **API keys must never be logged/printed/committed**: received via prompt context, verified with inline `python -c` without persisting. **PowerShell 5.1 notes**: no `&&`/`||` (use `;`); no `cd /d` (cmd only); CJK string literals need `[char]0xHHHH`; `Set-Location` does not recognize a fresh drive, use absolute paths. **PS 5.1 ANSI rendering**: printing Chinese literals to console shows mojibake, but the internal UTF-16 is correct.
+- **Lingering processes**: after any Qt / MSVC / CMake abnormal exit, run `Get-Process | Where-Object {$_.Name -match 'cmake|ninja|g\+\+|gcc|moc|qmake'} | Stop-Process -Force`.
 
 ## File Structure
 
-新建文件 (按职�?:
-- `D:\oler-ide-v2\AGENTS.md` �?v1 教训固化 (Phase 0)
-- `D:\oler-ide-v2\README.md` �?项目说明
-- `D:\oler-ide-v2\LICENSE` �?MIT
-- `D:\oler-ide-v2\.gitignore` �?已建
-- `D:\oler-ide-v2\CMakeLists.txt` �?root build script
-- `D:\oler-ide-v2\CMakePresets.json` �?mingw + msvc 预设
-- `D:\oler-ide-v2\cmake\shims\ECMConfig.cmake` �?vendor shim
-- `D:\oler-ide-v2\cmake\shims\ECMConfigVersion.cmake` �?version compat
-- `D:\oler-ide-v2\src\app\main.cpp` �?入口
-- `D:\oler-ide-v2\src\app\OlerApplication.h/.cpp` �?主题初始�?- `D:\oler-ide-v2\src\ui\mainwindow\MainWindow.h/.cpp` �?主窗 (ActivityBar 56px + TabBar 36px + 5 stackedWidget)
-- `D:\oler-ide-v2\src\ui\editor\OlerEditor.h/.cpp` �?KSyntax 包装编辑�?- `D:\oler-ide-v2\src\core\theme\CThemeManager.h/.cpp` �?主题切换单例
-- `D:\oler-ide-v2\resources\themes\OneDarkPro.qss` �?Atom One Dark Pro 调色
-- `D:\oler-ide-v2\resources\themes\OneLight.qss` �?Atom One Light 调色
-- `D:\oler-ide-v2\resources\themes\AmberDark.qss` �?v0 design file warm amber/terracotta dark
-- `D:\oler-ide-v2\resources\themes\AmberLight.qss` �?同色�?light
-- `D:\oler-ide-v2\resources\themes\themes.qrc` �?Qt 资源文件
-- `D:\oler-ide-v2\third_party\extra-cmake-modules\` �?git clone (vendored, .gitignore)
-- `D:\oler-ide-v2\third_party\syntax-highlighting\` �?git clone (vendored, .gitignore)
-- `D:\oler-ide-v2\third_party\syntax-highlighting\data\CMakeLists.txt` �?patch (remove add_dependencies)
-- `D:\oler-ide-v2\docs\01-product\positioning.md` �?产品定位
-- `D:\oler-ide-v2\docs\02-design-system\tokens.md` �?设计 token
-- `D:\oler-ide-v2\docs\03-shell-pages\{problems,training,mistakes,ai,settings}.md` �?5 tab 设计
-- `D:\oler-ide-v2\docs\04-editor\subpages.md` �?编辑�?4 子页
-- `D:\oler-ide-v2\docs\05-test-results\panel.md` �?测试结果面板
-- `D:\oler-ide-v2\docs\06-welcome\onboarding.md` �?欢迎�?- `D:\oler-ide-v2\docs\07-risks\v1-lessons.md` �?v1 教训
-- `D:\oler-ide-v2\docs\08-roadmap\phases.md` �?路线�?- `D:\oler-ide-v2\docs\09-glossary\terms.md` �?OI 术语�?
-修改文件: �?(v2 全新项目)
+New files (by role):
+- `D:\oler-ide-v2\AGENTS.md` - v1 lessons baked in (Phase 0)
+- `D:\oler-ide-v2\README.md` - project overview
+- `D:\oler-ide-v2\LICENSE` - MIT
+- `D:\oler-ide-v2\.gitignore` - already created
+- `D:\oler-ide-v2\CMakeLists.txt` - root build script
+- `D:\oler-ide-v2\CMakePresets.json` - mingw + msvc presets
+- `D:\oler-ide-v2\cmake\shims\ECMConfig.cmake` - vendor shim
+- `D:\oler-ide-v2\cmake\shims\ECMConfigVersion.cmake` - version compat
+- `D:\oler-ide-v2\src\app\main.cpp` - entry point
+- `D:\oler-ide-v2\src\app\OlerApplication.h/.cpp` - theme initialization. `D:\oler-ide-v2\src\ui\mainwindow\MainWindow.h/.cpp` - main window (ActivityBar 56px + TabBar 36px + 5 stackedWidget).
+- `D:\oler-ide-v2\src\ui\editor\OlerEditor.h/.cpp` - KSyntax wrapper editor. `D:\oler-ide-v2\src\core\theme\CThemeManager.h/.cpp` - theme switching singleton.
+- `D:\oler-ide-v2\resources\themes\OneDarkPro.qss` - Atom One Dark Pro palette
+- `D:\oler-ide-v2\resources\themes\OneLight.qss` - Atom One Light palette
+- `D:\oler-ide-v2\resources\themes\AmberDark.qss` - v0 design file warm amber/terracotta dark
+- `D:\oler-ide-v2\resources\themes\AmberLight.qss` - same family, light
+- `D:\oler-ide-v2\resources\themes\themes.qrc` - Qt resource file
+- `D:\oler-ide-v2\third_party\extra-cmake-modules\` - git clone (vendored, .gitignore)
+- `D:\oler-ide-v2\third_party\syntax-highlighting\` - git clone (vendored, .gitignore)
+- `D:\oler-ide-v2\third_party\syntax-highlighting\data\CMakeLists.txt` - patch (remove add_dependencies)
+- `D:\oler-ide-v2\docs\01-product\positioning.md` - product positioning
+- `D:\oler-ide-v2\docs\02-design-system\tokens.md` - design tokens
+- `D:\oler-ide-v2\docs\03-shell-pages\{problems,training,mistakes,ai,settings}.md` - 5 tab designs
+- `D:\oler-ide-v2\docs\04-editor\subpages.md` - editor's 4 sub-pages
+- `D:\oler-ide-v2\docs\05-test-results\panel.md` - test result panel
+- `D:\oler-ide-v2\docs\06-welcome\onboarding.md` - welcome screen. `D:\oler-ide-v2\docs\07-risks\v1-lessons.md` - v1 lessons.
+- `D:\oler-ide-v2\docs\08-roadmap\phases.md` - roadmap. `D:\oler-ide-v2\docs\09-glossary\terms.md` - OI terminology.
+Modified files: none (v2 is a brand-new project).
 
 ---
 
@@ -64,70 +64,70 @@
 - Create: `D:\oler-ide-v2\README.md`
 - Create: `D:\oler-ide-v2\LICENSE` (已建)
 - Create: `D:\oler-ide-v2\.gitignore` (已建)
-- Create: `D:\oler-ide-v2\docs\` (子目录已�?
+- Create: `D:\oler-ide-v2\docs\` (subdirectories already created)
 
 **Acceptance:**
-- `AGENTS.md` �?v1 教训全文 (�?v0 经验凝练)
-- `README.md` 简�?(项目�?+ 路线�?+ 启动命令)
+- `AGENTS.md` - full v1 lessons text (v0 experience condensed)
+- `README.md` - concise (project summary + roadmap + startup command)
 - `LICENSE` = MIT (已建)
 - `.gitignore` 排除 `build/`, `third_party/`, `.qt/` (已建)
 
-- [ ] **Step 0.1: �?AGENTS.md**
+- [ ] **Step 0.1: create AGENTS.md**
 
 `D:\oler-ide-v2\AGENTS.md` 内容大纲:
 ```markdown
-# Oler IDE v2 �?Project Agent Guide
+# Oler IDE v2 - Project Agent Guide
 
 ## 项目一句话
-Qt 6.8 + C++17 + MinGW 13.1.0 重写的桌�?OI 编程 IDE, 暗色优先, 信息密集, 内置编译�?OJ 凭据/AI 助手�?
-## 路径与文�?- 项目�? D:\oler-ide-v2 (�?ASCII, 不要中文路径, moc/rcc/qmake �?CJK 路径�?broken)
+Qt 6.8 + C++17 + MinGW 13.1.0 rewrite of a desktop OI coding IDE. Dark-mode first, information dense, with built-in compiler, OJ account manager, and AI assistant.
+## Paths and Directories - Project root `D:\oler-ide-v2` (ASCII only; do not use Chinese paths; `moc`/`rcc`/`qmake` are broken on CJK paths in Qt 6.8.0).
 - 构建: D:\oler-ide-v2\build\ (gitignored)
-- Vendor: D:\oler-ide-v2\third_party\ (gitignored, 可重�?git clone)
+- Vendor: `D:\oler-ide-v2\third_party\` (gitignored, re-clonable)
 - Qt: C:\Qt\6.8.0\mingw_64\
 - MinGW: C:\Qt\Tools\mingw1310_64\bin\ (Qt 自带, ABI 严格匹配 Qt 6.8.0 prebuilt)
 
 ## ABI 严格规则
-- Qt 6.8.0 prebuilt �?MinGW 13.1.0 编译, 编译器必�?13.1.0
-- 系统 D:\OI\mingw64\bin\ �?16.1.0 (UCRT) �?ABI 不兼�? 0xC0000374 heap corruption
-- Strawberry C:\Strawberry\c\bin\ �?13.2.0 �?ABI 不兼�?- 任何 CMake 调用必须显式: `-DCMAKE_CXX_COMPILER=C:/Qt/Tools/mingw1310_64/bin/g++.exe`
+- Qt 6.8.0 prebuilt is compiled with MinGW 13.1.0; toolchain MUST be 13.1.0.
+- System `D:\OI\mingw64\bin\` is MinGW 16.1.0 (UCRT) - ABI-incompatible. Causes `0xC0000374` heap corruption.
+- Strawberry `C:\Strawberry\c\bin\` is MinGW 13.2.0 - ABI-incompatible. Every CMake call MUST pass explicitly: `-DCMAKE_CXX_COMPILER=C:/Qt/Tools/mingw1310_64/bin/g++.exe`
 
-## v1 留下来的�?1. WIN32_EXECUTABLE �?MinGW 13.1.0 下必�?FALSE (libQt6EntryPoint.a �?__imp___argc)
-2. Vendor 路线: add_subdirectory(third_party/...) EXCLUDE_FROM_ALL, 不依�?FetchContent
+## Lessons from v1: 1. `WIN32_EXECUTABLE` MUST be `FALSE` under MinGW 13.1.0 (`libQt6EntryPoint.a` references `__imp___argc`).
+2. Vendor route: `add_subdirectory(third_party/...) EXCLUDE_FROM_ALL`; do NOT depend on `FetchContent`.
 3. KSyntax 6.x Repository 没有 static instance(), 必须 `new Repository()` (ctor 不接 parent)
-4. Q_PROPERTY pointer types 必须 forward declare �?fully include (Qt 6 moc 要求)
-5. QMenu::addAction 4-arg overload �?Qt 6 删了, �?2 �?6. addDockWidget 不能�?QTabWidget
-7. `stdin` �?stdio.h macro, Qt property 不能�? 改名 `stdinText`
-8. Q_GADGET 不能重复 (两个 struct �?Q_GADGET 重定�?staticMetaObject)
-9. CJK 路径�?moc.exe (Qt 6.8.0 MinGW) broken, "Cannot create .../moc_xxx.cpp" �?�?ASCII 项目根绕开
-10. PS 5.1 Set-Location 不识�?fresh subst drive, 用绝对路径调 cmake
-11. PS 5.1 C:\strawberry\c\bin 错用 cmake 路径 (-replace 误删), 用绝对路�?$cmake �?
+4. `Q_PROPERTY` pointer types MUST be forward-declared, not fully included (Qt 6 moc requirement).
+5. `QMenu::addAction` 4-arg overload was removed in Qt 6; use the 2-arg form. 6. `addDockWidget` cannot be a child of `QTabWidget`.
+7. `stdin` is a `stdio.h` macro; it cannot be a Qt property name - rename to `stdinText`.
+8. `Q_GADGET` cannot be repeated; two structs both marked `Q_GADGET` re-define `staticMetaObject`.
+9. CJK paths break `moc.exe` (Qt 6.8.0 MinGW): `Cannot create .../moc_xxx.cpp` - keep the project root ASCII.
+10. PS 5.1 `Set-Location` does not recognize a fresh `subst` drive; call `cmake` with absolute paths.
+11. PS 5.1 `C:\strawberry\c\bin` mistakenly rewrites the cmake path (`-replace` misdelete); use the absolute path of `$cmake` directly.
 ## 文件删除规则
-- assistant 永远不直�?Remove-Item / rm / del / Move-Item to /dev/null
-- �?`cmd /c rmdir /s /q <ASCII 绝对路径>` �?user 自己�?- PowerShell Remove-Item 会被 desktop permission gate 拒绝 (Wipe 类别)
-- cmd /c rmdir /s /q �?.NET API, gate 不拦
+- The assistant MUST NEVER run `Remove-Item` / `rm` / `del` / `Move-Item to /dev/null` directly.
+- For recursive deletes, suggest `cmd /c rmdir /s /q <ASCII-absolute-path>` and let the user run it - PowerShell `Remove-Item` is blocked by the desktop permission gate (Wipe category).
+- `cmd /c rmdir /s /q` uses the .NET API and is NOT blocked by the gate.
 
 ## 每步自检
 - 调研/设计/实现每步完成态先汇报, 等拍板再继续
-- 不可逆动�?(杀进程 / 删文�?/ �?git) 每次先确�?- 完工必须基于 user 真机确认或自动化测试通过
+- Irreversible actions (kill process / delete file / rewrite git history) require explicit user confirmation every time. 'Done' is defined by user confirmation on a real machine OR automated tests passing.
 
 ## License
 MIT (LICENSE 文件)
 ```
 
-- [ ] **Step 0.2: �?README.md**
+- [ ] **Step 0.2: create README.md**
 
 ```markdown
 # Oler IDE
 
-Qt 6.8 + C++17 桌面 OI 编程 IDE, 内置编译�?/ OJ 凭据 / AI 助手�?
-## 当前状�?v2 foundation phase: 空主�?+ 4 主题切换 + KSyntax 代码高亮 (Phase 0+1+2+3)�?
-## 路线�?- �?Phase 0: 安全护栏 + 仓库 init
-- 🚧 Phase 1: 骨架 (空主�?+ ABI 链验�?
-- 🚧 Phase 2: 4 主题系统
-- 🚧 Phase 3: Vendor �?(ECM + KSyntax)
-- �?Phase 4: 核心�?(OlerApi + 7 大件)
-- �?Phase 5: Shell 5 tabs UI
-- �?Phase 6: 编译�?pipeline + OJ 适配�?- �?Phase 7+: AI 助手 (dots.ai)
+Qt 6.8 + C++17 desktop OI coding IDE, with built-in compiler, OJ account manager, and AI assistant.
+## Current status: v2 foundation phase - empty main window + 4 theme switching + KSyntax code highlighting (Phase 0 + 1 + 2 + 3).
+## Roadmap: - [x] Phase 0: safety guards + repo init
+- [WIP] Phase 1: skeleton (empty main window + ABI chain verification)
+- [WIP] Phase 2: 4-theme system
+- [WIP] Phase 3: vendor (ECM + KSyntax)
+- [ ] Phase 4: core (OlerApi + 7 components)
+- [ ] Phase 5: Shell 5 tabs UI
+- [ ] Phase 6: compiler pipeline + OJ adapters. - [ ] Phase 7+: AI assistant (dots.ai)
 
 ## 启动
 ```powershell
@@ -137,14 +137,14 @@ cmake -G Ninja -B build -S . -DCMAKE_CXX_COMPILER=C:/Qt/Tools/mingw1310_64/bin/g
 # 构建
 cmake --build build --parallel
 
-# �?build\oler-ide.exe
+# Run build\oler-ide.exe
 ```
 
 ## License
-MIT �?see LICENSE.
+MIT - see LICENSE.
 ```
 
-- [ ] **Step 0.3: git init + �?commit (空架�?**
+- [ ] **Step 0.3: git init + first commit (empty scaffold)**
 
 ```powershell
 cd D:\oler-ide-v2
@@ -155,7 +155,7 @@ git commit -m "chore: scaffold v2 foundation (AGENTS.md + README + LICENSE + .gi
 
 Expected: 1 commit, 4 files, no untracked.
 
-**Acceptance:** 仓库已初始化, 4 文件�?commit, `third_party/` �?`build/` �?.gitignore �?(后续填充不污�?git).
+**Acceptance:** Repo initialized, 4 files in the first commit, `third_party/` and `build/` in `.gitignore` (so future fills do not pollute git).
 
 ---
 
@@ -169,7 +169,7 @@ Expected: 1 commit, 4 files, no untracked.
 - Consumes: Qt 6.8 Core, Gui, Widgets
 - Produces: `oler-ide.exe` (console subsystem, 编译链接成功, 启动 3s alive)
 
-- [ ] **Step 1.1: 写最�?main.cpp**
+- [ ] **Step 1.1: write the minimal `main.cpp`**
 
 ```cpp
 #include <QApplication>
@@ -184,7 +184,7 @@ int main(int argc, char *argv[]) {
     QMainWindow w;
     w.setWindowTitle("Oler IDE v2");
     w.resize(1280, 800);
-    QLabel *lbl = new QLabel("Oler IDE v2 �?foundation", &w);
+    QLabel *lbl = new QLabel("Oler IDE v2 - foundation", &w);
     lbl->setAlignment(Qt::AlignCenter);
     w.setCentralWidget(lbl);
     w.show();
@@ -193,7 +193,7 @@ int main(int argc, char *argv[]) {
 }
 ```
 
-- [ ] **Step 1.2: �?CMakeLists.txt (root)**
+- [ ] **Step 1.2: create CMakeLists.txt (root)**
 
 ```cmake
 cmake_minimum_required(VERSION 3.20)
@@ -215,7 +215,7 @@ add_executable(oler-ide
     src/app/main.cpp
 )
 
-# v1 教训: MinGW 13.1.0 �?libQt6EntryPoint.a 引用 MSVC __imp___argc, 必须 FALSE
+# v1 lesson: MinGW 13.1.0's libQt6EntryPoint.a references MSVC __imp___argc, MUST be FALSE
 if(MINGW)
     set_target_properties(oler-ide PROPERTIES WIN32_EXECUTABLE FALSE)
 else()
@@ -264,7 +264,7 @@ if ($sw.Elapsed.TotalSeconds -lt 2.5) { throw "FAIL: process exited too fast ($(
 Write-Output "[ok] exited cleanly in $($sw.Elapsed.TotalSeconds)s"
 ```
 
-Expected: `[ok] alive at 2.5s` + `[ok] exited cleanly in ~3s`. **如果 0xC0000374**: 编译�?ABI 还是�? 检�?`$gcc` 是不�?`13.1.0`.
+Expected: `[ok] alive at 2.5s` + `[ok] exited cleanly in ~3s`. **If 0xC0000374**: the compiler ABI is wrong; check that `$gcc` is really `13.1.0`.
 
 - [ ] **Step 1.6: Commit**
 
@@ -273,7 +273,7 @@ git add src/ CMakeLists.txt
 git commit -m "feat(phase-1): empty QMainWindow skeleton, MinGW 13.1.0 ABI verified"
 ```
 
-**Acceptance:** `build/oler-ide.exe` 启动�?4s 仍在�?(QTimer::singleShot 3s quit), QApplication 正常退�?0�?
+**Acceptance:** `build/oler-ide.exe` launches and stays alive 4s (QTimer::singleShot 3s quit), QApplication exits cleanly with code 0.
 ---
 
 ## Task 2: Vendor ECM (Extra CMake Modules)
@@ -282,7 +282,7 @@ git commit -m "feat(phase-1): empty QMainWindow skeleton, MinGW 13.1.0 ABI verif
 - Create: `D:\oler-ide-v2\third_party\extra-cmake-modules\` (git clone)
 - Create: `D:\oler-ide-v2\cmake\shims\ECMConfig.cmake`
 - Create: `D:\oler-ide-v2\cmake\shims\ECMConfigVersion.cmake`
-- Modify: `D:\oler-ide-v2\CMakeLists.txt` (�?vendor �?
+- Modify: `D:\oler-ide-v2\CMakeLists.txt` (add vendor steps)
 
 **Interfaces:**
 - Consumes: GitHub KDE mirror (proxy `http://127.0.0.1:7897`)
@@ -296,10 +296,10 @@ git commit -m "feat(phase-1): empty QMainWindow skeleton, MinGW 13.1.0 ABI verif
 
 Expected: 1.1MB cloned, `ECM_VERSION=6.8.0` in `ECMConfigVersion.cmake`.
 
-- [ ] **Step 2.2: �?ECMConfig.cmake shim**
+- [ ] **Step 2.2: create ECMConfig.cmake shim**
 
 ```cmake
-# cmake/shims/ECMConfig.cmake �?vendor shim for find_package(ECM) NO_MODULE
+# cmake/shims/ECMConfig.cmake - vendor shim for find_package(ECM) NO_MODULE
 set(PACKAGE_VERSION "@ECM_VERSION@")
 set(PACKAGE_VERSION_COMPATIBLE TRUE)
 set(PACKAGE_VERSION_EXACT TRUE)
@@ -315,7 +315,7 @@ endif()
 
 Replace `@ECM_VERSION@` with `6.8.0` (literal).
 
-- [ ] **Step 2.3: �?ECMConfigVersion.cmake**
+- [ ] **Step 2.3: create ECMConfigVersion.cmake**
 
 ```cmake
 set(PACKAGE_VERSION "6.8.0")
@@ -331,7 +331,7 @@ endif()
 
 - [ ] **Step 2.4: 修改 root CMakeLists.txt**
 
-�?`find_package(Qt6 ...)` 后加:
+After `find_package(Qt6 ...)`, add:
 ```cmake
 # Vendor ECM
 set(ECM_DIR "${CMAKE_SOURCE_DIR}/cmake/shims" CACHE PATH "ECM shim directory" FORCE)
@@ -354,9 +354,9 @@ git add cmake/ CMakeLists.txt
 git commit -m "feat(phase-3): vendor ECM 6.8.0 with shim"
 ```
 
-注意: `third_party/` �?.gitignore, �?commit 实际 vendor 目录, �?commit shim + root config.
+Note: `third_party/` is in `.gitignore`, so the commit will not include the actual vendor directories; it commits the shim + root config.
 
-**Acceptance:** `find_package(ECM)` 不再�?"ECM not found", shim 输出 LOADED�?
+**Acceptance:** `find_package(ECM)` no longer reports 'ECM not found'; the shim prints LOADED.
 ---
 
 ## Task 3: Vendor KSyntaxHighlighting
@@ -364,11 +364,11 @@ git commit -m "feat(phase-3): vendor ECM 6.8.0 with shim"
 **Files:**
 - Create: `D:\oler-ide-v2\third_party\syntax-highlighting\` (git clone)
 - Modify: `D:\oler-ide-v2\third_party\syntax-highlighting\data\CMakeLists.txt` (patch)
-- Modify: `D:\oler-ide-v2\CMakeLists.txt` (�?add_subdirectory)
+- Modify: `D:\oler-ide-v2\CMakeLists.txt` (add `add_subdirectory`)
 
 **Interfaces:**
 - Consumes: GitHub KDE mirror
-- Produces: `libKF6SyntaxHighlighting.dll` 链接成功, 头文�?include 可用
+- Produces: `libKF6SyntaxHighlighting.dll` linked successfully, headers includable
 
 - [ ] **Step 3.1: Git clone KSyntax**
 
@@ -376,8 +376,8 @@ git commit -m "feat(phase-3): vendor ECM 6.8.0 with shim"
 & 'D:\软件\Git\cmd\git.exe' clone --depth 1 --branch v6.8.0 https://github.com/KDE/syntax-highlighting.git D:\oler-ide-v2\third_party\syntax-highlighting
 ```
 
-Expected: 42.4MB cloned, `src/lib/ksyntaxhighlighting.h` 存在�?
-- [ ] **Step 3.2: Patch data/CMakeLists.txt (避开 katehighlightingindexer STATUS_HEAP_CORRUPTION)**
+Expected: 42.4MB cloned, `src/lib/ksyntaxhighlighting.h` exists.
+- [ ] **Step 3.2: Patch data/CMakeLists.txt (work around katehighlightingindexer STATUS_HEAP_CORRUPTION)**
 
 打开 `D:\oler-ide-v2\third_party\syntax-highlighting\data\CMakeLists.txt`, 删除:
 ```cmake
@@ -388,24 +388,24 @@ add_dependencies(SyntaxHighlightingData katesyntax)
 ```cmake
 COMMAND $<TARGET_FILE:katehighlightingindexer> --source $src $<GENEX_EVAL:$<TARGET_PROPERTY:SyntaxHighlightingData,GENEX_DATA>> --target $out
 ```
-�?`DEPENDS index.katesyntax` 也删�?(如果�?�?
-或者用更稳的修�? �?root CMakeLists.txt �?
+And also remove `DEPENDS index.katesyntax` (if present).
+Or, more stable fix - at the root CMakeLists.txt, add:
 ```cmake
 set(QRC_SYNTAX OFF CACHE BOOL "Skip QRC_SYNTAX" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "Skip tests" FORCE)
 ```
 
-放在 add_subdirectory 之前�?
-- [ ] **Step 3.3: �?KSyntax add_subdirectory**
+Place before add_subdirectory.
+- [ ] **Step 3.3: create KSyntax add_subdirectory**
 
-�?root CMakeLists.txt 末尾:
+At the end of root CMakeLists.txt:
 ```cmake
 # Vendor KSyntax
 add_subdirectory(third_party/syntax-highlighting EXCLUDE_FROM_ALL)
 target_link_libraries(oler-ide PRIVATE KF6SyntaxHighlighting)
 ```
 
-注意: `KF6SyntaxHighlighting` �?add_subdirectory 模式�?target 实际�? `install(EXPORT NAMESPACE KF6::)` �?install 时生�? 不用 `KF6::SyntaxHighlighting`�?
+Note: under `add_subdirectory` mode the `KF6SyntaxHighlighting` target is NOT the one generated by `install(EXPORT NAMESPACE KF6::)`; do not use `KF6::SyntaxHighlighting`.
 - [ ] **Step 3.4: Configure + Build**
 
 ```powershell
@@ -413,10 +413,10 @@ target_link_libraries(oler-ide PRIVATE KF6SyntaxHighlighting)
 & 'D:\OI\mingw64\bin\cmake.exe' --build build --parallel
 ```
 
-Expected: configure 0, build 0, `build/bin/libKF6SyntaxHighlighting.dll` ~960KB, `build/oler-ide.exe` 增大�?~200KB�?
+Expected: configure 0, build 0, `build/bin/libKF6SyntaxHighlighting.dll` ~960KB, `build/oler-ide.exe` grows by ~200KB.
 - [ ] **Step 3.5: Smoke test**
 
-重复 Task 1.5。Expected: �?alive (KSyntax static 加载�?crash)�?
+Repeat Task 1.5. Expected: still alive (KSyntax static load succeeds, no crash).
 - [ ] **Step 3.6: Commit**
 
 ```powershell
@@ -424,7 +424,7 @@ git add CMakeLists.txt
 git commit -m "feat(phase-3): vendor KSyntax 6.8.0, link KF6SyntaxHighlighting"
 ```
 
-**Acceptance:** `libKF6SyntaxHighlighting.dll` 存在�?oler-ide.exe 启动正常�?
+**Acceptance:** `libKF6SyntaxHighlighting.dll` exists and `oler-ide.exe` starts normally.
 ---
 
 ## Task 4: 4 Theme QSS Files
@@ -438,9 +438,9 @@ git commit -m "feat(phase-3): vendor KSyntax 6.8.0, link KF6SyntaxHighlighting"
 
 **Interfaces:**
 - Consumes: 设计 token (v0 design file + One Dark Pro spec)
-- Produces: 4 个独�?QSS, 每个可单�?`qApp->setStyleSheet(...)` 切换
+- Produces: 4 independent QSS files, each switchable in one line via `qApp->setStyleSheet(...)`
 
-- [ ] **Step 4.1: �?OneDarkPro.qss**
+- [ ] **Step 4.1: create OneDarkPro.qss**
 
 基于 Atom One Dark Pro 配色:
 ```css
@@ -461,7 +461,7 @@ QLabel { color: #abb2bf; }
 QStackedWidget { background-color: #282c34; }
 ```
 
-- [ ] **Step 4.2: �?OneLight.qss**
+- [ ] **Step 4.2: create OneLight.qss**
 
 ```css
 /* OneLight - light, blue-purple accent */
@@ -481,7 +481,7 @@ QLabel { color: #383a42; }
 QStackedWidget { background-color: #fafafa; }
 ```
 
-- [ ] **Step 4.3: �?AmberDark.qss (v0 design file warm amber/terracotta)**
+- [ ] **Step 4.3: create AmberDark.qss (v0 design file warm amber/terracotta)**
 
 ```css
 /* AmberDark - dark, warm amber/terracotta accent */
@@ -501,7 +501,7 @@ QLabel { color: #f1f1ef; }
 QStackedWidget { background-color: #131311; }
 ```
 
-- [ ] **Step 4.4: �?AmberLight.qss**
+- [ ] **Step 4.4: create AmberLight.qss**
 
 ```css
 /* AmberLight - light, warm amber/terracotta accent */
@@ -521,7 +521,7 @@ QLabel { color: #2c2a26; }
 QStackedWidget { background-color: #fafaf7; }
 ```
 
-- [ ] **Step 4.5: �?themes.qrc**
+- [ ] **Step 4.5: create themes.qrc**
 
 ```xml
 <RCC>
@@ -534,7 +534,7 @@ QStackedWidget { background-color: #fafaf7; }
 </RCC>
 ```
 
-- [ ] **Step 4.6: CMakeLists.txt �?qrc**
+- [ ] **Step 4.6: CMakeLists.txt add qrc**
 
 ```cmake
 add_executable(oler-ide
@@ -550,7 +550,7 @@ git add resources/themes/
 git commit -m "feat(phase-2): 4 theme QSS files (OneDarkPro/OneLight/AmberDark/AmberLight)"
 ```
 
-**Acceptance:** 4 �?QSS 编译�?qrc, 资源路径 `/themes/OneDarkPro.qss` 等可访问�?
+**Acceptance:** 4 QSS files compiled into the qrc; the resource path `/themes/OneDarkPro.qss` etc. are accessible.
 ---
 
 ## Task 5: CThemeManager
@@ -563,8 +563,8 @@ git commit -m "feat(phase-2): 4 theme QSS files (OneDarkPro/OneLight/AmberDark/A
 
 **Interfaces:**
 - Consumes: themes.qrc (已建)
-- Produces: `CThemeManager::instance()->applyTheme("AmberDark")` 一行切�?
-- [ ] **Step 5.1: �?CThemeManager.h**
+- Produces: `CThemeManager::instance()->applyTheme("AmberDark")` switches the theme in one line
+- [ ] **Step 5.1: create CThemeManager.h**
 
 ```cpp
 #pragma once
@@ -592,7 +592,7 @@ private:
 };
 ```
 
-- [ ] **Step 5.2: �?CThemeManager.cpp**
+- [ ] **Step 5.2: create CThemeManager.cpp**
 
 ```cpp
 #include "CThemeManager.h"
@@ -632,7 +632,7 @@ void CThemeManager::cycleTheme() {
 }
 ```
 
-- [ ] **Step 5.3: main.cpp �?CThemeManager**
+- [ ] **Step 5.3: main.cpp uses CThemeManager**
 
 ```cpp
 #include <QApplication>
@@ -657,7 +657,7 @@ int main(int argc, char *argv[]) {
 }
 ```
 
-- [ ] **Step 5.4: CMakeLists.txt �?source**
+- [ ] **Step 5.4: CMakeLists.txt adds source**
 
 ```cmake
 add_executable(oler-ide
@@ -675,7 +675,7 @@ target_include_directories(oler-ide PRIVATE src)
 # 重复 Task 1.5 smoke test
 ```
 
-Expected: build 0, alive (QSS 已应�? minimal QPA 看不到视觉但 QSS 已加�?�?
+Expected: build 0, alive (QSS applied, minimal QPA cannot show visuals but the QSS is loaded).
 - [ ] **Step 5.6: Commit**
 
 ```powershell
@@ -683,7 +683,7 @@ git add src/core/theme/ src/app/main.cpp CMakeLists.txt
 git commit -m "feat(phase-2): CThemeManager singleton, 4 theme switching API"
 ```
 
-**Acceptance:** `CThemeManager::instance()->applyTheme("AmberDark")` 一行切�?QSS, build + smoke test 通过�?
+**Acceptance:** `CThemeManager::instance()->applyTheme("AmberDark")` switches the QSS in one line, build + smoke test pass.
 ---
 
 ## Task 6: OlerEditor (KSyntax Wrapper)
@@ -698,7 +698,7 @@ git commit -m "feat(phase-2): CThemeManager singleton, 4 theme switching API"
 - Consumes: KSyntaxHighlighting::Repository + SyntaxHighlighter
 - Produces: `OlerEditor` (QPlainTextEdit subclass) 自动应用 C++ syntax + 当前主题
 
-- [ ] **Step 6.1: �?OlerEditor.h**
+- [ ] **Step 6.1: create OlerEditor.h**
 
 ```cpp
 #pragma once
@@ -728,7 +728,7 @@ private:
 };
 ```
 
-- [ ] **Step 6.2: �?OlerEditor.cpp**
+- [ ] **Step 6.2: create OlerEditor.cpp**
 
 ```cpp
 #include "OlerEditor.h"
@@ -763,7 +763,7 @@ void OlerEditor::applyThemeFromManager() {
 }
 ```
 
-- [ ] **Step 6.3: main.cpp �?OlerEditor**
+- [ ] **Step 6.3: main.cpp uses OlerEditor**
 
 ```cpp
 #include <QApplication>
@@ -789,7 +789,7 @@ int main(int argc, char *argv[]) {
 }
 ```
 
-- [ ] **Step 6.4: CMakeLists.txt �?source + KSyntax �?*
+- [ ] **Step 6.4: CMakeLists.txt adds source + KSyntax link**
 
 ```cmake
 add_executable(oler-ide
@@ -807,7 +807,7 @@ target_link_libraries(oler-ide PRIVATE
 
 - [ ] **Step 6.5: Build + Smoke test**
 
-Expected: build 0 (KSyntax 头文件已 include), oler-ide.exe 启动�?KSyntax 加载定义, �?alive�?
+Expected: build 0 (KSyntax headers already included), `oler-ide.exe` launches with KSyntax definitions loaded, still alive.
 - [ ] **Step 6.6: Commit**
 
 ```powershell
@@ -815,7 +815,7 @@ git add src/ui/editor/ src/app/main.cpp CMakeLists.txt
 git commit -m "feat(phase-2+3): OlerEditor with KSyntaxHighlighting C++ syntax + theme sync"
 ```
 
-**Acceptance:** OlerEditor 加载 C++ definition, 主题切换�?KSyntax theme 同步更新 (Programmatic API, smoke test �?alive)�?
+**Acceptance:** OlerEditor loads the C++ definition; theme switch syncs the KSyntax theme (Programmatic API; smoke test: still alive).
 ---
 
 ## Task 7: MainWindow with ActivityBar + TabBar
@@ -830,7 +830,7 @@ git commit -m "feat(phase-2+3): OlerEditor with KSyntaxHighlighting C++ syntax +
 - Consumes: 5 tab names (problems/training/mistakes/ai/settings)
 - Produces: 56px ActivityBar (left) + 36px TabBar (top) + QStackedWidget (5 pages)
 
-- [ ] **Step 7.1: �?MainWindow.h**
+- [ ] **Step 7.1: create MainWindow.h**
 
 ```cpp
 #pragma once
@@ -862,7 +862,7 @@ private:
 };
 ```
 
-- [ ] **Step 7.2: �?MainWindow.cpp**
+- [ ] **Step 7.2: create MainWindow.cpp**
 
 ```cpp
 #include "MainWindow.h"
@@ -941,7 +941,7 @@ void MainWindow::onTabChanged(int index) {
 }
 ```
 
-- [ ] **Step 7.3: main.cpp �?MainWindow**
+- [ ] **Step 7.3: main.cpp uses MainWindow**
 
 ```cpp
 #include <QApplication>
@@ -960,7 +960,7 @@ int main(int argc, char *argv[]) {
 }
 ```
 
-- [ ] **Step 7.4: CMakeLists.txt �?source**
+- [ ] **Step 7.4: CMakeLists.txt adds source**
 
 ```cmake
 add_executable(oler-ide
@@ -974,7 +974,7 @@ add_executable(oler-ide
 
 - [ ] **Step 7.5: Build + Smoke test**
 
-Expected: build 0, alive。ActivityBar 56px + TabBar 36px + 5 stacked placeholder�?
+Expected: build 0, alive. ActivityBar 56px + TabBar 36px + 5 stacked placeholders.
 - [ ] **Step 7.6: Commit**
 
 ```powershell
@@ -982,7 +982,7 @@ git add src/ui/mainwindow/ src/app/main.cpp CMakeLists.txt
 git commit -m "feat(phase-1): MainWindow with ActivityBar 56 + TabBar 36 + 5 stacked pages"
 ```
 
-**Acceptance:** 5 �?placeholder pages + ActivityBar 联动 TabBar 切换。Phase 5 才会填实内容�?
+**Acceptance:** 5 placeholder pages + ActivityBar links TabBar switching. Phase 5 will fill in the real content.
 ---
 
 ## Task 8: 9 Docs from v0 Design
@@ -1000,54 +1000,54 @@ git commit -m "feat(phase-1): MainWindow with ActivityBar 56 + TabBar 36 + 5 sta
 
 - [ ] **Step 8.1: docs/01-product/positioning.md**
 
-�?`D:\oler\oler-ide-redesign\orchestration-summary.json` + `D:\oler\oler-ide-redesign\colors_and_type.css`, 抽取产品定位:
+Extract the product positioning from `D:\oler\oler-ide-redesign\orchestration-summary.json` + `D:\oler\oler-ide-redesign\colors_and_type.css`:
 
 ```markdown
 # 产品定位
 
 ## 目标用户
-- 普及�?�?提高�?�?NOI 全阶�?OI 选手
+- All OI contestants: 普及-/提高-/NOI levels
 - 重视 UI/UX 质量, 暗色优先, 信息密集
-- 需�?OJ 凭据管理, 内置编译�? AI 助手
+- Needs OJ account management, built-in compiler, AI assistant
 
 ## 核心差异
-- 内置 > 引导下载: g++ 17 / MinGW / OJ 凭据 / AI 模型说明 全打�?- 信息密集: 受洛�?VSCode 启发, 不堆 hero 空白
-- 暗色优先: 4 主题, One Dark Pro + Amber/terracotta 双色�?
+- Built-in > guided download: g++ 17 / MinGW / OJ credentials / AI model notes - all packaged
+- Dark-mode first: 4 themes, One Dark Pro + Amber/terracotta dual track
 ## 风格
 - 暗色优先 (dark-first)
 - 暖琥珀/赤陶 accent (v0 design file) + One Dark Pro 蓝紫 (Atom 经典) 双轨
-- 边框优先 surface, 浮动阴影仅用�?overlay
+- Border-first surfaces; floating shadows only on overlays
 - 紧凑 13px 字号, SF Pro Display + JetBrains Mono
 
-## 路线�?Phase 0-3: 基础 (本计�?
-Phase 4: 核心�?Phase 5: Shell 5 tabs UI 实装
-Phase 6: 编译�?pipeline + OJ 适配�?Phase 7+: AI 助手 (dots.ai)
+## Roadmap: Phase 0-3: foundation (this plan)
+Phase 4: core. Phase 5: Shell 5 tabs UI implementation
+Phase 6: compiler pipeline + OJ adapters. Phase 7+: AI assistant (dots.ai)
 ```
 
 - [ ] **Step 8.2: docs/02-design-system/tokens.md**
 
-抽取 colors_and_type.css 全部 CSS 变量�?markdown 表格�?
-- [ ] **Step 8.3-8.7: docs/03-shell-pages/*.md (5 个文�?**
+Extract all CSS variables from colors_and_type.css into a markdown table.
+- [ ] **Step 8.3-8.7: docs/03-shell-pages/*.md (5 files)**
 
-每个 tab 一�?md, �?north star + continuity anchors + 截图占位 (Phase 5 �?�?
+One `.md` per tab, with a north star + continuity anchors + screenshot placeholders (filled in Phase 5).
 - [ ] **Step 8.8: docs/04-editor/subpages.md**
 
-编辑�?4 子页描述: �?/ 文件 / 输出 / 测试用例�?
+Editor 4 sub-page description: header / file tree / output / test cases.
 - [ ] **Step 8.9: docs/05-test-results/panel.md**
 
-5 verdict 颜色 badge + diff viewer + timing/memory stats + pass rate summary�?
+5 verdict color badges + diff viewer + timing/memory stats + pass rate summary.
 - [ ] **Step 8.10: docs/06-welcome/onboarding.md**
 
-品牌 logo + 4 �?quick start + demo 题目�?+ OJ 凭据状�?badge�?
+Brand logo + 4 quick start cards + demo problem + OJ credential status badge.
 - [ ] **Step 8.11: docs/07-risks/v1-lessons.md**
 
-�?AGENTS.md �?v1 留下来的�? + "全局约束"完整搬过�? 加案�?(vendor 路线 10 �?patch 失败 / ABI mismatch 0xC0000374 / 子进�?link 错等)�?
+From AGENTS.md's 'Lessons from v1' + the full 'Global Constraints' section, with case studies (vendor route 10x patch failures / ABI mismatch 0xC0000374 / subprocess link errors, etc.).
 - [ ] **Step 8.12: docs/08-roadmap/phases.md**
 
-Phase 0-7+ 完整路线�?+ 每个 phase 验收标准�?
+Complete Phase 0-7+ roadmap + each phase's acceptance criteria.
 - [ ] **Step 8.13: docs/09-glossary/terms.md**
 
-OI 术语�? AC/WA/TLE/RE/CE/NOI/IOI/ACM/洛谷/普及/提高 等�?
+OI glossary: AC/WA/TLE/RE/CE/NOI/IOI/ACM/luogu/普及/提高 and similar terms.
 - [ ] **Step 8.14: Commit**
 
 ```powershell
@@ -1055,7 +1055,7 @@ git add docs/
 git commit -m "docs(phase-1): 9 docs from v0 design (positioning, tokens, 5 shell pages, editor, test results, welcome, risks, roadmap, glossary)"
 ```
 
-**Acceptance:** `docs/` 9 子目录都有内�? 总文�?~3000 �? 全部基于 v0 design file 凝练�?
+**Acceptance:** `docs/` has content in all 9 subdirectories; total ~3000 lines; all condensed from the v0 design file.
 ---
 
 ## Task 9: First Atomic Commit Tag
@@ -1066,7 +1066,7 @@ git commit -m "docs(phase-1): 9 docs from v0 design (positioning, tokens, 5 shel
 git tag -a v2.0.0-foundation -m "v2 foundation: empty QMainWindow + 4 themes + KSyntax + 9 docs"
 ```
 
-- [ ] **Step 9.2: 最�?smoke test**
+- [ ] **Step 9.2: minimal smoke test**
 
 ```powershell
 # Clean rebuild from scratch (use cmd rmdir per File-deletion-gated rule)
@@ -1085,26 +1085,26 @@ $sw.Stop()
 Write-Output "[ok] exit clean in $($sw.Elapsed.TotalSeconds)s"
 ```
 
-**Acceptance:** clean rebuild 0 �? oler-ide.exe alive 4s, exit clean�?
+**Acceptance:** clean rebuild 0; oler-ide.exe alive 4s, exit clean.
 ---
 
 ## Self-Review Checklist
 
 - [x] 9 tasks 覆盖 v0 决策 + v1 教训 + Phase 1+2+3 全部交付
-- [x] 每步有具体代码片�? �?TBD/TODO
-- [x] 每步有可执行命令 + 期望输出
-- [x] TDD-flavored: 每步�?build + smoke test 验收
-- [x] 全部 ASCII 路径, �?CJK
-- [x] 全部 MinGW 13.1.0 严格 ABI
+- [x] 9 tasks covering v0 decisions + v1 lessons + Phase 1+2+3 full delivery
+- [x] Each step has concrete code snippets (no TBD/TODO)
+- [x] Each step has executable commands + expected output
+- [x] TDD-flavored: each step has a build + smoke test acceptance
+- [x] All ASCII paths, no CJK
 - [x] 全部 vendor 路线 (add_subdirectory)
-- [x] 文件删除 gated (�?`cmd /c rmdir /s /q <ASCII 路径>`)
-- [x] 每步�?commit, 9 个独�?commit
+- [x] File deletion gated (suggest `cmd /c rmdir /s /q <ASCII path>`)
+- [x] Each step has a commit, 9 independent commits
 - [x] KSyntax 6.x API 正确 (new Repository, ctor 不接 parent)
 - [x] WIN32_EXECUTABLE FALSE on MinGW
-- [x] 类型一�? CThemeManager::instance/applyTheme/cycleTheme 在所有引用处一�?
+- [x] Type consistency: CThemeManager::instance/applyTheme/cycleTheme identical at every call site
 ## Execution Handoff
 
 **Plan complete and saved to `docs/superpowers/plans/2026-08-21-oler-ide-v2-foundation.md`. Two execution options:**
 
-1. **Subagent-Driven (recommended)** �?每个 task 派一�?fresh subagent, 跑完汇报, �?review �?next task。适合�?plan, 你中间可以插�?2. **Inline Execution** �?当前 session 我自己跑, batch with checkpoints, 风险是单 session �?
+1. **Subagent-Driven (recommended)** - one fresh subagent per task, report back, then review before the next task. Best fit for this plan; you can interject between tasks. 2. **Inline Execution** - run in the current session myself, batch with checkpoints; the risk is that a single session is long.
 **Which approach?**

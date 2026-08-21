@@ -46,7 +46,7 @@ Qt 6.8 + C++17 + MinGW 13.1.0 重写的桌�?OI 编程 IDE, 暗色优先, 信息
    # �?add_custom_command (katehighlightingindexer 那行) 替换�?stub
    # 详见 Task 3 implementer report: .superpowers/sdd/.../task-3-report.md
    ```
-6. **Task 6+ 待办**: `kf6syntaxhighlightingdata` �?374 �?XML definition 当前�?stub, OlerEditor 里的 `new Repository()` 没数据。Task 6 必须解决 (要么�?windeployqt 复制 katehighlightingindexer.exe + Qt DLL �?PATH, 要么预先生成 XML �?commit 静态定�?
+6. **Task 6+ TODO (deferred, non-blocking)**: kf6syntaxhighlightingdata's 374 XML definition files are real (cpp.xml = 49KB proper DOCTYPE, php.xml = 442KB, etc.), but index.katesyntax is a 0-byte stub (replaced via vendored data/CMakeLists.txt patch because katehighlightingindexer crashes on MinGW PATH). Effect: new Repository()->definitionForName('C++') returns invalid Definition, visual highlighting is silently a no-op (API does not crash, process runs fine). **Not solved in Task 6** (defensive setLanguage guard prevents crash). Real fix: (a) get katehighlightingindexer working (PATH with Qt DLLs), OR (b) pre-generate index.katesyntax and commit as static asset. Needs a separate task to evaluate.
 
 ## License
 MIT (LICENSE 文件)

@@ -18,6 +18,14 @@ set(ECM_DIR "${CMAKE_SOURCE_DIR}/cmake/shims" CACHE PATH "ECM shim directory" FO
 add_subdirectory(third_party/extra-cmake-modules EXCLUDE_FROM_ALL)
 include(cmake/shims/ECMConfig.cmake)
 
+# v1 教训: QRC_SYNTAX=OFF avoids katehighlightingindexer STATUS_HEAP_CORRUPTION on MinGW.
+# MUST be set before add_subdirectory(syntax-highlighting) so the cache var is locked in.
+set(QRC_SYNTAX OFF CACHE BOOL "Skip QRC_SYNTAX (avoids katehighlightingindexer STATUS_HEAP_CORRUPTION)" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "Skip KSyntax tests" FORCE)
+
+# Vendor KSyntaxHighlighting 6.8.0 (LGPL)
+add_subdirectory(third_party/syntax-highlighting EXCLUDE_FROM_ALL)
+
 add_executable(oler-ide
     src/app/main.cpp
 )
@@ -31,4 +39,5 @@ endif()
 
 target_link_libraries(oler-ide PRIVATE
     Qt6::Core Qt6::Gui Qt6::Widgets
+    KF6SyntaxHighlighting
 )

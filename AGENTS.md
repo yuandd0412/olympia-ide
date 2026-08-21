@@ -67,4 +67,4 @@ Before running `build\oler-ide.exe`, prepend `C:\Qt\6.8.0\mingw_64\bin` to `PATH
 $env:PATH = 'C:\Qt\6.8.0\mingw_64\bin;' + $env:PATH
 ```
 
-Task 9 (planned) will add a `windeployqt` step to copy the Qt DLLs into `build/` so this manual step is no longer required.
+Task 9 (done, commit `372668b`) added a `windeployqt` POST_BUILD step that copies Qt DLLs into `build/`, so this manual step is no longer required for builds after 2026-08-21.

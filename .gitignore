@@ -1,0 +1,46 @@
+# Build output
+build/
+out/
+cmake-build-*/
+
+# Qt
+.qt/
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+cmake_install.cmake
+CTestTestfile.cmake
+_deps/
+
+# Vendored third-party (re-cloneable)
+third_party/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.user
+*.user.*
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Logs / temp
+*.log
+*.tmp
+*.bak
+
+# Local env / secrets
+.env
+.env.local
+*.local

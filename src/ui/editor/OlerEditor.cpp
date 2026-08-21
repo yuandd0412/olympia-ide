@@ -2,6 +2,7 @@
 #include <KSyntaxHighlighting/Repository>
 #include <KSyntaxHighlighting/SyntaxHighlighter>
 #include <KSyntaxHighlighting/Theme>
+#include <QHash>
 #include "core/theme/CThemeManager.h"
 
 OlerEditor::OlerEditor(QWidget *parent)
@@ -24,7 +25,17 @@ void OlerEditor::setLanguage(const QString &lang) {
 }
 
 void OlerEditor::applyThemeFromManager() {
-    auto theme = m_repo->theme(CThemeManager::instance()->currentTheme());
+    // Map Oler theme names to KSyntax theme names.
+    // KSyntax ships themes like breeze-dark, atom-one-dark, etc. (not "AmberDark").
+    static const QHash<QString, QString> kThemeMap = {
+        {QStringLiteral("AmberDark"),  QStringLiteral("breeze-dark")},
+        {QStringLiteral("AmberLight"), QStringLiteral("breeze-light")},
+        {QStringLiteral("OneDarkPro"), QStringLiteral("atom-one-dark")},
+        {QStringLiteral("OneLight"),   QStringLiteral("atom-one-light")},
+    };
+    const QString olerTheme = CThemeManager::instance()->currentTheme();
+    const QString kSyntaxName = kThemeMap.value(olerTheme, QStringLiteral("breeze-dark"));
+    auto theme = m_repo->theme(kSyntaxName);
     if (!theme.isValid()) theme = m_repo->defaultTheme();
     m_highlighter->setTheme(theme);
 }

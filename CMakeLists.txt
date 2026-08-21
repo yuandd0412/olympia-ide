@@ -30,6 +30,7 @@ add_executable(oler-ide
     src/app/main.cpp
     src/core/theme/CThemeManager.cpp
     src/ui/editor/OlerEditor.cpp
+    src/ui/mainwindow/MainWindow.cpp
     resources/themes/themes.qrc
 )
 target_include_directories(oler-ide PRIVATE src)
@@ -44,4 +45,13 @@ endif()
 target_link_libraries(oler-ide PRIVATE
     Qt6::Core Qt6::Gui Qt6::Widgets
     KF6SyntaxHighlighting
+)
+
+# KSyntax DLL lives in build/bin/ (KSyntax's install target), but oler-ide.exe
+# is in build/. Without this copy, `oler-ide.exe` 启动时找不到 libKF6SyntaxHighlighting.dll → 0xC0000135 STATUS_DLL_NOT_FOUND.
+# Task 9 will run full windeployqt to also pull Qt DLLs; this just covers the KSyntax one for now.
+add_custom_command(TARGET oler-ide POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE_DIR:oler-ide>/bin/libKF6SyntaxHighlighting.dll"
+        "$<TARGET_FILE_DIR:oler-ide>/libKF6SyntaxHighlighting.dll"
 )

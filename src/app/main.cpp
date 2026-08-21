@@ -1,20 +1,13 @@
 #include <QApplication>
-#include <QMainWindow>
-#include <QLabel>
 #include <QTimer>
-#include "ui/editor/OlerEditor.h"
+#include "ui/mainwindow/MainWindow.h"
 #include "core/theme/CThemeManager.h"
 
 int main(int argc, char *argv[]) {
     qputenv("QT_QPA_PLATFORM", "minimal");
     QApplication app(argc, argv);
     CThemeManager::instance()->applyTheme("AmberDark");
-    QMainWindow w;
-    w.setWindowTitle("Oler IDE v2");
-    w.resize(1280, 800);
-    auto *editor = new OlerEditor(&w);
-    editor->setPlainText("#include <iostream>\nint main() { return 0; }\n");
-    w.setCentralWidget(editor);
+    MainWindow w;
     w.show();
     QTimer::singleShot(3000, &app, &QCoreApplication::quit);
     return app.exec();

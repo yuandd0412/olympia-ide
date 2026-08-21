@@ -55,3 +55,23 @@ add_custom_command(TARGET oler-ide POST_BUILD
         "$<TARGET_FILE_DIR:oler-ide>/bin/libKF6SyntaxHighlighting.dll"
         "$<TARGET_FILE_DIR:oler-ide>/libKF6SyntaxHighlighting.dll"
 )
+
+# Deploy Qt runtime DLLs alongside oler-ide.exe so it can launch without
+# manually prepending C:\Qt\6.8.0\mingw_64\bin to PATH (0xC0000135 STATUS_DLL_NOT_FOUND otherwise).
+# `find_program` is preferred over a hard-coded path so windeployqt from
+# the same toolchain that built Qt (via CMAKE_PREFIX_PATH) is used.
+find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${CMAKE_PREFIX_PATH}/bin")
+if(WINDEPLOYQT_EXECUTABLE)
+    add_custom_command(TARGET oler-ide POST_BUILD
+        COMMAND "${WINDEPLOYQT_EXECUTABLE}"
+            --no-translations
+            --no-system-d3d-compiler
+            --no-opengl-sw
+            --release
+            "$<TARGET_FILE:oler-ide>"
+        COMMENT "Running windeployqt to copy Qt runtime DLLs into the build directory"
+        VERBATIM
+    )
+else()
+    message(WARNING "windeployqt not found; oler-ide.exe will require C:\\Qt\\6.8.0\\mingw_64\\bin on PATH at runtime (0xC0000135 otherwise). Set CMAKE_PREFIX_PATH to the Qt install dir, e.g. C:/Qt/6.8.0/mingw_64.")
+endif()

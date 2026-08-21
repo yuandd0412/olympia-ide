@@ -1,0 +1,29 @@
+cmake_minimum_required(VERSION 3.20)
+project(OlerIDE VERSION 0.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
+if(WIN32 AND NOT DEFINED CMAKE_PREFIX_PATH)
+    list(APPEND CMAKE_PREFIX_PATH "C:/Qt/6.8.0/mingw_64")
+endif()
+
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
+
+add_executable(oler-ide
+    src/app/main.cpp
+)
+
+# v1 教训: MinGW 13.1.0 下 libQt6EntryPoint.a 引用 MSVC __imp___argc, 必须 FALSE
+if(MINGW)
+    set_target_properties(oler-ide PROPERTIES WIN32_EXECUTABLE FALSE)
+else()
+    set_target_properties(oler-ide PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
+
+target_link_libraries(oler-ide PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets
+)

@@ -46,16 +46,13 @@ The whole `third_party/` directory is in `.gitignore`. After vendoring KSyntax, 
 1. **File**: `third_party/syntax-highlighting/data/CMakeLists.txt`
 2. **Reason**: `katehighlightingindexer.exe` is a standalone tool built against Qt 6.8.0. It cannot find `Qt6Core.dll` on a MinGW PATH (`STATUS_DLL_NOT_FOUND`); on Qt 6.8.0's XML parser, it also triggers a known `STATUS_HEAP_CORRUPTION` bug.
 3. **`QRC_SYNTAX=OFF` does NOT solve the problem** — the KSyntax `CMakeLists` unconditionally calls `add_custom_command(... katehighlightingindexer ...)`, which directly breaks `cmake --configure`.
-4. **Correct fix**: in `data/CMakeLists.txt`, replace the entire `add_custom_command(... katehighlightingindexer ...)` block with a `cmake -E touch ${OUT}` stub. Drop `add_dependencies(... katesyntax)` and the wrapper target.
-5. **Command to re-apply the patch** (required after re-clone):
-   ```powershell
-   # Stub-out the data patch. The 374 XML definition files are temporarily not generated.
-   # Task 6+ will re-attach them when OlerEditor is fully wired up.
-   $f = 'D:\oler-ide-v2\third_party\syntax-highlighting\data\CMakeLists.txt'
-   # Replace the katehighlightingindexer add_custom_command block with a stub.
-   # See Task 3 implementer report: .superpowers/sdd/.../task-3-report.md
-   ```
-6. **Task 6+ TODO (deferred, non-blocking)**: `kf6syntaxhighlightingdata`'s 374 XML definition files are real (`cpp.xml` = 49KB with a proper DOCTYPE, `php.xml` = 442KB, etc.), but `index.katesyntax` is a 0-byte stub (replaced via the vendored `data/CMakeLists.txt` patch because `katehighlightingindexer` crashes on MinGW PATH). Effect: `new Repository()->definitionForName('C++')` returns an invalid `Definition`; visual highlighting is silently a no-op (the API does not crash, the process runs fine). **Not solved in Task 6** (a defensive `setLanguage` guard prevents crash). Real fix: (a) get `katehighlightingindexer` working (PATH must include Qt DLLs), OR (b) pre-generate `index.katesyntax` and commit it as a static asset. Needs a separate task to evaluate.
+4. **Correct fix (current)**: in `data/CMakeLists.txt`, replace the `add_custom_command(... katehighlightingindexer ...)` body with `${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/resources/ksyntax/index.katesyntax" ${OUT}`. Add the pre-generated file to `DEPENDS` so a regenerated index is re-copied. The downstream wrapper `add_custom_target(ksyntax_index_katesyntax ...)` and `add_dependencies(SyntaxHighlightingData ksyntax_index_katesyntax)` are kept as-is.
+5. **Pre-generated artifact**: `resources/ksyntax/index.katesyntax` is committed to the repo. It was produced once by running `katehighlightingindexer.exe` with `PATH` including `C:\Qt\6.8.0\mingw_64\bin`. See `resources/ksyntax/README.md` for the full regeneration procedure (Perl generators → listing XML → indexer invocation).
+6. **Re-clone procedure** (required after `git clone` of KSyntax + patching `data/CMakeLists.txt`):
+   - The `resources/ksyntax/index.katesyntax` file is already in the repo; no regeneration is needed for routine builds.
+   - Only regenerate when KSyntax is upgraded or a new XML definition is added: follow `resources/ksyntax/README.md`, then commit the new `index.katesyntax` binary.
+   - The vendored patch is: edit `data/CMakeLists.txt`, replace the `katehighlightingindexer` `COMMAND` line with the `copy_if_different` line shown above, add the pre-generated file to `DEPENDS`. (This is a working-tree-only edit — `third_party/` is gitignored.)
+7. **Result**: `OlerEditor::definitionForName("C++")` now returns a valid `Definition` for all 374 languages; visual highlighting actually works. (The earlier `cmake -E touch` stub left `index.katesyntax` as 0 bytes, making highlighting silently a no-op — that was the v1 workaround, superseded by the pre-generated-file approach.)
 
 ## License
 MIT (see `LICENSE`).

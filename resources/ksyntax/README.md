@@ -6,7 +6,7 @@ Pre-generated index for KSyntaxHighlighting 6.8.0. Produced by running
 ## How to regenerate
 
 `katehighlightingindexer.exe` takes four **positional** arguments (no `--source`/`--target`):
-`output.xatesyntax  schema.xsd  listing.xml  compressed-dir`. The listing XML
+`output.katesyntax  schema.xsd  listing.xml  compressed-dir`. The listing XML
 must reference every file the indexer should parse, and the compressed dir is
 where the indexer writes intermediate compressed XML copies.
 
@@ -27,7 +27,7 @@ foreach ($v in 'html','css','javascript','javascript-react','typescript','mustac
 }
 & $perl $genDox "$srcDir\doxygen.xml" "$genDir\doxygenlua.xml"
 
-# 2. Build a listing file (XML) of every input. mustaxhe-twig.xml is excluded because
+# 2. Build a listing file (XML) of every input. mustache-twig.xml is excluded because
 #    katehighlightingindexer flags its vendor-generated `##Twig/Twig` chain as
 #    unreachable rules (upstream KSyntax 6.8.0 issue, not our problem to fix).
 $listingFile = 'D:\oler-ide-v2\build\ksyntax-listing.xml'

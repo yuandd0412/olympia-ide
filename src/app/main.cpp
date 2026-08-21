@@ -2,15 +2,16 @@
 #include <QMainWindow>
 #include <QLabel>
 #include <QTimer>
-#include <QtGlobal>
+#include "core/theme/CThemeManager.h"
 
 int main(int argc, char *argv[]) {
-    qputenv("QT_QPA_PLATFORM", "minimal");  // smoke test 模式
+    qputenv("QT_QPA_PLATFORM", "minimal");
     QApplication app(argc, argv);
+    CThemeManager::instance()->applyTheme("AmberDark");
     QMainWindow w;
     w.setWindowTitle("Oler IDE v2");
     w.resize(1280, 800);
-    QLabel *lbl = new QLabel("Oler IDE v2 — foundation", &w);
+    QLabel *lbl = new QLabel("Oler IDE v2 - foundation", &w);
     lbl->setAlignment(Qt::AlignCenter);
     w.setCentralWidget(lbl);
     w.show();

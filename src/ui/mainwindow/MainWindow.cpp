@@ -3,7 +3,6 @@
 #include <QTabBar>
 #include <QStackedWidget>
 #include <QLabel>
-#include "ui/editor/OlerEditor.h"
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("Oler IDE v2");

@@ -1,0 +1,12 @@
+# cmake/shims/ECMConfig.cmake — vendor shim for find_package(ECM) NO_MODULE
+set(PACKAGE_VERSION "6.8.0")
+set(PACKAGE_VERSION_COMPATIBLE TRUE)
+set(PACKAGE_VERSION_EXACT TRUE)
+set(ECM_VERSION "6.8.0")
+set(ECM_KDE_MODULE_DIR "${CMAKE_CURRENT_LIST_DIR}/../../third_party/extra-cmake-modules/modules" CACHE PATH "ECM modules")
+set(ECM_MODULE_DIR "${ECM_KDE_MODULE_DIR}" CACHE PATH "ECM modules alias")
+list(APPEND CMAKE_MODULE_PATH "${ECM_MODULE_DIR}")
+include("${ECM_MODULE_DIR}/ECMUseFindModules.cmake" OPTIONAL RESULT_VARIABLE _ecm_use_loaded)
+if(_ecm_use_loaded)
+    message(STATUS "[ECMConfig shim] LOADED; PACKAGE_VERSION=${PACKAGE_VERSION}; ECM_VERSION=${ECM_VERSION}")
+endif()

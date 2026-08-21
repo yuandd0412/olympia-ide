@@ -13,6 +13,11 @@ endif()
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 
+# Vendor ECM
+set(ECM_DIR "${CMAKE_SOURCE_DIR}/cmake/shims" CACHE PATH "ECM shim directory" FORCE)
+add_subdirectory(third_party/extra-cmake-modules EXCLUDE_FROM_ALL)
+include(cmake/shims/ECMConfig.cmake)
+
 add_executable(oler-ide
     src/app/main.cpp
 )

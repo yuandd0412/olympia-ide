@@ -28,6 +28,7 @@ add_subdirectory(third_party/syntax-highlighting EXCLUDE_FROM_ALL)
 
 add_executable(oler-ide
     src/app/main.cpp
+    resources/themes/themes.qrc
 )
 
 # v1 教训: MinGW 13.1.0 下 libQt6EntryPoint.a 引用 MSVC __imp___argc, 必须 FALSE

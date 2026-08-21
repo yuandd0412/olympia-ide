@@ -1,0 +1,15 @@
+/* AmberDark - dark, warm amber/terracotta accent */
+QMainWindow, QWidget { background-color: #131311; color: #f1f1ef; }
+QMenuBar { background-color: rgba(0,0,0,0.35); color: #f1f1ef; border-bottom: 1px solid #252524; }
+QMenuBar::item:selected { background-color: #252524; }
+QMenu { background-color: #1a1915; color: #f1f1ef; border: 1px solid #252524; }
+QMenu::item:selected { background-color: #d97757; color: #131311; }
+QToolBar { background-color: rgba(0,0,0,0.35); border-right: 1px solid #252524; spacing: 4px; }
+QToolButton { padding: 8px; border: none; border-radius: 6px; color: #f1f1ef; }
+QToolButton:hover { background-color: #252524; }
+QToolButton:checked { background-color: #d97757; color: #131311; }
+QStatusBar { background-color: rgba(0,0,0,0.35); color: #6e6d68; border-top: 1px solid #252524; }
+QTabBar::tab { background-color: rgba(0,0,0,0.35); color: #a0a0a3; padding: 6px 12px; border-right: 1px solid #252524; }
+QTabBar::tab:selected { background-color: #1a1915; border-bottom: 2px solid #d97757; }
+QLabel { color: #f1f1ef; }
+QStackedWidget { background-color: #131311; }

@@ -1,0 +1,15 @@
+/* OneLight - light, blue-purple accent */
+QMainWindow, QWidget { background-color: #fafafa; color: #383a42; }
+QMenuBar { background-color: #f0f0f0; color: #383a42; border-bottom: 1px solid #e0e0e0; }
+QMenuBar::item:selected { background-color: #e8e8e8; }
+QMenu { background-color: #f0f0f0; color: #383a42; border: 1px solid #d0d0d0; }
+QMenu::item:selected { background-color: #4078f2; color: #ffffff; }
+QToolBar { background-color: #f0f0f0; border-right: 1px solid #e0e0e0; spacing: 4px; }
+QToolButton { padding: 8px; border: none; border-radius: 4px; color: #383a42; }
+QToolButton:hover { background-color: #e8e8e8; }
+QToolButton:checked { background-color: #4078f2; color: #ffffff; }
+QStatusBar { background-color: #f0f0f0; color: #a0a1a7; border-top: 1px solid #e0e0e0; }
+QTabBar::tab { background-color: #f0f0f0; color: #383a42; padding: 6px 12px; border-right: 1px solid #e0e0e0; }
+QTabBar::tab:selected { background-color: #fafafa; border-bottom: 2px solid #4078f2; }
+QLabel { color: #383a42; }
+QStackedWidget { background-color: #fafafa; }

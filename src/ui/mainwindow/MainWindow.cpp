@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 #include "ui/common/OlerIcons.h"
+#include "ui/common/OlerTheme.h"
+#include "core/theme/CThemeManager.h"
 #include <QAction>
 #include <QFileDialog>
 #include <QHBoxLayout>
@@ -11,6 +13,7 @@
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QWindow>
 #include <QFutureWatcher>
 #include <QPainter>
 #include <QPixmap>
@@ -84,25 +87,26 @@ void MainWindow::buildTitlebar() {
     layout->setContentsMargins(12, 0, 8, 0);
     layout->setSpacing(8);
 
-    // Logo: 16px primary circle with white bolt (SVG, filled).
+    // Logo: 18px primary circle with white bolt (SVG), rendered at full size.
     {
         const QString svg = QStringLiteral(
             "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>"
             "<path d='M13 2L3 14h9l-1 8 10-12h-9l1-8z'"
-            " fill='%1'/></svg>").arg(accentColor().name(QColor::HexRgb));
-        QPixmap pm(36, 36);
+            " fill='%1'/></svg>").arg(QColor("#ffffff").name());
+        QPixmap pm(72, 72); // 4x for crisp display
         pm.fill(Qt::transparent);
         QPainter p(&pm);
         p.setRenderHint(QPainter::Antialiasing);
         p.setBrush(accentColor());
         p.setPen(Qt::NoPen);
-        p.drawEllipse(0, 0, 35, 35);
+        p.drawEllipse(1, 1, 70, 70);
         QSvgRenderer bolt(svg.toUtf8());
-        bolt.render(&p, QRectF(10, 10, 16, 16));
+        bolt.render(&p, QRectF(20, 20, 32, 32));
         p.end();
         auto *logo = new QLabel(m_titlebar);
-        logo->setPixmap(pm.copy(0, 0, 18, 18));
+        logo->setPixmap(pm);
         logo->setFixedSize(18, 18);
+        logo->setScaledContents(true);
         logo->setStyleSheet(
             "border-radius:9px;background:" + accentColor().name() + ";");
         layout->addWidget(logo);
@@ -149,21 +153,29 @@ void MainWindow::toggleMaxRestore() {
 }
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *ev) {
-    if (obj == m_titlebar && ev->type() == QEvent::MouseButtonDblClick) {
-        auto *me = static_cast<QMouseEvent *>(ev);
-        if (!me->buttons().testFlag(Qt::LeftButton))
-            return QMainWindow::eventFilter(obj, ev);
-        QWidget *c = m_titlebar->childAt(me->pos());
-        if (qobject_cast<QAbstractButton *>(c))
-            return QMainWindow::eventFilter(obj, ev);
-        toggleMaxRestore();
-        return true;
+    if (obj == m_titlebar) {
+        if (ev->type() == QEvent::MouseButtonPress) {
+            auto *me = static_cast<QMouseEvent *>(ev);
+            if (me->button() == Qt::LeftButton &&
+                !m_titlebar->childAt(me->pos())) {
+                // Empty caption area: hand off to the native move loop.
+                if (windowHandle())
+                    windowHandle()->startSystemMove();
+                return true;
+            }
+        } else if (ev->type() == QEvent::MouseButtonDblClick) {
+            auto *me = static_cast<QMouseEvent *>(ev);
+            if (me->button() != Qt::LeftButton || m_titlebar->childAt(me->pos()))
+                return QMainWindow::eventFilter(obj, ev);
+            toggleMaxRestore();
+            return true;
+        }
     }
     return QMainWindow::eventFilter(obj, ev);
 }
 
 QColor MainWindow::accentColor() const {
-    return QColor("#d97757");
+    return OlerTheme::accentForTheme(CThemeManager::instance()->currentTheme());
 }
 
 void MainWindow::buildActivityBar() {
@@ -226,31 +238,24 @@ void MainWindow::refreshChromeIcons() {
 #ifdef Q_OS_WIN
 bool MainWindow::nativeEvent(const QByteArray &eventType, void *message,
                              qint64 *result) {
+    // Resize edges only. Caption dragging is handled in Qt via
+    // startSystemMove() (eventFilter on m_titlebar) because WM_NCHITTEST
+    // coordinates break under display scaling and swallow button clicks.
     MSG *msg = static_cast<MSG *>(message);
-    if (msg && msg->message == WM_NCHITTEST) {
+    if (msg && msg->message == WM_NCHITTEST && !isMaximized()) {
         const QPoint g(GET_X_LPARAM(msg->lParam), GET_Y_LPARAM(msg->lParam));
         const QPoint p = mapFromGlobal(g);
         constexpr int B = 6; // resize border thickness
         const int w = width(), h = height();
-        if (!isMaximized()) {
-            const bool L = p.x() < B, R = p.x() > w - B;
-            const bool T = p.y() < B, Bo = p.y() > h - B;
-            if (T && L)      { *result = HTTOPLEFT;     return true; }
-            if (T && R)      { *result = HTTOPRIGHT;    return true; }
-            if (Bo && L)     { *result = HTBOTTOMLEFT;  return true; }
-            if (Bo && R)     { *result = HTBOTTOMRIGHT; return true; }
-            if (L)           { *result = HTLEFT;        return true; }
-            if (R)           { *result = HTRIGHT;       return true; }
-            if (T)           { *result = HTTOP;         return true; }
-            if (Bo)          { *result = HTBOTTOM;      return true; }
-        }
-        if (p.y() <= m_titlebar->height()) {
-            QWidget *c = childAt(p);
-            if (!qobject_cast<QAbstractButton *>(c)) {
-                *result = HTCAPTION;
-                return true;
-            }
-        }
+        if (p.y() < m_titlebar->height() + B)
+            return false; // never resize-grip the caption zone
+        const bool L = p.x() < B, R = p.x() > w - B;
+        const bool Bo = p.y() > h - B;
+        if (L && Bo)     { *result = HTBOTTOMLEFT;  return true; }
+        if (R && Bo)     { *result = HTBOTTOMRIGHT; return true; }
+        if (L)           { *result = HTLEFT;        return true; }
+        if (R)           { *result = HTRIGHT;       return true; }
+        if (Bo)          { *result = HTBOTTOM;      return true; }
         return false;
     }
     return QMainWindow::nativeEvent(eventType, message, result);

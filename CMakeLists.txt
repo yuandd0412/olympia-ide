@@ -36,6 +36,7 @@ add_executable(oler-ide
     src/core/solves/OlerSolves.cpp
     src/ui/editor/OlerEditor.cpp
     src/ui/common/OlerIcons.cpp
+    src/ui/common/OlerTheme.cpp
     src/ui/runner/OlerRunPanel.cpp
     src/ui/problems/OlerProblemsPage.cpp
     src/ui/mistakes/OlerMistakesPage.cpp

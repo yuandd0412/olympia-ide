@@ -47,6 +47,23 @@ target_link_libraries(oler-ide PRIVATE
     KF6SyntaxHighlighting
 )
 
+# Regression smoke test: proves the pre-generated index.katesyntax is loaded
+# and definitionForName("C++") returns a valid Definition at runtime.
+# Not built by default; invoke with:
+#   cmake --build build --target test_highlight
+# Defends against future breakage of data/CMakeLists.txt or the qrc resource path.
+add_executable(test_highlight
+    tests/test_highlight.cpp
+)
+target_include_directories(test_highlight PRIVATE src)
+if(MINGW)
+    set_target_properties(test_highlight PROPERTIES WIN32_EXECUTABLE FALSE)
+endif()
+target_link_libraries(test_highlight PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets
+    KF6SyntaxHighlighting
+)
+
 # KSyntax DLL lives in build/bin/ (KSyntax's install target), but oler-ide.exe
 # is in build/. Without this copy, `oler-ide.exe` 启动时找不到 libKF6SyntaxHighlighting.dll → 0xC0000135 STATUS_DLL_NOT_FOUND.
 # Task 9 will run full windeployqt to also pull Qt DLLs; this just covers the KSyntax one for now.

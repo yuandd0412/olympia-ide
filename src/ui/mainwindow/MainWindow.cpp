@@ -3,6 +3,7 @@
 #include <QTabBar>
 #include <QStackedWidget>
 #include <QLabel>
+#include "ui/editor/OlerEditor.h"
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("Oler IDE v2");
@@ -21,7 +22,7 @@ void MainWindow::buildActivityBar() {
     m_activityBar->setIconSize({24, 24});
     m_activityBar->setFixedWidth(56);
     auto acts = {
-        tr("Problems"), tr("Training"), tr("Mistakes"), tr("AI"), tr("Settings")
+        tr("Editor"), tr("Problems"), tr("Training"), tr("Mistakes"), tr("AI Coach"), tr("Settings")
     };
     int i = 0;
     for (const auto &name : acts) {
@@ -39,6 +40,7 @@ void MainWindow::buildActivityBar() {
 void MainWindow::buildTabBar() {
     m_tabBar = new QTabBar(this);
     m_tabBar->setFixedHeight(36);
+    m_tabBar->addTab(tr("Editor"));      // 1st tab
     m_tabBar->addTab(tr("Problems"));
     m_tabBar->addTab(tr("Training"));
     m_tabBar->addTab(tr("Mistakes"));
@@ -54,12 +56,27 @@ void MainWindow::buildContentPages() {
         lbl->setAlignment(Qt::AlignCenter);
         return lbl;
     };
+    m_pages->addWidget(buildEditorPage());      // index 0: Editor
     m_pages->addWidget(placeholder("Problems"));
     m_pages->addWidget(placeholder("Training"));
     m_pages->addWidget(placeholder("Mistakes"));
     m_pages->addWidget(placeholder("AI Coach"));
     m_pages->addWidget(placeholder("Settings"));
     setCentralWidget(m_pages);
+}
+
+QWidget *MainWindow::buildEditorPage() {
+    m_editorPage = new OlerEditor(this);
+    m_editorPage->setPlainText(
+        "// Oler IDE v2 - sample C++\n"
+        "#include <iostream>\n"
+        "\n"
+        "int main() {\n"
+        "    std::cout << \"Hello, OI!\" << std::endl;\n"
+        "    return 0;\n"
+        "}\n"
+    );
+    return m_editorPage;
 }
 
 void MainWindow::onTabChanged(int index) {

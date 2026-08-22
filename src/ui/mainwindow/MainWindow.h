@@ -2,20 +2,23 @@
 #include <QMainWindow>
 #include <QVector>
 
-class QToolBar;
 class QTabBar;
 class QStackedWidget;
 class QLabel;
+class QTimer;
 class QToolButton;
-class QWidget;
 class OlerEditor;
-class OlerRunner;
+
+namespace OlerIcons { enum class Name; }
+
+// Forward declarations for page widgets and models.
 class OlerRunPanel;
 class OlerProblemsPage;
 class OlerMistakesPage;
 class OlerTrainingPage;
 class OlerSettingsPage;
 class OlerAiPage;
+class OlerRunner;
 struct OlerProblem;
 
 class MainWindow : public QMainWindow {
@@ -24,10 +27,19 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
 
+protected:
+#ifdef Q_OS_WIN
+    bool nativeEvent(const QByteArray &eventType, void *message,
+                     qint64 *result) override;
+#endif
+    bool eventFilter(QObject *obj, QEvent *ev) override;
+
 private slots:
     void onTabChanged(int index);
+    void toggleMaxRestore();
 
 private:
+    void buildTitlebar();
     void buildActivityBar();
     void buildTabBar();
     void buildContentPages();
@@ -36,6 +48,16 @@ private:
     bool saveCurrentFile(bool saveAs);
     void runCurrentFile();
     void openProblem(const OlerProblem &problem);
+
+    QColor accentColor() const;
+    void refreshChromeIcons();
+
+    QWidget *m_titlebar = nullptr;      // 32px custom frameless caption
+    QLabel *m_clock = nullptr;
+    QTimer *m_clockTimer = nullptr;
+    QToolButton *m_minBtn = nullptr;
+    QToolButton *m_maxBtn = nullptr;
+    QToolButton *m_closeBtn = nullptr;
 
     QWidget *m_activityRail = nullptr;          // 56px left rail
     QVector<QToolButton *> m_railButtons;

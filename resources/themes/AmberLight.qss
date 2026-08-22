@@ -1,4 +1,4 @@
-/* AmberLight - light, warm amber/terracotta accent */
+﻿/* AmberLight - light, warm amber/terracotta accent */
 QMainWindow, QWidget { background-color: #fafaf7; color: #2c2a26; }
 QMenuBar { background-color: #f0eee8; color: #2c2a26; border-bottom: 1px solid #e0ddd5; }
 QMenuBar::item:selected { background-color: #e8e5dd; }
@@ -127,3 +127,12 @@ QSplitter::handle:hover { background-color: rgba(217,119,87,0.50); }
 
 QStatusBar { background-color: #f0eee8; color: #6a6864; border-top: 1px solid #e0ddd5; }
 QToolTip { background-color: #ffffff; color: #2c2a26; border: 1px solid #d0cdc5; padding: 4px; }
+
+/* Custom titlebar (spec 3.1) */
+#titlebar { background-color: #f0eee8; border-bottom: 1px solid #e0ddd5; }
+#titlebarTitle { font-size: 12px; font-weight: 600; color: #6a6864; letter-spacing: 0.3px; }
+#titlebarClock { font-family: Consolas, monospace; font-size: 11px; color: #a0a1a7; letter-spacing: 0.5px; }
+QToolButton#tbBtn { background: transparent; border: none; border-radius: 6px; }
+QToolButton#tbBtn:hover { background-color: rgba(0,0,0,0.08); }
+QToolButton#tbClose { background: transparent; border: none; border-radius: 6px; }
+QToolButton#tbClose:hover { background-color: rgba(255,69,58,0.85); }

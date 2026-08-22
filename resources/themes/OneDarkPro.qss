@@ -127,3 +127,12 @@ QSplitter::handle:hover { background-color: rgba(97,175,239,0.50); }
 
 QStatusBar { background-color: #21252b; color: #5c6370; border-top: 1px solid #181a1f; }
 QToolTip { background-color: #333842; color: #abb2bf; border: 1px solid #3b4048; padding: 4px; }
+
+/* Custom titlebar (spec 3.1) */
+#titlebar { background-color: rgba(0,0,0,0.35); border-bottom: 1px solid rgba(255,255,255,0.06); }
+#titlebarTitle { font-size: 12px; font-weight: 600; color: #a0a0a3; letter-spacing: 0.3px; }
+#titlebarClock { font-family: Consolas, monospace; font-size: 11px; color: #6e6d68; letter-spacing: 0.5px; }
+QToolButton#tbBtn { background: transparent; border: none; border-radius: 6px; }
+QToolButton#tbBtn:hover { background-color: rgba(255,255,255,0.08); }
+QToolButton#tbClose { background: transparent; border: none; border-radius: 6px; }
+QToolButton#tbClose:hover { background-color: rgba(255,69,58,0.85); }

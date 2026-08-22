@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "ui/common/OlerIcons.h"
 #include <QAction>
 #include <QFileDialog>
 #include <QHBoxLayout>
@@ -7,11 +8,21 @@
 #include <QStackedWidget>
 #include <QStatusBar>
 #include <QTabBar>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QFutureWatcher>
+#include <QPainter>
+#include <QPixmap>
+#include <QSvgRenderer>
+#include <QTime>
 #include <QtConcurrent/QtConcurrentRun>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <windowsx.h>
+#endif
 #include "ui/editor/OlerEditor.h"
+#include <functional>
 #include "ui/runner/OlerRunPanel.h"
 #include "ui/problems/OlerProblemsPage.h"
 #include "ui/mistakes/OlerMistakesPage.h"
@@ -27,10 +38,21 @@
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("Oler IDE v2");
     resize(1280, 800);
+#ifdef Q_OS_WIN
+    setWindowFlag(Qt::FramelessWindowHint); // custom titlebar (spec 3.1)
+#endif
     m_runner = new OlerRunner(this);
+    buildTitlebar();
     buildActivityBar();
     buildTabBar();
     buildContentPages();
+
+    m_clockTimer = new QTimer(this);
+    connect(m_clockTimer, &QTimer::timeout, this, [this] {
+        m_clock->setText(QTime::currentTime().toString("hh:mm"));
+    });
+    m_clockTimer->start(10000);
+    m_clock->setText(QTime::currentTime().toString("hh:mm"));
 
     auto *openAct = new QAction(this);
     openAct->setShortcut(QKeySequence::Open);
@@ -52,28 +74,123 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
 MainWindow::~MainWindow() = default;
 
+void MainWindow::buildTitlebar() {
+    // 32px caption: logo + "Oler IDE" left; clock + window controls right.
+    m_titlebar = new QWidget;
+    m_titlebar->setObjectName(QStringLiteral("titlebar"));
+    m_titlebar->setFixedHeight(32);
+
+    auto *layout = new QHBoxLayout(m_titlebar);
+    layout->setContentsMargins(12, 0, 8, 0);
+    layout->setSpacing(8);
+
+    // Logo: 16px primary circle with white bolt (SVG, filled).
+    {
+        const QString svg = QStringLiteral(
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>"
+            "<path d='M13 2L3 14h9l-1 8 10-12h-9l1-8z'"
+            " fill='%1'/></svg>").arg(accentColor().name(QColor::HexRgb));
+        QPixmap pm(36, 36);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setBrush(accentColor());
+        p.setPen(Qt::NoPen);
+        p.drawEllipse(0, 0, 35, 35);
+        QSvgRenderer bolt(svg.toUtf8());
+        bolt.render(&p, QRectF(10, 10, 16, 16));
+        p.end();
+        auto *logo = new QLabel(m_titlebar);
+        logo->setPixmap(pm.copy(0, 0, 18, 18));
+        logo->setFixedSize(18, 18);
+        logo->setStyleSheet(
+            "border-radius:9px;background:" + accentColor().name() + ";");
+        layout->addWidget(logo);
+    }
+
+    auto *title = new QLabel(QStringLiteral("Oler IDE"), m_titlebar);
+    title->setObjectName(QStringLiteral("titlebarTitle"));
+    layout->addWidget(title);
+    layout->addStretch();
+
+    m_clock = new QLabel(m_titlebar);
+    m_clock->setObjectName(QStringLiteral("titlebarClock"));
+    layout->addWidget(m_clock);
+
+    auto mkBtn = [this](OlerIcons::Name icon, const QString &objName,
+                        const std::function<void()> &slot) {
+        auto *b = new QToolButton(m_titlebar);
+        b->setObjectName(objName);
+        b->setFixedSize(28, 24);
+        b->setIcon(OlerIcons::make(icon, QColor("#a0a0a3"), 14));
+        b->setAutoRaise(true);
+        connect(b, &QToolButton::clicked, this, [slot] { slot(); });
+        return b;
+    };
+    m_minBtn = mkBtn(OlerIcons::Name::Minimize, QStringLiteral("tbBtn"),
+                     [this] { showMinimized(); });
+    m_maxBtn = mkBtn(OlerIcons::Name::Maximize, QStringLiteral("tbBtn"),
+                     [this] { toggleMaxRestore(); });
+    m_closeBtn = mkBtn(OlerIcons::Name::Close, QStringLiteral("tbClose"),
+                       [this] { close(); });
+    layout->addWidget(m_minBtn);
+    layout->addWidget(m_maxBtn);
+    layout->addWidget(m_closeBtn);
+
+    m_titlebar->installEventFilter(this); // double-click -> maximize toggle
+}
+
+void MainWindow::toggleMaxRestore() {
+    if (isMaximized())
+        showNormal();
+    else
+        showMaximized();
+    refreshChromeIcons();
+}
+
+bool MainWindow::eventFilter(QObject *obj, QEvent *ev) {
+    if (obj == m_titlebar && ev->type() == QEvent::MouseButtonDblClick) {
+        auto *me = static_cast<QMouseEvent *>(ev);
+        if (!me->buttons().testFlag(Qt::LeftButton))
+            return QMainWindow::eventFilter(obj, ev);
+        QWidget *c = m_titlebar->childAt(me->pos());
+        if (qobject_cast<QAbstractButton *>(c))
+            return QMainWindow::eventFilter(obj, ev);
+        toggleMaxRestore();
+        return true;
+    }
+    return QMainWindow::eventFilter(obj, ev);
+}
+
+QColor MainWindow::accentColor() const {
+    return QColor("#d97757");
+}
+
 void MainWindow::buildActivityBar() {
-    // 56px left rail (docs: oler-nav-56px). Monogram buttons + tooltip;
-    // checked state styled by the theme QSS (#activityRail rules).
+    // 56px left rail (spec 3.1): 40x40 icon buttons, active = primary-muted
+    // bg + primary icon; icons re-tinted in refreshChromeIcons().
     m_activityRail = new QWidget;
     m_activityRail->setObjectName("activityRail");
     m_activityRail->setFixedWidth(56);
     auto *railLayout = new QVBoxLayout(m_activityRail);
-    railLayout->setContentsMargins(4, 8, 4, 8);
-    railLayout->setSpacing(6);
-    const struct { const char *mono; const char *full; } acts[] = {
-        {"E", "Editor"},     {"P", "Problems"}, {"T", "Training"},
-        {"M", "Mistakes"},   {"A", "AI Coach"}, {"S", "Settings"},
+    railLayout->setContentsMargins(8, 8, 8, 8);
+    railLayout->setSpacing(4);
+
+    const struct { OlerIcons::Name icon; const char *full; } acts[] = {
+        {OlerIcons::Name::Code,        "Editor"},
+        {OlerIcons::Name::CheckSquare, "Problems"},
+        {OlerIcons::Name::Target,      "Training"},
+        {OlerIcons::Name::Book,        "Mistakes"},
+        {OlerIcons::Name::Message,     "AI Coach"},
+        {OlerIcons::Name::Settings,    "Settings"},
     };
-    int i = 0;
     for (const auto &a : acts) {
         auto *btn = new QToolButton(m_activityRail);
-        btn->setText(QString::fromLatin1(a.mono));
+        btn->setProperty("navIcon", true);
         btn->setToolTip(QString::fromLatin1(a.full));
         btn->setCheckable(true);
-        btn->setProperty("pageIdx", i++);
-        btn->setFixedSize(46, 42);
-        btn->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        btn->setFixedSize(40, 40);
+        btn->setIconSize(QSize(20, 20));
         connect(btn, &QToolButton::clicked, this, [this](bool checked) {
             Q_UNUSED(checked);
             m_tabBar->setCurrentIndex(
@@ -82,9 +199,63 @@ void MainWindow::buildActivityBar() {
         m_railButtons.append(btn);
         railLayout->addWidget(btn);
     }
+    // pageIdx property must match stack order.
+    for (int i = 0; i < m_railButtons.size(); ++i)
+        m_railButtons[i]->setProperty("pageIdx", i);
     railLayout->addStretch();
     m_railButtons.first()->setChecked(true);
+    refreshChromeIcons();
 }
+
+void MainWindow::refreshChromeIcons() {
+    const QColor idle("#6e6d68");
+    const QColor hover("#a0a0a3"); // hover tint handled by QSS overlay
+    static const OlerIcons::Name names[] = {
+        OlerIcons::Name::Code,     OlerIcons::Name::CheckSquare,
+        OlerIcons::Name::Target,   OlerIcons::Name::Book,
+        OlerIcons::Name::Message,  OlerIcons::Name::Settings,
+    };
+    for (int i = 0; i < m_railButtons.size(); ++i) {
+        const bool active = m_railButtons[i]->isChecked();
+        m_railButtons[i]->setIcon(
+            OlerIcons::make(names[i], active ? accentColor() : idle, 20));
+    }
+    Q_UNUSED(hover);
+}
+
+#ifdef Q_OS_WIN
+bool MainWindow::nativeEvent(const QByteArray &eventType, void *message,
+                             qint64 *result) {
+    MSG *msg = static_cast<MSG *>(message);
+    if (msg && msg->message == WM_NCHITTEST) {
+        const QPoint g(GET_X_LPARAM(msg->lParam), GET_Y_LPARAM(msg->lParam));
+        const QPoint p = mapFromGlobal(g);
+        constexpr int B = 6; // resize border thickness
+        const int w = width(), h = height();
+        if (!isMaximized()) {
+            const bool L = p.x() < B, R = p.x() > w - B;
+            const bool T = p.y() < B, Bo = p.y() > h - B;
+            if (T && L)      { *result = HTTOPLEFT;     return true; }
+            if (T && R)      { *result = HTTOPRIGHT;    return true; }
+            if (Bo && L)     { *result = HTBOTTOMLEFT;  return true; }
+            if (Bo && R)     { *result = HTBOTTOMRIGHT; return true; }
+            if (L)           { *result = HTLEFT;        return true; }
+            if (R)           { *result = HTRIGHT;       return true; }
+            if (T)           { *result = HTTOP;         return true; }
+            if (Bo)          { *result = HTBOTTOM;      return true; }
+        }
+        if (p.y() <= m_titlebar->height()) {
+            QWidget *c = childAt(p);
+            if (!qobject_cast<QAbstractButton *>(c)) {
+                *result = HTCAPTION;
+                return true;
+            }
+        }
+        return false;
+    }
+    return QMainWindow::nativeEvent(eventType, message, result);
+}
+#endif
 
 void MainWindow::buildTabBar() {
     // 36px top tab strip (docs: oler-tabbar-36px). Parented into the shell
@@ -120,7 +291,7 @@ void MainWindow::buildContentPages() {
     m_settingsPage = new OlerSettingsPage;      // index 5: Settings
     m_pages->addWidget(m_settingsPage);
 
-    // Shell frame: [56px rail | (36px tab strip / page stack)].
+    // Shell frame: titlebar / [56px rail | (36px tab strip / page stack)].
     auto *right = new QWidget;
     auto *rightLayout = new QVBoxLayout(right);
     rightLayout->setContentsMargins(0, 0, 0, 0);
@@ -135,7 +306,14 @@ void MainWindow::buildContentPages() {
     shellLayout->addWidget(m_activityRail);
     shellLayout->addWidget(right, /*stretch*/ 1);
 
-    setCentralWidget(shell);
+    auto *root = new QWidget;
+    auto *rootLayout = new QVBoxLayout(root);
+    rootLayout->setContentsMargins(0, 0, 0, 0);
+    rootLayout->setSpacing(0);
+    rootLayout->addWidget(m_titlebar);
+    rootLayout->addWidget(shell, /*stretch*/ 1);
+
+    setCentralWidget(root);
 
     connect(m_problemsPage, &OlerProblemsPage::openRequested,
             this, &MainWindow::openProblem);
@@ -196,6 +374,7 @@ void MainWindow::onTabChanged(int index) {
     // sync activity rail buttons
     for (QToolButton *btn : m_railButtons)
         btn->setChecked(btn->property("pageIdx").toInt() == index);
+    refreshChromeIcons();
 }
 
 void MainWindow::openFile() {

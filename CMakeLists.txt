@@ -11,7 +11,7 @@ if(WIN32 AND NOT DEFINED CMAKE_PREFIX_PATH)
     list(APPEND CMAKE_PREFIX_PATH "C:/Qt/6.8.0/mingw_64")
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Concurrent)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Concurrent Svg)
 
 # Vendor ECM
 set(ECM_DIR "${CMAKE_SOURCE_DIR}/cmake/shims" CACHE PATH "ECM shim directory" FORCE)
@@ -35,6 +35,7 @@ add_executable(oler-ide
     src/core/mistakes/OlerMistakes.cpp
     src/core/solves/OlerSolves.cpp
     src/ui/editor/OlerEditor.cpp
+    src/ui/common/OlerIcons.cpp
     src/ui/runner/OlerRunPanel.cpp
     src/ui/problems/OlerProblemsPage.cpp
     src/ui/mistakes/OlerMistakesPage.cpp
@@ -54,7 +55,7 @@ else()
 endif()
 
 target_link_libraries(oler-ide PRIVATE
-    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Svg
     KF6SyntaxHighlighting
 )
 

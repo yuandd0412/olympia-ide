@@ -65,3 +65,16 @@ $env:PATH = 'C:\Qt\6.8.0\mingw_64\bin;' + $env:PATH
 ```
 
 Task 9 (done, commit `372668b`) added a `windeployqt` POST_BUILD step that copies Qt DLLs into `build/`, so this manual step is no longer required for builds after 2026-08-21.
+
+## QT_QPA_PLATFORM Warning (v1 lesson, 2026-08-22)
+On this machine, Qt 6.8.0's `minimal` and `offscreen` platform plugins crash inside the
+`QApplication` constructor with `0xC0000602` (STATUS_FAIL_FAST_EXCEPTION) after ~6s.
+The old scaffold hard-coded `qputenv("QT_QPA_PLATFORM", "minimal")` in `main()`, which made
+every launch die this way; smoke tests that only checked "alive at 2.5s" never caught it.
+
+Rules:
+- NEVER hard-code `QT_QPA_PLATFORM` in `main()`. Let Qt pick the real platform (`windows`).
+- Smoke tests must run with the default platform (a desktop session exists) and must check
+  the exit code, not just liveness. Since the 3s auto-quit timer was removed from `main()`
+  (commit after `a332793`), a smoke test should: verify alive at 2.5s, then `Stop-Process`
+  the instance it spawned, and confirm no early self-exit.

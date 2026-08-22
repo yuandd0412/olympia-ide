@@ -31,6 +31,8 @@ add_executable(oler-ide
     src/core/theme/CThemeManager.cpp
     src/core/settings/OlerSettings.cpp
     src/core/runner/OlerRunner.cpp
+    src/core/problems/OlerProblems.cpp
+    src/core/mistakes/OlerMistakes.cpp
     src/ui/editor/OlerEditor.cpp
     src/ui/mainwindow/MainWindow.cpp
     resources/themes/themes.qrc
@@ -88,6 +90,18 @@ if(MINGW)
     set_target_properties(test_runner PROPERTIES WIN32_EXECUTABLE FALSE)
 endif()
 target_link_libraries(test_runner PRIVATE Qt6::Core)
+
+# Phase 4c regression test: OlerProblems + OlerMistakes persistence.
+add_executable(test_models
+    tests/test_models.cpp
+    src/core/problems/OlerProblems.cpp
+    src/core/mistakes/OlerMistakes.cpp
+)
+target_include_directories(test_models PRIVATE src)
+if(MINGW)
+    set_target_properties(test_models PROPERTIES WIN32_EXECUTABLE FALSE)
+endif()
+target_link_libraries(test_models PRIVATE Qt6::Core)
 
 # KSyntax DLL lives in build/bin/ (KSyntax's install target), but oler-ide.exe
 # is in build/. Without this copy, `oler-ide.exe` 启动时找不到 libKF6SyntaxHighlighting.dll → 0xC0000135 STATUS_DLL_NOT_FOUND.

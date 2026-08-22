@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Oler IDE — UI 预览 v1（AmberDark）</title>
+<style>
+/* ================= tokens (docs/10-ui-styleguide.md §1) ================= */
+:root{
+  --primary:#d97757; --primary-hover:#e08a6c;
+  --primary-muted:rgba(217,119,87,.15); --primary-subtle:rgba(217,119,87,.08);
+  --bg-base:#131311; --bg-surface:#1a1915; --bg-elevated:#252524;
+  --bg-overlay:#2c2c2b; --bg-floating:#353533;
+  --text-primary:#f1f1ef; --text-secondary:#a0a0a3;
+  --text-tertiary:#6e6d68; --text-muted:#46443b;
+  --border:rgba(255,255,255,.06); --border-hover:rgba(255,255,255,.12);
+  --border-active:rgba(217,119,87,.4);
+  --ac:#34c759; --wa:#ff453a; --tle:#ff9f0a; --re:#c45c4a; --ce:#c49a3c;
+  --info:#7daed4; --success:#34c759; --warning:#ff9f0a; --error:#ff453a;
+  --r-xs:2px; --r-sm:6px; --r-md:8px; --r-lg:12px;
+  --mono:'Cascadia Mono','Consolas',monospace;
+  --ui:'Segoe UI',system-ui,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:var(--bg-base);
+  font-family:var(--ui);font-size:13px;color:var(--text-primary);
+  -webkit-font-smoothing:antialiased}
+
+/* ================= shell ================= */
+#app{display:flex;flex-direction:column;height:100%}
+.titlebar{height:32px;flex-shrink:0;display:flex;align-items:center;gap:8px;
+  padding:0 8px 0 12px;background:rgba(0,0,0,.35);
+  border-bottom:1px solid var(--border);user-select:none}
+.logo{width:18px;height:18px;border-radius:9px;background:var(--primary);
+  display:flex;align-items:center;justify-content:center}
+.logo svg{width:11px;height:11px}
+.titlebar b{font-size:12px;font-weight:600;color:var(--text-secondary);
+  letter-spacing:.3px}
+.titlebar .sp{flex:1}
+.clock{font-family:var(--mono);font-size:11px;color:var(--text-tertiary);
+  letter-spacing:.5px;margin-right:10px}
+.tb-btn{width:28px;height:24px;border:none;border-radius:6px;background:none;
+  color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;
+  justify-content:center}
+.tb-btn:hover{background:rgba(255,255,255,.08)}
+.tb-btn.close:hover{background:rgba(255,69,58,.85);color:#fff}
+.tb-btn svg{width:13px;height:13px}
+
+.shell{flex:1;display:flex;min-height:0}
+.sidebar{width:56px;flex-shrink:0;background:var(--bg-surface);
+  border-right:1px solid var(--border);padding-top:8px;
+  display:flex;flex-direction:column;align-items:center;gap:4px}
+.nav-btn{position:relative;width:40px;height:40px;border-radius:var(--r-md);
+  background:transparent;border:none;cursor:pointer;color:var(--text-tertiary);
+  display:flex;align-items:center;justify-content:center;
+  transition:background .1s ease,color .1s ease}
+.nav-btn svg{width:20px;height:20px}
+.nav-btn:hover{background:var(--bg-overlay);color:var(--text-secondary)}
+.nav-btn.active{background:var(--primary-muted);color:var(--primary)}
+.nav-btn.active::before{content:'';position:absolute;left:-8px;top:50%;
+  transform:translateY(-50%);width:3px;height:20px;border-radius:0 2px 2px 0;
+  background:var(--primary)}
+
+.maincol{flex:1;display:flex;flex-direction:column;min-width:0}
+.tabbar{height:36px;flex-shrink:0;background:var(--bg-surface);
+  border-bottom:1px solid var(--border);display:flex;align-items:stretch;
+  padding:0 16px;gap:2px}
+.tab{display:flex;align-items:center;padding:0 16px;font-size:12px;font-weight:500;
+  color:var(--text-tertiary);cursor:pointer;position:relative;user-select:none;
+  transition:color .1s ease}
+.tab:hover{color:var(--text-secondary)}
+.tab.active{color:var(--text-primary)}
+.tab.active::after{content:'';position:absolute;left:16px;right:16px;bottom:0;
+  height:2px;border-radius:2px 2px 0 0;background:var(--primary)}
+.content{flex:1;overflow-y:auto;background:var(--bg-base)}
+.page{display:none;padding:20px 24px}
+.page.active{display:block}
+
+.statusbar{height:24px;flex-shrink:0;display:flex;align-items:center;gap:16px;
+  padding:0 12px;background:rgba(0,0,0,.35);border-top:1px solid var(--border);
+  font-family:var(--mono);font-size:11px;color:var(--text-tertiary)}
+.statusbar .sp{flex:1}
+.statusbar .tag{background:rgba(125,174,212,.12);color:var(--info);
+  border-radius:var(--r-xs);padding:1px 5px;font-size:10px}
+
+/* ================= shared components ================= */
+.btn{height:32px;padding:0 14px;border-radius:var(--r-sm);font-size:12px;
+  font-weight:500;border:none;cursor:pointer;display:inline-flex;
+  align-items:center;gap:6px;font-family:var(--ui);
+  transition:filter .1s ease,background .1s ease}
+.btn svg{width:14px;height:14px}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-hover)}
+.btn-secondary{background:var(--bg-elevated);color:var(--text-secondary);
+  border:1px solid var(--border)}
+.btn-secondary:hover{background:var(--bg-overlay);color:var(--text-primary);
+  border-color:var(--border-hover)}
+
+.badge{display:inline-flex;align-items:center;height:18px;padding:0 6px;
+  border-radius:9999px;font-family:var(--mono);font-size:10px;font-weight:600}
+.badge.ac{background:rgba(52,199,89,.15);color:var(--ac)}
+.badge.wa{background:rgba(255,69,58,.15);color:var(--wa)}
+.badge.tle{background:rgba(255,159,10,.15);color:var(--tle)}
+.badge.pending{background:rgba(255,159,10,.15);color:var(--tle)}
+
+.oj-pill{display:inline-flex;align-items:center;height:18px;padding:0 7px;
+  border-radius:9999px;font-size:10px;font-weight:600;letter-spacing:.3px}
+.oj-luogu{background:rgba(115,186,75,.15);color:#73ba4b}
+.oj-cf{background:rgba(125,174,212,.15);color:#7daed4}
+.oj-at{background:rgba(181,120,80,.15);color:#b57850}
+
+.diff-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.d-easy{background:var(--success);box-shadow:0 0 4px rgba(52,199,89,.3)}
+.d-med{background:var(--warning);box-shadow:0 0 4px rgba(255,159,10,.3)}
+.d-hard{background:var(--error);box-shadow:0 0 4px rgba(255,69,58,.3)}
+.diff-label{font-size:10px;color:var(--text-tertiary)}
+
+.kbd{display:inline-flex;align-items:center;height:20px;padding:0 5px;
+  background:var(--bg-overlay);border:1px solid var(--border);
+  border-radius:4px;font-family:var(--mono);font-size:10px;
+  color:var(--text-tertiary)}
+
+.section-header{display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:12px}
+.section-title{font-size:14px;font-weight:600;letter-spacing:-.2px}
+.section-action{font-size:11px;color:var(--text-tertiary);cursor:pointer}
+.section-action:hover{color:var(--primary)}
+
+/* ================= Problems ================= */
+.search-wrap{position:relative;margin-bottom:16px}
+.search-input{width:100%;height:36px;background:var(--bg-elevated);
+  border:1px solid var(--border);border-radius:var(--r-md);
+  padding:0 90px 0 36px;font-size:13px;color:var(--text-primary);outline:none;
+  font-family:var(--ui)}
+.search-input::placeholder{color:var(--text-muted)}
+.search-input:focus{border-color:var(--border-active);
+  box-shadow:0 0 0 2px rgba(217,119,87,.1)}
+.search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);
+  width:14px;height:14px;color:var(--text-tertiary)}
+.search-kbd{position:absolute;right:10px;top:50%;transform:translateY(-50%);
+  display:flex;gap:4px}
+.quick-actions{display:flex;gap:8px;margin-bottom:24px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:28px}
+.pcard{background:var(--bg-surface);border:1px solid var(--border);
+  border-radius:var(--r-md);padding:14px;display:flex;flex-direction:column;
+  gap:8px;cursor:pointer;transition:all .1s ease}
+.pcard:hover{background:var(--bg-elevated);border-color:var(--border-hover)}
+.pcard-top{display:flex;justify-content:space-between;align-items:flex-start}
+.pid{font-family:var(--mono);font-size:12px;font-weight:500;
+  letter-spacing:.3px;color:var(--primary)}
+.ptitle{font-size:13px;font-weight:500;line-height:1.35;min-height:35px;
+  color:var(--text-primary)}
+.pmeta{display:flex;align-items:center;gap:6px}
+.favrow{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;margin-bottom:28px}
+.fcard{min-width:220px;background:var(--bg-surface);border:1px solid var(--border);
+  border-radius:var(--r-md);padding:12px;display:flex;align-items:center;
+  gap:10px;flex-shrink:0;cursor:pointer}
+.fcard:hover{background:var(--bg-elevated);border-color:var(--border-hover)}
+.ficon{width:36px;height:36px;border-radius:var(--r-sm);background:var(--primary-subtle);
+  color:var(--primary);display:flex;align-items:center;justify-content:center;
+  flex-shrink:0}
+.ficon svg{width:16px;height:16px}
+.fid{font-family:var(--mono);font-size:11px;color:var(--primary);font-weight:500}
+.ftitle{font-size:12px;color:var(--text-secondary);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.stats-strip{display:flex;align-items:center;gap:24px;padding:14px 18px;
+  background:var(--bg-surface);border:1px solid var(--border);
+  border-radius:var(--r-md)}
+.stat-item{display:flex;align-items:center;gap:8px}
+.stat-ico{width:28px;height:28px;border-radius:var(--r-sm);display:flex;
+  align-items:center;justify-content:center}
+.stat-ico svg{width:14px;height:14px}
+.si-total{background:rgba(125,174,212,.15);color:var(--info)}
+.si-ac{background:rgba(52,199,89,.15);color:var(--success)}
+.si-rate{background:var(--primary-muted);color:var(--primary)}
+.stat-label{font-size:11px;color:var(--text-tertiary)}
+.stat-value{font-family:var(--mono);font-size:15px;font-weight:600;
+  letter-spacing:-.3px}
+.stats-div{width:1px;height:28px;background:var(--border)}
+
+/* ================= Training ================= */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+.kpi{background:var(--bg-elevated);border:1px solid var(--border);
+  border-radius:var(--r-md);padding:16px;display:flex;flex-direction:column;gap:10px}
+.kpi:hover{border-color:var(--border-hover)}
+.kpi-head{display:flex;align-items:center;gap:8px}
+.kpi-label{font-size:11px;color:var(--text-tertiary);line-height:1}
+.kpi-value{font-family:var(--mono);font-size:28px;font-weight:700;
+  letter-spacing:-1px;line-height:1;font-variant-numeric:tabular-nums}
+.a-amber{color:var(--primary)} .a-green{color:var(--success)} .a-blue{color:var(--info)}
+.kpi-sub{font-size:11px;color:var(--text-tertiary);line-height:1}
+.goal-card,.panel{background:var(--bg-surface);border:1px solid var(--border);
+  border-radius:var(--r-md);padding:16px;margin-bottom:24px}
+.goal-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.goal-title{font-size:13px;font-weight:600}
+.goal-count{font-family:var(--mono);font-size:12px;color:var(--primary)}
+.goal-badge{margin-left:auto;font-size:10px;padding:2px 8px;border-radius:9999px;
+  background:var(--primary-muted);color:var(--primary)}
+.progress-track{height:6px;background:rgba(255,255,255,.06);border-radius:3px;
+  overflow:hidden;margin-bottom:14px}
+.progress-fill{height:100%;width:60%;border-radius:3px;
+  background:linear-gradient(90deg,var(--primary),var(--primary-hover))}
+.task{display:flex;align-items:center;gap:10px;padding:6px 10px;
+  border-radius:var(--r-sm);font-size:12px;color:var(--text-secondary)}
+.task:hover{background:rgba(255,255,255,.03)}
+.task.done span{text-decoration:line-through;color:var(--text-tertiary)}
+.cb{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--text-tertiary);
+  flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.cb.on{background:var(--success);border-color:var(--success);color:#fff}
+.cb svg{width:10px;height:10px}
+.tchip{margin-left:auto;font-size:10px;padding:1px 6px;border-radius:9999px}
+.t-green{background:rgba(52,199,89,.12);color:var(--success)}
+.t-amber{background:rgba(255,159,10,.12);color:var(--warning)}
+.t-red{background:rgba(255,69,58,.12);color:var(--error)}
+.plan-item{display:flex;align-items:center;gap:14px;padding:14px 16px;
+  background:var(--bg-elevated);border:1px solid var(--border);
+  border-radius:var(--r-md);margin-bottom:6px;cursor:pointer}
+.plan-item:hover{background:var(--bg-overlay);border-color:var(--border-hover)}
+.plan-name{font-size:13px;font-weight:600;margin-bottom:4px}
+.plan-meta{display:flex;align-items:center;gap:10px;font-size:11px;
+  color:var(--text-tertiary)}
+.plan-sep{width:1px;height:10px;background:var(--border)}
+.tag{font-size:10px;padding:2px 8px;border-radius:9999px;font-weight:600;
+  margin-left:auto}
+.tag-pending{background:rgba(255,255,255,.06);color:var(--text-tertiary)}
+.tag-active{background:var(--primary-muted);color:var(--primary)}
+.tag-done{background:rgba(52,199,89,.12);color:var(--success)}
+.plan-arrow{color:var(--text-muted)}
+.sub-item{display:flex;align-items:center;gap:12px;padding:8px 12px;
+  border-radius:var(--r-sm);font-size:12px}
+.sub-item:hover{background:rgba(255,255,255,.03)}
+.sub-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sd-ac{background:var(--ac)} .sd-wa{background:var(--wa)} .sd-tle{background:var(--tle)} .sd-ce{background:var(--ce)}
+.sub-name{color:var(--text-secondary);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.sub-sep{width:1px;height:10px;background:var(--border)}
+.sub-verdict{font-family:var(--mono);font-size:11px;font-weight:600}
+.v-ac{color:var(--ac)} .v-wa{color:var(--wa)} .v-tle{color:var(--tle)} .v-ce{color:var(--ce)}
+.sub-time{font-family:var(--mono);font-size:11px;color:var(--text-tertiary)}
+.sub-stat{font-family:var(--mono);font-size:10px;color:var(--text-muted);
+  min-width:70px;text-align:right}
+
+/* ================= Mistakes ================= */
+.mchips{display:flex;gap:8px;margin-bottom:16px;align-items:center}
+.mchip{height:26px;padding:0 10px;border-radius:var(--r-sm);cursor:pointer;
+  font-family:var(--mono);font-size:11px;font-weight:600;background:none;
+  border:1px solid transparent;color:var(--text-tertiary)}
+.mchip.wa{color:var(--wa);border-color:rgba(255,69,58,.3)}
+.mchip.wa.sel{background:var(--wa);color:#fff}
+.mchip.tle{color:var(--tle);border-color:rgba(255,159,10,.3)}
+.mchip.tle.sel{background:var(--tle);color:#131311}
+.mchip.all{border-color:var(--border-hover)}
+.mchip.all.sel{background:var(--bg-overlay);color:var(--text-primary)}
+.mlayout{display:flex;gap:20px}
+.mlist{flex:1;display:flex;flex-direction:column;gap:6px}
+.mrow{display:flex;align-items:center;gap:12px;padding:10px 14px;
+  background:var(--bg-surface);border:1px solid var(--border);
+  border-left:3px solid var(--wa);border-radius:var(--r-md);cursor:pointer}
+.mrow:hover{background:var(--bg-elevated)}
+.mrow .id{font-family:var(--mono);font-size:12px;color:var(--primary)}
+.mrow .t{font-size:12px;color:var(--text-secondary);flex:1;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.redo{height:26px;padding:0 10px;border-radius:var(--r-sm);font-size:11px;
+  cursor:pointer;color:var(--primary);background:var(--primary-muted);
+  border:1px solid rgba(217,119,87,.2)}
+.redo:hover{background:rgba(217,119,87,.25)}
+.heatwrap{width:170px;flex-shrink:0}
+.heat{display:grid;grid-template-columns:repeat(7,18px);gap:3px}
+.cell{width:18px;height:18px;border-radius:3px;background:rgba(255,255,255,.05)}
+.c1{background:rgba(217,119,87,.25)} .c2{background:rgba(217,119,87,.5)}
+.c3{background:rgba(217,119,87,.72)} .c4{background:#d97757}
+
+/* ================= AI ================= */
+.ai-top{display:flex;align-items:center;margin-bottom:16px}
+.model{height:30px;padding:0 12px;background:var(--bg-elevated);
+  border:1px solid var(--border);border-radius:var(--r-md);color:var(--text-secondary);
+  font-size:12px;font-family:var(--ui);outline:none;cursor:pointer}
+.chat{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:12px;
+  min-height:340px}
+.msg{display:flex;gap:10px;align-items:flex-start}
+.msg.user{flex-direction:row-reverse}
+.avatar{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;
+  align-items:center;justify-content:center;font-size:11px;font-weight:600}
+.av-ai{background:var(--primary-muted);color:var(--primary)}
+.av-user{background:var(--bg-overlay);color:var(--text-secondary)}
+.bubble{padding:10px 14px;border-radius:var(--r-md);font-size:13px;
+  line-height:1.55;max-width:70%}
+.b-ai{background:var(--bg-elevated);border:1px solid var(--border);
+  border-top-left-radius:6px}
+.b-user{background:#2c2520;border:1px solid rgba(217,119,87,.12);
+  border-top-right-radius:6px}
+.chips{display:flex;gap:8px;margin:14px auto 10px;max-width:720px}
+.chip{height:28px;padding:0 12px;border-radius:14px;font-size:12px;font-weight:500;
+  background:transparent;border:1px solid var(--border-hover);
+  color:var(--text-secondary);cursor:pointer}
+.chip:hover{background:var(--primary-subtle);border-color:var(--border-active);
+  color:var(--primary)}
+.composer{max-width:720px;margin:0 auto;display:flex;gap:10px;align-items:flex-end}
+.composer textarea{flex:1;min-height:36px;max-height:120px;background:var(--bg-elevated);
+  border:1px solid var(--border);border-radius:var(--r-md);resize:none;
+  color:var(--text-primary);font-family:var(--ui);font-size:13px;padding:9px 12px;
+  outline:none}
+.composer textarea:focus{border-color:var(--border-active)}
+.send{width:36px;height:36px;border-radius:50%;background:var(--primary);
+  border:none;color:#fff;cursor:pointer;display:flex;align-items:center;
+  justify-content:center;flex-shrink:0}
+.send:hover{background:var(--primary-hover)}
+.codeblk{background:var(--bg-base);border:1px solid var(--border);
+  border-radius:var(--r-sm);margin:8px 0;font-family:var(--mono);font-size:12px;
+  padding:10px 12px;color:#c3c0b6}
+
+/* ================= Settings ================= */
+.settings{max-width:640px}
+.settings h1{font-size:20px;font-weight:600;letter-spacing:-.3px;margin-bottom:4px}
+.settings .sub{font-size:12px;color:var(--text-tertiary);margin-bottom:24px}
+.ssection{padding:20px 0;border-bottom:1px solid var(--border)}
+.ssection:last-child{border-bottom:none}
+.stitle{font-size:14px;font-weight:500;display:flex;align-items:center;gap:8px;
+  margin-bottom:16px}
+.stitle svg{width:16px;height:16px;color:var(--text-tertiary)}
+.frow{display:flex;align-items:flex-start;gap:16px;margin-bottom:16px}
+.flabel{width:140px;flex-shrink:0;text-align:right;font-size:12px;
+  color:var(--text-secondary);padding-top:7px}
+.fcontrol{flex:1;min-width:0}
+.fhint{font-size:11px;color:var(--text-tertiary);margin-top:4px}
+.iwrap{display:flex;align-items:center;background:var(--bg-base);
+  border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden;
+  transition:border-color .1s ease}
+.iwrap:focus-within{border-color:var(--border-active)}
+.iwrap input,.iwrap select{flex:1;background:transparent;border:none;outline:none;
+  color:var(--text-primary);font-family:var(--mono);font-size:12px;
+  padding:8px 12px;width:100%}
+.isuffix{font-size:11px;color:var(--text-tertiary);padding-right:12px;
+  font-family:var(--mono)}
+.radios{display:flex;gap:8px}
+.radio{display:flex;align-items:center;gap:8px;padding:6px 12px;
+  border-radius:var(--r-sm);border:1px solid var(--border);cursor:pointer;
+  font-family:var(--mono);font-size:12px;color:var(--text-secondary);
+  user-select:none}
+.radio:hover{border-color:var(--border-hover);color:var(--text-primary)}
+.radio.sel{border-color:var(--border-active);background:var(--primary-subtle);
+  color:var(--primary)}
+.rdot{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--text-tertiary);
+  position:relative}
+.radio.sel .rdot{border-color:var(--primary)}
+.radio.sel .rdot::after{content:'';position:absolute;inset:2px;border-radius:50%;
+  background:var(--primary)}
+.shortcut{display:flex;align-items:center;padding:8px 0;
+  border-bottom:1px solid var(--border);font-size:12px;color:var(--text-secondary)}
+.shortcut:last-child{border-bottom:none}
+.shortcut .keys{margin-left:auto;display:flex;align-items:center;gap:4px}
+.about-row{display:flex;gap:12px;font-size:12px;padding:4px 0}
+.about-label{color:var(--text-tertiary);width:80px}
+.about-val{color:var(--text-secondary)}
+.about-val.v{font-family:var(--mono);color:var(--text-primary)}
+
+/* ================= Editor ================= */
+.ed-tabs{display:flex;background:var(--bg-base);border-bottom:1px solid var(--border)}
+.ed-tab{display:flex;align-items:center;gap:6px;padding:0 14px;height:34px;
+  font-size:12px;color:var(--text-tertiary);cursor:pointer;
+  border-right:1px solid var(--border)}
+.ed-tab.active{background:var(--bg-surface);color:var(--text-primary);
+  border-top:2px solid var(--primary)}
+.dirty{width:6px;height:6px;border-radius:50%;background:var(--primary)}
+.edbody{display:flex;background:var(--bg-surface);min-height:300px;
+  font-family:var(--mono);font-size:13px;line-height:21px}
+.gutter{padding:12px 0;text-align:right;color:var(--text-muted);user-select:none;
+  width:56px;flex-shrink:0;background:var(--bg-surface)}
+.gutter div{padding-right:16px;height:21px}
+.edcode{flex:1;padding:12px 0;position:relative;overflow:hidden}
+.cline{height:21px;padding:0 16px;white-space:pre}
+.cline.cur{background:rgba(217,119,87,.06);border-left:2px solid var(--primary);
+  margin-left:-2px}
+.k{color:#cc7a5a} .f{color:#7daed4} .s{color:#b89a6a}
+.cm{color:#6e6d68;font-style:italic} .n{color:#8aab6e} .pp{color:#cc7a5a}
+.op{color:#f1f1ef} .vr{color:#c3c0b6}
+.ed-status{height:24px;display:flex;align-items:center;gap:16px;padding:0 12px;
+  background:rgba(0,0,0,.35);border-top:1px solid var(--border);
+  font-family:var(--mono);font-size:11px;color:var(--text-tertiary)}
+.outpanel{border-top:1px solid var(--border);background:var(--bg-base)}
+.outtabs{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--border)}
+.outtab{padding:7px 12px;font-size:11px;color:var(--text-tertiary);cursor:pointer;
+  border-bottom:2px solid transparent}
+.outtab.active{color:var(--text-primary);border-bottom-color:var(--primary)}
+.outbody{padding:12px 16px;font-family:var(--mono);font-size:12px;
+  color:var(--text-secondary);line-height:1.8}
+.passline{margin-bottom:8px}
+.passline b{color:var(--success)}
+.cmd{color:var(--text-tertiary)}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- titlebar -->
+  <div class="titlebar">
+    <div class="logo"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#fff"/></svg></div>
+    <b>Oler IDE</b>
+    <span class="sp"></span>
+    <span class="clock" id="clock">--:--</span>
+    <button class="tb-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+    <button class="tb-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></button>
+    <button class="tb-btn close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+  </div>
+
+  <div class="shell">
+    <!-- sidebar -->
+    <nav class="sidebar" id="rail"></nav>
+
+    <div class="maincol">
+      <!-- tabs -->
+      <div class="tabbar" id="tabs"></div>
+
+      <div class="content">
+
+        <!-- ============ EDITOR ============ -->
+        <section class="page" id="p-editor" style="padding:0">
+          <div class="ed-tabs">
+            <div class="ed-tab active">P1001/main.cpp <span class="dirty"></span></div>
+            <div class="ed-tab">input.txt</div>
+          </div>
+          <div class="edbody">
+            <div class="gutter">
+              <div>1</div><div>2</div><div>3</div><div>4</div><div>5</div>
+              <div>6</div><div>7</div><div>8</div>
+            </div>
+            <div class="edcode">
+              <div class="cline cm">// P1001 - A+B Problem</div>
+              <div class="cline pp">#include <span class="op">&lt;</span><span class="vr">iostream</span><span class="op">&gt;</span></div>
+              <div class="cline">&nbsp;</div>
+              <div class="cline"><span class="k">int</span> <span class="f">main</span><span class="op">()</span> <span class="op">{</span></div>
+              <div class="cline cur">    <span class="k">long long</span> <span class="vr">a</span>, <span class="vr">b</span>; <span class="cm">// 1e9 溢出风险</span></div>
+              <div class="cline">    std::<span class="f">cin</span> <span class="op">&gt;&gt;</span> <span class="vr">a</span> <span class="op">&gt;&gt;</span> <span class="vr">b</span>;</div>
+              <div class="cline">    std::<span class="f">cout</span> <span class="op">&lt;&lt;</span> <span class="vr">a</span> <span class="op">+</span> <span class="vr">b</span> <span class="op">&lt;&lt;</span> std::<span class="f">endl</span>;</div>
+              <div class="cline">    <span class="k">return</span> <span class="n">0</span>;</div>
+              <div class="cline"><span class="op">}</span></div>
+            </div>
+          </div>
+          <div class="outpanel">
+            <div class="outtabs"><div class="outtab active">Run</div><div class="outtab">Build</div><div class="outtab">Compiler</div></div>
+            <div class="outbody">
+              <div class="cmd">$ g++ -std=c++17 -O2 main.cpp -o main</div>
+              <div class="passline">Case 1 <span class="badge ac">AC</span> 8ms · Case 2 <span class="badge ac">AC</span> 9ms · <b>Pass 2 / 2 (100%)</b></div>
+            </div>
+          </div>
+          <div class="ed-status">
+            <span>Ready</span><span class="sp" style="flex:1"></span>
+            <span>Ln 5, Col 23</span><span class="tag">C++17</span><span>UTF-8</span>
+          </div>
+        </section>
+
+        <!-- ============ PROBLEMS ============ -->
+        <section class="page" id="p-problems">
+          <div class="search-wrap">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input class="search-input" placeholder="搜索题目、OJ、标签...">
+            <div class="search-kbd"><span class="kbd">Ctrl</span><span class="kbd">K</span></div>
+          </div>
+          <div class="quick-actions">
+            <button class="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>拉取题目</button>
+            <button class="btn btn-secondary">新建题目</button>
+            <button class="btn btn-secondary">导入</button>
+          </div>
+
+          <div class="section-header"><span class="section-title">最近题目</span><span class="section-action">查看全部</span></div>
+          <div class="favrow">
+            <div class="fcard"><div class="ficon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div><div><div class="fid">P1001</div><div class="ftitle">A+B Problem</div></div></div>
+            <div class="fcard"><div class="ficon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div><div><div class="fid">CF1900F</div><div class="ftitle">Cyclic Sum</div></div></div>
+            <div class="fcard"><div class="ficon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div><div><div class="fid">P3372</div><div class="ftitle">线段树 1</div></div></div>
+          </div>
+
+          <div class="section-header"><span class="section-title">全部题目</span><span class="section-action">筛选</span></div>
+          <div class="grid" id="pgrid"></div>
+
+          <div class="stats-strip">
+            <div class="stat-item"><div class="stat-ico si-total"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div><div><div class="stat-label">总题数</div><div class="stat-value">247</div></div></div>
+            <div class="stats-div"></div>
+            <div class="stat-item"><div class="stat-ico si-ac"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div><div class="stat-label">已通过</div><div class="stat-value">183</div></div></div>
+            <div class="stats-div"></div>
+            <div class="stat-item"><div class="stat-ico si-rate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg></div><div><div class="stat-label">通过率</div><div class="stat-value">74.1%</div></div></div>
+            <span style="flex:1"></span>
+            <span class="section-action">详细统计 →</span>
+          </div>
+        </section>
+
+        <!-- ============ TRAINING ============ -->
+        <section class="page" id="p-training">
+          <div class="kpi-grid">
+            <div class="kpi"><div class="kpi-head"><div class="stat-ico si-rate">🔥</div><span class="kpi-label">连续打卡</span></div><div class="kpi-value a-amber">7</div><div class="kpi-sub">天 · 历史最佳 23 天</div></div>
+            <div class="kpi"><div class="kpi-head"><div class="stat-ico si-ac">✓</div><span class="kpi-label">本周完成</span></div><div class="kpi-value a-green">12<span style="font-size:14px;font-weight:400;color:var(--text-tertiary)">题</span></div><div class="kpi-sub">较上周 +3</div></div>
+            <div class="kpi"><div class="kpi-head"><div class="stat-ico si-rate">◎</div><span class="kpi-label">总正确率</span></div><div style="display:flex;align-items:center;gap:12px"><svg width="44" height="44" viewBox="0 0 44 44" style="transform:rotate(-90deg)"><circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="#d97757" stroke-width="4" stroke-linecap="round" stroke-dasharray="113.1" stroke-dashoffset="30.54"/></svg><div><div class="kpi-value" style="font-size:15px;font-weight:600;color:var(--text-primary)">73%</div><div class="kpi-sub">共提交 156 题</div></div></div></div>
+            <div class="kpi"><div class="kpi-head"><div class="stat-ico si-total">↗</div><span class="kpi-label">排名变化</span></div><div class="kpi-value a-blue">+5</div><div class="kpi-sub">当前排名 #128</div></div>
+          </div>
+
+          <div class="goal-card">
+            <div class="goal-head"><span class="goal-title">每日刷题</span><span class="goal-count">3 / 5</span><span class="goal-badge">进行中</span></div>
+            <div class="progress-track"><div class="progress-fill"></div></div>
+            <div class="task done"><span class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span><span>P1001 [NOIP1998] 普及组 T1</span><span class="tchip t-green">入门</span></div>
+            <div class="task done"><span class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span><span>P1048 采药</span><span class="tchip t-amber">普及</span></div>
+            <div class="task"><span class="cb"></span><span>P3388 【模板】割点</span><span class="tchip t-red">提高+</span></div>
+          </div>
+
+          <div class="section-header"><span class="section-title" style="color:var(--primary)">≡</span><span class="section-title">训练计划</span></div>
+          <div class="plan-item"><div><div class="plan-name">NOIp 模拟赛 Day 1</div><div class="plan-meta"><span>4 题</span><span class="plan-sep"></span><span>普及 ~ 提高+</span></div></div><span class="tag tag-active">进行中</span><span class="plan-arrow">›</span></div>
+          <div class="plan-item"><div><div class="plan-name">动态规划专题 — 树形 DP</div><div class="plan-meta"><span>6 题</span><span class="plan-sep"></span><span>提高 ~ 省选</span></div></div><span class="tag tag-pending">未开始</span><span class="plan-arrow">›</span></div>
+          <div class="plan-item" style="margin-bottom:24px"><div><div class="plan-name">基础算法 — 图论入门</div><div class="plan-meta"><span>8 题</span><span class="plan-sep"></span><span>入门 ~ 提高</span></div></div><span class="tag tag-done">已完成</span><span class="plan-arrow">›</span></div>
+
+          <div class="section-header"><span class="section-title">最近提交</span></div>
+          <div class="sub-item"><span class="sub-dot sd-ac"></span><span class="sub-name">P1220 关路灯</span><span class="sub-sep"></span><span class="sub-verdict v-ac">Accepted</span><span class="sub-time">14:08</span><span class="sub-stat">128ms / 1.2MB</span></div>
+          <div class="sub-item"><span class="sub-dot sd-wa"></span><span class="sub-name">P1220 关路灯</span><span class="sub-sep"></span><span class="sub-verdict v-wa">Wrong Answer</span><span class="sub-time">13:42</span><span class="sub-stat">-- / 1.2MB</span></div>
+          <div class="sub-item"><span class="sub-dot sd-ac"></span><span class="sub-name">P1048 采药</span><span class="sub-sep"></span><span class="sub-verdict v-ac">Accepted</span><span class="sub-time">12:15</span><span class="sub-stat">64ms / 780KB</span></div>
+          <div class="sub-item"><span class="sub-dot sd-tle"></span><span class="sub-name">P3388 割点</span><span class="sub-sep"></span><span class="sub-verdict v-tle">Time Limit Exceeded</span><span class="sub-time">11:50</span><span class="sub-stat">1004ms / 8.5MB</span></div>
+        </section>
+
+        <!-- ============ MISTAKES ============ -->
+        <section class="page" id="p-mistakes">
+          <div class="mchips">
+            <button class="mchip all sel">All</button>
+            <button class="mchip wa">WA 24</button>
+            <button class="mchip tle">TLE 11</button>
+            <span style="flex:1"></span>
+            <span class="section-action">显示已归档</span>
+          </div>
+          <div class="mlayout">
+            <div class="mlist">
+              <div class="mrow"><span class="id">P3388</span><span class="t">【模板】割点 —— tarjan 求割点在 case 3 WA</span><span class="badge wa">WA</span><span style="font-family:var(--mono);font-size:11px;color:var(--text-tertiary)">昨天 21:18</span><button class="redo">重做</button></div>
+              <div class="mrow" style="border-left-color:var(--tle)"><span class="id">P1440</span><span class="t">求 m 区间内的最小值 —— 单调队列 TLE on case 5</span><span class="badge tle">TLE</span><span style="font-family:var(--mono);font-size:11px;color:var(--text-tertiary)">昨天 22:30</span><button class="redo">重做</button></div>
+              <div class="mrow" style="border-left-color:var(--ce)"><span class="id">P1048</span><span class="t">采药 —— 数组开小 CE</span><span class="badge pending">CE</span><span style="font-family:var(--mono);font-size:11px;color:var(--text-tertiary)">08-20 10:01</span><button class="redo">重做</button></div>
+              <div class="mrow" style="border-left-color:var(--re)"><span class="id">CF1900F</span><span class="t">Cyclic Sum —— 未初始化数组 RE</span><span class="badge wa" style="background:rgba(196,92,74,.15);color:var(--re)">RE</span><span style="font-family:var(--mono);font-size:11px;color:var(--text-tertiary)">08-19 16:44</span><button class="redo">重做</button></div>
+            </div>
+            <div class="heatwrap">
+              <div class="section-header"><span class="section-action">近 28 天</span></div>
+              <div class="heat" id="heat"></div>
+              <div style="font-size:11px;color:var(--text-tertiary);margin-top:10px">错题密度 · 深 = 多</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ AI ============ -->
+        <section class="page" id="p-ai">
+          <div class="ai-top"><span class="stitle" style="margin:0"><b>dots.ai</b>&nbsp;<span style="font-weight:400;color:var(--text-tertiary);font-size:11px">教练已读取当前题目与上次提交</span></span><span style="flex:1"></span>
+            <select class="model"><option>dots3-note-prev</option><option>dots3-mini</option></select></div>
+          <div class="chat">
+            <div class="msg"><div class="avatar av-ai">AI</div><div class="bubble b-ai">hi，我们在做哪道题？<br>我看到了 P1001 的代码和 case 3 的失败记录。</div></div>
+            <div class="msg user"><div class="avatar av-user">我</div><div class="bubble b-user">为什么我的 P1001 在 case 3 WA？</div></div>
+            <div class="msg"><div class="avatar av-ai">AI</div><div class="bubble b-ai">你的代码用了 <b>int</b>，但 1e9 + 1e9 会溢出。<div class="codeblk">long long a, b;<br>cin &gt;&gt; a &gt;&gt; b;</div>改成 long long 即可通过全部测试点。</div></div>
+          </div>
+          <div class="chips">
+            <button class="chip">解释这个 WA</button><button class="chip">优化复杂度</button><button class="chip">生成对拍数据</button><button class="chip">找类似题</button>
+          </div>
+          <div class="composer">
+            <textarea placeholder="输入消息..." rows="1"></textarea>
+            <button class="send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+        </section>
+
+        <!-- ============ SETTINGS ============ -->
+        <section class="page" id="p-settings">
+          <div class="settings">
+            <h1>设置</h1>
+            <p class="sub">配置编译器、运行参数、快捷键等选项</p>
+
+            <div class="ssection">
+              <div class="stitle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>编译器</div>
+              <div class="frow"><label class="flabel">编译器路径</label><div class="fcontrol">
+                <div class="iwrap"><input value="g++.exe"><button class="btn btn-secondary" style="margin:4px;height:24px;font-size:11px">检测</button></div>
+                <p class="fhint">C++ 编译器可执行文件路径</p></div></div>
+              <div class="frow"><label class="flabel">C++ 标准</label><div class="fcontrol">
+                <div class="radios"><span class="radio">C++14</span><span class="radio sel"><span class="rdot"></span>C++17</span><span class="radio"><span class="rdot"></span>C++20</span></div></div></div>
+              <div class="frow"><label class="flabel">优化等级</label><div class="fcontrol">
+                <div class="radios"><span class="radio">O0</span><span class="radio sel"><span class="rdot"></span>O2</span><span class="radio"><span class="rdot"></span>O3</span></div></div></div>
+            </div>
+
+            <div class="ssection">
+              <div class="stitle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="5 3 19 12 5 21 5 3"/></svg>运行</div>
+              <div class="frow"><label class="flabel">时间限制</label><div class="fcontrol"><div class="iwrap"><input value="1000"><span class="isuffix">ms</span></div></div></div>
+              <div class="frow"><label class="flabel">内存限制</label><div class="fcontrol"><div class="iwrap"><input value="256"><span class="isuffix">MB</span></div></div></div>
+            </div>
+
+            <div class="ssection">
+              <div class="stitle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6.01" y2="8"/><line x1="18" y1="8" x2="18.01" y2="8"/><line x1="8" y1="16" x2="16" y2="16"/></svg>快捷键</div>
+              <div class="shortcut">打开搜索<span class="keys"><span class="kbd">Ctrl</span><span style="color:var(--text-tertiary)">+</span><span class="kbd">K</span></span></div>
+              <div class="shortcut">编译运行<span class="keys"><span class="kbd">Ctrl</span><span style="color:var(--text-tertiary)">+</span><span class="kbd">R</span></span></div>
+              <div class="shortcut">切换 Tab<span class="keys"><span class="kbd">Ctrl</span><span style="color:var(--text-tertiary)">+</span><span class="kbd">1~6</span></span></div>
+            </div>
+
+            <div class="ssection">
+              <div class="stitle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>关于</div>
+              <div class="about-row"><span class="about-label">版本</span><span class="about-val v">v0.2.0</span></div>
+              <div class="about-row"><span class="about-label">基于</span><span class="about-val">Qt 6.8 + KSyntaxHighlighting</span></div>
+              <div class="about-row"><span class="about-label">许可</span><span class="about-val">MIT</span></div>
+            </div>
+          </div>
+        </section>
+
+      </div><!-- /content -->
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <span id="statusmsg">Ready</span><span class="sp"></span>
+    <span>Ln 5, Col 23</span><span class="tag">C++17</span><span>UTF-8</span>
+  </div>
+</div>
+
+<script>
+const PAGES = [
+  {id:'editor',   icon:'<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>', label:'Editor'},
+  {id:'problems', icon:'<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>', label:'Problems'},
+  {id:'training', icon:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>', label:'Training'},
+  {id:'mistakes', icon:'<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>', label:'Mistakes'},
+  {id:'ai',       icon:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>', label:'AI Coach'},
+  {id:'settings', icon:'<circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4M4.2 4.2l2.8 2.8m10 10 2.8 2.8M1 12h4m14 0h4M4.2 19.8l2.8-2.8m10-10 2.8-2.8"/>', label:'Settings'},
+];
+
+const rail = document.getElementById('rail');
+const tabs = document.getElementById('tabs');
+let current = 'editor';
+
+function svg(body){return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+body+'</svg>';}
+
+PAGES.forEach((p,i)=>{
+  const nb=document.createElement('button');
+  nb.className='nav-btn'+(i===0?' active':''); nb.title=p.label;
+  nb.innerHTML=svg(p.icon); nb.dataset.page=p.id;
+  nb.onclick=()=>select(p.id); rail.appendChild(nb);
+
+  const tb=document.createElement('div');
+  tb.className='tab'+(i===0?' active':''); tb.textContent=p.label;
+  tb.dataset.page=p.id; tb.onclick=()=>select(p.id); tabs.appendChild(tb);
+});
+
+function select(id){
+  current=id;
+  document.querySelectorAll('.nav-btn,.tab').forEach(el=>
+    el.classList.toggle('active', el.dataset.page===id));
+  document.querySelectorAll('.page').forEach(pg=>
+    pg.classList.toggle('active', pg.id==='p-'+id));
+  document.getElementById('statusmsg').textContent =
+    'Ready — '+PAGES.find(p=>p.id===id).label;
+}
+
+// clock
+setInterval(()=>{document.getElementById('clock').textContent =
+  new Date().toTimeString().slice(0,5);},1000);
+
+// problems grid
+const probs=[
+ ['P1001','A+B Problem','Luogu','oj-luogu','入门','d-easy','AC','ac'],
+ ['CF1234A','Equalize Prices Again','Codeforces','oj-cf','普及','d-med','WA','wa'],
+ ['ABC356D','Mancy Problem','AtCoder','oj-at','普及/提高','d-hard','AC','ac'],
+ ['P3372','线段树 1（区间加，区间求和）','Luogu','oj-luogu','普及/提高','d-med','AC','ac'],
+ ['CF1980E','Mirror in the String','Codeforces','oj-cf','提高','d-hard','ING','pending'],
+ ['P6242','点分治 + 边分治','Luogu','oj-luogu','省选/NOI-','d-hard','AC','ac'],
+ ['LOJ100','比赛积分','Luogu','oj-luogu','入门','d-easy','AC','ac'],
+ ['P4782','2-SAT 问题模板','Luogu','oj-luogu','省选/NOI-','d-hard','AC','ac'],
+];
+document.getElementById('pgrid').innerHTML = probs.map(p=>
+ `<div class="pcard"><div class="pcard-top"><span class="pid">${p[0]}</span><span class="badge ${p[7]}">${p[6]}</span></div><div class="ptitle">${p[1]}</div><div class="pmeta"><span class="oj-pill ${p[3]}">${p[2]}</span><span class="diff-dot ${p[5]}"></span><span class="diff-label">${p[4]}</span></div></div>`).join('');
+
+// heatmap
+const heat=document.getElementById('heat');
+const levels=['','','c1','','c2','c1','','','c3','c1','c4','','c2','','','c1','c2','','c1','','','c3','','','','c1','',''];
+for(let i=0;i<28;i++){const d=document.createElement('div');d.className='cell '+(levels[i]||'');heat.appendChild(d);}
+
+// radio pills
+document.querySelectorAll('.radios').forEach(g=>{
+  g.querySelectorAll('.radio').forEach(r=>r.onclick=()=>{
+    g.querySelectorAll('.radio').forEach(x=>x.classList.remove('sel'));
+    r.classList.add('sel');});
+});
+// verdict chips
+document.querySelectorAll('.mchip').forEach(c=>c.onclick=()=>{
+  document.querySelectorAll('.mchip').forEach(x=>x.classList.remove('sel'));
+  c.classList.add('sel');});
+// out tabs
+document.querySelectorAll('.outtab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.outtab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');});
+
+select('editor');
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@
 #include <QLabel>
 #include <QSplitter>
 #include <QStackedWidget>
+#include <QStatusBar>
 #include <QTabBar>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -45,31 +46,34 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     runAct->setShortcut(QKeySequence("Ctrl+R"));
     connect(runAct, &QAction::triggered, this, &MainWindow::runCurrentFile);
     addAction(runAct);
+
+    statusBar()->showMessage(tr("Ready - Ctrl+O open, Ctrl+R run"));
 }
 
 MainWindow::~MainWindow() = default;
 
 void MainWindow::buildActivityBar() {
-    // 56px left rail (docs: oler-nav-56px). Owned by the shell layout in
-    // buildContentPages; here we only create the buttons.
+    // 56px left rail (docs: oler-nav-56px). Monogram buttons + tooltip;
+    // checked state styled by the theme QSS (#activityRail rules).
     m_activityRail = new QWidget;
     m_activityRail->setObjectName("activityRail");
     m_activityRail->setFixedWidth(56);
     auto *railLayout = new QVBoxLayout(m_activityRail);
     railLayout->setContentsMargins(4, 8, 4, 8);
-    railLayout->setSpacing(4);
-    auto acts = {
-        tr("Editor"), tr("Problems"), tr("Training"), tr("Mistakes"),
-        tr("AI Coach"), tr("Settings")
+    railLayout->setSpacing(6);
+    const struct { const char *mono; const char *full; } acts[] = {
+        {"E", "Editor"},     {"P", "Problems"}, {"T", "Training"},
+        {"M", "Mistakes"},   {"A", "AI Coach"}, {"S", "Settings"},
     };
     int i = 0;
-    for (const auto &name : acts) {
+    for (const auto &a : acts) {
         auto *btn = new QToolButton(m_activityRail);
-        btn->setText(name);
+        btn->setText(QString::fromLatin1(a.mono));
+        btn->setToolTip(QString::fromLatin1(a.full));
         btn->setCheckable(true);
-        btn->setToolTip(name);
         btn->setProperty("pageIdx", i++);
-        btn->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+        btn->setFixedSize(46, 42);
+        btn->setToolButtonStyle(Qt::ToolButtonTextOnly);
         connect(btn, &QToolButton::clicked, this, [this](bool checked) {
             Q_UNUSED(checked);
             m_tabBar->setCurrentIndex(

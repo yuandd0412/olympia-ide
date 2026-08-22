@@ -13,10 +13,14 @@
 #include "ui/runner/OlerRunPanel.h"
 #include "ui/problems/OlerProblemsPage.h"
 #include "ui/mistakes/OlerMistakesPage.h"
+#include "ui/training/OlerTrainingPage.h"
+#include "ui/settings/OlerSettingsPage.h"
+#include "ui/ai/OlerAiPage.h"
 #include "core/runner/OlerRunner.h"
 #include "core/settings/OlerSettings.h"
 #include "core/problems/OlerProblems.h"
 #include "core/mistakes/OlerMistakes.h"
+#include "core/solves/OlerSolves.h"
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("Oler IDE v2");
@@ -88,11 +92,14 @@ void MainWindow::buildContentPages() {
     m_pages->addWidget(buildEditorPage());      // index 0: Editor
     m_problemsPage = new OlerProblemsPage;      // index 1: Problems
     m_pages->addWidget(m_problemsPage);
-    m_pages->addWidget(placeholder("Training"));
+    m_trainingPage = new OlerTrainingPage;      // index 2: Training
+    m_pages->addWidget(m_trainingPage);
     m_mistakesPage = new OlerMistakesPage;      // index 3: Mistakes
     m_pages->addWidget(m_mistakesPage);
-    m_pages->addWidget(placeholder("AI Coach"));
-    m_pages->addWidget(placeholder("Settings"));
+    m_aiPage = new OlerAiPage;                  // index 4: AI Coach
+    m_pages->addWidget(m_aiPage);
+    m_settingsPage = new OlerSettingsPage;      // index 5: Settings
+    m_pages->addWidget(m_settingsPage);
     setCentralWidget(m_pages);
 
     connect(m_problemsPage, &OlerProblemsPage::openRequested,
@@ -268,6 +275,10 @@ void MainWindow::runCurrentFile() {
                     m.verdict = result.cases.first().verdict;
                     OlerMistakes::instance()->add(m);
                     OlerMistakes::instance()->save();
+                } else if (!result.cases.isEmpty()) {
+                    // All AC: counts as a solved problem for Training.
+                    OlerSolves::instance()->addSolve(QDate::currentDate());
+                    OlerSolves::instance()->save();
                 }
             });
     watcher->setFuture(QtConcurrent::run([cfg, src, cases] {

@@ -17,6 +17,7 @@ public:
 
     void setLanguage(const QString &lang);  // e.g. "C++", "Python"
     void applyThemeFromManager();
+    void applyFontSize();
 
     QString filePath() const;
     bool loadFile(const QString &path);

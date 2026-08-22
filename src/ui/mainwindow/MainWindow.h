@@ -10,6 +10,9 @@ class OlerRunner;
 class OlerRunPanel;
 class OlerProblemsPage;
 class OlerMistakesPage;
+class OlerTrainingPage;
+class OlerSettingsPage;
+class OlerAiPage;
 struct OlerProblem;
 
 class MainWindow : public QMainWindow {
@@ -39,5 +42,8 @@ private:
     QLabel *m_editorTitle = nullptr;         // file name + dirty dot
     OlerProblemsPage *m_problemsPage = nullptr; // 2nd tab
     OlerMistakesPage *m_mistakesPage = nullptr; // 4th tab
+    OlerTrainingPage *m_trainingPage = nullptr; // 3rd tab
+    OlerSettingsPage *m_settingsPage = nullptr; // 6th tab
+    OlerAiPage *m_aiPage = nullptr;             // 5th tab
     OlerRunner *m_runner = nullptr;
 };

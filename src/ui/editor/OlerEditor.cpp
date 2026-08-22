@@ -4,8 +4,10 @@
 #include <KSyntaxHighlighting/Theme>
 #include <QFile>
 #include <QFileInfo>
+#include <QFont>
 #include <QHash>
 #include "core/theme/CThemeManager.h"
+#include "core/settings/OlerSettings.h"
 
 OlerEditor::OlerEditor(QWidget *parent)
     : QPlainTextEdit(parent)
@@ -22,9 +24,24 @@ OlerEditor::OlerEditor(QWidget *parent)
     // parameterized (v2 acceptable to hard-code).
     m_repo->addCustomSearchPath(QStringLiteral("D:/oler-ide-v2/third_party/syntax-highlighting/data"));
     m_highlighter->setDefinition(m_repo->definitionForName(QStringLiteral("C++")));
+
+    // Editor font follows the settings key editor/fontSize.
+    applyFontSize();
+    connect(OlerSettings::instance(), &OlerSettings::settingChanged, this,
+            [this](const QString &key) {
+                if (key == QLatin1String("editor/fontSize"))
+                    applyFontSize();
+            });
+
     applyThemeFromManager();
     connect(CThemeManager::instance(), &CThemeManager::themeChanged,
             this, &OlerEditor::applyThemeFromManager);
+}
+
+void OlerEditor::applyFontSize() {
+    QFont f(QStringLiteral("Consolas"));
+    f.setPointSize(OlerSettings::instance()->value("editor/fontSize").toInt());
+    setFont(f);
 }
 
 OlerEditor::~OlerEditor() = default;

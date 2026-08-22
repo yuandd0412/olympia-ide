@@ -1,10 +1,13 @@
 #pragma once
 #include <QMainWindow>
+#include <QVector>
 
 class QToolBar;
 class QTabBar;
 class QStackedWidget;
 class QLabel;
+class QToolButton;
+class QWidget;
 class OlerEditor;
 class OlerRunner;
 class OlerRunPanel;
@@ -34,7 +37,8 @@ private:
     void runCurrentFile();
     void openProblem(const OlerProblem &problem);
 
-    QToolBar *m_activityBar = nullptr;  // 56px
+    QWidget *m_activityRail = nullptr;          // 56px left rail
+    QVector<QToolButton *> m_railButtons;
     QTabBar *m_tabBar = nullptr;        // 36px
     QStackedWidget *m_pages = nullptr;
     OlerEditor *m_editorPage = nullptr;      // 1st tab (Editor)

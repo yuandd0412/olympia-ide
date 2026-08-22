@@ -1,11 +1,12 @@
 #include "MainWindow.h"
 #include <QAction>
 #include <QFileDialog>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QTabBar>
-#include <QToolBar>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <QFutureWatcher>
 #include <QtConcurrent/QtConcurrentRun>
@@ -49,30 +50,44 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 MainWindow::~MainWindow() = default;
 
 void MainWindow::buildActivityBar() {
-    m_activityBar = addToolBar("Activity");
-    m_activityBar->setMovable(false);
-    m_activityBar->setFloatable(false);
-    m_activityBar->setIconSize({24, 24});
-    m_activityBar->setFixedWidth(56);
+    // 56px left rail (docs: oler-nav-56px). Owned by the shell layout in
+    // buildContentPages; here we only create the buttons.
+    m_activityRail = new QWidget;
+    m_activityRail->setObjectName("activityRail");
+    m_activityRail->setFixedWidth(56);
+    auto *railLayout = new QVBoxLayout(m_activityRail);
+    railLayout->setContentsMargins(4, 8, 4, 8);
+    railLayout->setSpacing(4);
     auto acts = {
-        tr("Editor"), tr("Problems"), tr("Training"), tr("Mistakes"), tr("AI Coach"), tr("Settings")
+        tr("Editor"), tr("Problems"), tr("Training"), tr("Mistakes"),
+        tr("AI Coach"), tr("Settings")
     };
     int i = 0;
     for (const auto &name : acts) {
-        auto *a = m_activityBar->addAction(name);
-        a->setCheckable(true);
-        a->setData(i++);
+        auto *btn = new QToolButton(m_activityRail);
+        btn->setText(name);
+        btn->setCheckable(true);
+        btn->setToolTip(name);
+        btn->setProperty("pageIdx", i++);
+        btn->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+        connect(btn, &QToolButton::clicked, this, [this](bool checked) {
+            Q_UNUSED(checked);
+            m_tabBar->setCurrentIndex(
+                static_cast<QToolButton *>(sender())->property("pageIdx").toInt());
+        });
+        m_railButtons.append(btn);
+        railLayout->addWidget(btn);
     }
-    m_activityBar->actions().at(0)->setChecked(true);
-    connect(m_activityBar, &QToolBar::actionTriggered, this, [this](QAction *a) {
-        int idx = a->data().toInt();
-        m_tabBar->setCurrentIndex(idx);
-    });
+    railLayout->addStretch();
+    m_railButtons.first()->setChecked(true);
 }
 
 void MainWindow::buildTabBar() {
-    m_tabBar = new QTabBar(this);
+    // 36px top tab strip (docs: oler-tabbar-36px). Parented into the shell
+    // layout in buildContentPages.
+    m_tabBar = new QTabBar;
     m_tabBar->setFixedHeight(36);
+    m_tabBar->setExpanding(false);
     m_tabBar->addTab(tr("Editor"));      // 1st tab
     m_tabBar->addTab(tr("Problems"));
     m_tabBar->addTab(tr("Training"));
@@ -100,7 +115,23 @@ void MainWindow::buildContentPages() {
     m_pages->addWidget(m_aiPage);
     m_settingsPage = new OlerSettingsPage;      // index 5: Settings
     m_pages->addWidget(m_settingsPage);
-    setCentralWidget(m_pages);
+
+    // Shell frame: [56px rail | (36px tab strip / page stack)].
+    auto *right = new QWidget;
+    auto *rightLayout = new QVBoxLayout(right);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    rightLayout->setSpacing(0);
+    rightLayout->addWidget(m_tabBar);
+    rightLayout->addWidget(m_pages, /*stretch*/ 1);
+
+    auto *shell = new QWidget;
+    auto *shellLayout = new QHBoxLayout(shell);
+    shellLayout->setContentsMargins(0, 0, 0, 0);
+    shellLayout->setSpacing(0);
+    shellLayout->addWidget(m_activityRail);
+    shellLayout->addWidget(right, /*stretch*/ 1);
+
+    setCentralWidget(shell);
 
     connect(m_problemsPage, &OlerProblemsPage::openRequested,
             this, &MainWindow::openProblem);
@@ -158,12 +189,9 @@ QWidget *MainWindow::buildEditorPage() {
 
 void MainWindow::onTabChanged(int index) {
     if (m_pages && index >= 0) m_pages->setCurrentIndex(index);
-    // sync activity bar
-    if (m_activityBar) {
-        for (auto *a : m_activityBar->actions()) {
-            a->setChecked(a->data().toInt() == index);
-        }
-    }
+    // sync activity rail buttons
+    for (QToolButton *btn : m_railButtons)
+        btn->setChecked(btn->property("pageIdx").toInt() == index);
 }
 
 void MainWindow::openFile() {

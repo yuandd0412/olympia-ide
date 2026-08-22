@@ -2,6 +2,8 @@
 #include <KSyntaxHighlighting/Repository>
 #include <KSyntaxHighlighting/SyntaxHighlighter>
 #include <KSyntaxHighlighting/Theme>
+#include <QFile>
+#include <QFileInfo>
 #include <QHash>
 #include "core/theme/CThemeManager.h"
 
@@ -31,6 +33,48 @@ void OlerEditor::setLanguage(const QString &lang) {
     m_language = lang;
     auto def = m_repo->definitionForName(lang);
     if (def.isValid()) m_highlighter->setDefinition(def);
+}
+
+QString OlerEditor::filePath() const {
+    return m_filePath;
+}
+
+bool OlerEditor::loadFile(const QString &path) {
+    QFile f(path);
+    if (!f.open(QFile::ReadOnly | QFile::Text))
+        return false;
+    setPlainText(QString::fromUtf8(f.readAll()));
+    m_filePath = path;
+
+    // Pick the highlighting mode from the extension.
+    static const QHash<QString, QString> kLangByExt = {
+        {QStringLiteral("cpp"), QStringLiteral("C++")},
+        {QStringLiteral("cc"),  QStringLiteral("C++")},
+        {QStringLiteral("cxx"), QStringLiteral("C++")},
+        {QStringLiteral("c"),   QStringLiteral("C")},
+        {QStringLiteral("h"),   QStringLiteral("C++")},
+        {QStringLiteral("hpp"), QStringLiteral("C++")},
+        {QStringLiteral("py"),  QStringLiteral("Python")},
+        {QStringLiteral("java"), QStringLiteral("Java")},
+    };
+    const QString ext = QFileInfo(path).suffix().toLower();
+    setLanguage(kLangByExt.value(ext, QStringLiteral("C++")));
+
+    document()->setModified(false);
+    emit fileChanged(path);
+    return true;
+}
+
+bool OlerEditor::saveFile(const QString &path) {
+    QFile f(path);
+    if (!f.open(QFile::WriteOnly | QFile::Truncate | QFile::Text))
+        return false;
+    if (f.write(toPlainText().toUtf8()) < 0)
+        return false;
+    m_filePath = path;
+    document()->setModified(false);
+    emit fileChanged(path);
+    return true;
 }
 
 void OlerEditor::applyThemeFromManager() {

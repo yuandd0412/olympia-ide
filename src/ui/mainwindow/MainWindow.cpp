@@ -1,16 +1,41 @@
 #include "MainWindow.h"
-#include <QToolBar>
-#include <QTabBar>
-#include <QStackedWidget>
+#include <QAction>
+#include <QFileDialog>
 #include <QLabel>
+#include <QSplitter>
+#include <QStackedWidget>
+#include <QTabBar>
+#include <QToolBar>
+#include <QVBoxLayout>
+#include <QFutureWatcher>
+#include <QtConcurrent/QtConcurrentRun>
 #include "ui/editor/OlerEditor.h"
+#include "ui/runner/OlerRunPanel.h"
+#include "core/runner/OlerRunner.h"
+#include "core/settings/OlerSettings.h"
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("Oler IDE v2");
     resize(1280, 800);
+    m_runner = new OlerRunner(this);
     buildActivityBar();
     buildTabBar();
     buildContentPages();
+
+    auto *openAct = new QAction(this);
+    openAct->setShortcut(QKeySequence::Open);
+    connect(openAct, &QAction::triggered, this, &MainWindow::openFile);
+    addAction(openAct);
+
+    auto *saveAct = new QAction(this);
+    saveAct->setShortcut(QKeySequence::Save);
+    connect(saveAct, &QAction::triggered, this, [this] { saveCurrentFile(false); });
+    addAction(saveAct);
+
+    auto *runAct = new QAction(this);
+    runAct->setShortcut(QKeySequence("Ctrl+R"));
+    connect(runAct, &QAction::triggered, this, &MainWindow::runCurrentFile);
+    addAction(runAct);
 }
 
 MainWindow::~MainWindow() = default;
@@ -66,7 +91,29 @@ void MainWindow::buildContentPages() {
 }
 
 QWidget *MainWindow::buildEditorPage() {
-    m_editorPage = new OlerEditor(this);
+    auto *page = new QWidget(this);
+    auto *layout = new QVBoxLayout(page);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+
+    // Title strip: file name + dirty dot (docs/04-editor/subpages.md).
+    m_editorTitle = new QLabel(tr("untitled"));
+    m_editorTitle->setObjectName("editorTitle");
+    m_editorTitle->setFixedHeight(28);
+    m_editorTitle->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+    layout->addWidget(m_editorTitle);
+
+    auto *splitter = new QSplitter(Qt::Vertical, page);
+    m_editorPage = new OlerEditor(splitter);
+    m_runPanel = new OlerRunPanel(splitter);
+    splitter->addWidget(m_editorPage);
+    splitter->addWidget(m_runPanel);
+    splitter->setStretchFactor(0, 3);
+    splitter->setStretchFactor(1, 1);
+    splitter->setSizes({600, 200});
+    layout->addWidget(splitter, /*stretch*/ 1);
+
+    // Sample code for first-run; not associated with any file.
     m_editorPage->setPlainText(
         "// Oler IDE v2 - sample C++\n"
         "#include <iostream>\n"
@@ -74,9 +121,23 @@ QWidget *MainWindow::buildEditorPage() {
         "int main() {\n"
         "    std::cout << \"Hello, OI!\" << std::endl;\n"
         "    return 0;\n"
-        "}\n"
-    );
-    return m_editorPage;
+        "}\n");
+
+    auto syncTitle = [this] {
+        const QString name =
+            m_editorPage->filePath().isEmpty()
+                ? tr("untitled")
+                : QFileInfo(m_editorPage->filePath()).fileName();
+        m_editorTitle->setText(name + (m_editorPage->document()->isModified()
+                                           ? QStringLiteral(" *")
+                                           : QString()));
+    };
+    connect(m_editorPage, &OlerEditor::fileChanged, page, syncTitle);
+    connect(m_editorPage->document(), &QTextDocument::modificationChanged,
+            page, syncTitle);
+    syncTitle();
+
+    return page;
 }
 
 void MainWindow::onTabChanged(int index) {
@@ -87,4 +148,74 @@ void MainWindow::onTabChanged(int index) {
             a->setChecked(a->data().toInt() == index);
         }
     }
+}
+
+void MainWindow::openFile() {
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Open source file"), QString(),
+        tr("Source files (*.cpp *.cc *.cxx *.c *.h *.hpp *.py *.java);;All files (*)"));
+    if (path.isEmpty())
+        return;
+    if (!m_editorPage->loadFile(path)) {
+        m_runPanel->showMessage(tr("<span style='color:#ff453a'>Cannot open %1</span>")
+                                    .arg(path.toHtmlEscaped()));
+        return;
+    }
+    m_runPanel->showMessage(tr("<span style='color:#6e6d68'>opened %1 — "
+                               "Ctrl+R to compile &amp; run</span>")
+                                .arg(QFileInfo(path).fileName().toHtmlEscaped()));
+}
+
+bool MainWindow::saveCurrentFile(bool saveAs) {
+    QString path = m_editorPage->filePath();
+    if (path.isEmpty() || saveAs) {
+        path = QFileDialog::getSaveFileName(
+            this, tr("Save source file"),
+            path.isEmpty() ? QDir::homePath() + "/main.cpp" : path,
+            tr("C++ sources (*.cpp);;All files (*)"));
+        if (path.isEmpty())
+            return false;
+    }
+    if (!m_editorPage->saveFile(path)) {
+        m_runPanel->showMessage(tr("<span style='color:#ff453a'>Cannot write %1</span>")
+                                    .arg(path.toHtmlEscaped()));
+        return false;
+    }
+    return true;
+}
+
+void MainWindow::runCurrentFile() {
+    if (m_editorPage->filePath().isEmpty()) {
+        if (!saveCurrentFile(/*saveAs=*/true))
+            return;
+    } else if (m_editorPage->document()->isModified()) {
+        if (!m_editorPage->saveFile(m_editorPage->filePath()))
+            return;
+    }
+
+    const QString src = m_editorPage->filePath();
+    const QVector<OlerTestCase> cases = OlerRunner::discoverCases(src);
+    if (cases.isEmpty()) {
+        m_runPanel->showMessage(
+            tr("<div style='color:#6e6d68'>No test cases found. Put "
+               "<b>tests/caseN.in/.out</b> or <b>input.txt/output.txt</b> next to "
+               "%1.</div>")
+                .arg(QFileInfo(src).fileName().toHtmlEscaped()));
+        return;
+    }
+
+    m_runPanel->showMessage(tr("<div style='color:#a0a0a3'>Compiling %1 ...</div>")
+                                .arg(QFileInfo(src).fileName().toHtmlEscaped()));
+
+    const OlerRunnerConfig cfg = OlerRunnerConfig::fromSettings(OlerSettings::instance());
+    auto *watcher = new QFutureWatcher<OlerRunResult>(this);
+    connect(watcher, &QFutureWatcher<OlerRunResult>::finished, this,
+            [this, watcher, src] {
+                m_runPanel->showResult(watcher->result(), src);
+                watcher->deleteLater();
+            });
+    watcher->setFuture(QtConcurrent::run([cfg, src, cases] {
+        OlerRunner runner;
+        return runner.run(cfg, src, cases);
+    }));
 }

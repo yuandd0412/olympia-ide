@@ -5,6 +5,7 @@
 
 #include "core/runner/OlerRunner.h"
 #include <QFile>
+#include <QDir>
 #include <QTemporaryDir>
 #include <cstdio>
 
@@ -119,6 +120,30 @@ int main() {
         check(!r.compileOk, "CE: compile fails");
         check(!r.compileOutput.isEmpty(), "CE: compiler stderr captured");
         checkVerdict(r.cases.at(0), "CE", "CE: case verdict CE");
+    }
+
+    // 6. discoverCases: tests/*.in/.out pairs, name-sorted.
+    {
+        const QString proj = dir.filePath("projA");
+        QDir().mkpath(proj + "/tests");
+        writeText(proj + "/tests/case1.in", "1 2\n");
+        writeText(proj + "/tests/case1.out", "3\n");
+        writeText(proj + "/tests/case10.in", "5 5\n");
+        writeText(proj + "/tests/case10.out", "10\n");
+        writeText(proj + "/tests/case2.in", "3 4\n");
+        // case2 has no .out -> must be skipped.
+        const auto cs = OlerRunner::discoverCases(proj + "/sol.cpp");
+        check(cs.size() == 2, "discover: only paired cases found");
+        check(cs.at(0).inputFile.endsWith("case1.in"), "discover: sorted by name");
+
+        // Legacy input.txt/output.txt fallback.
+        const QString projB = dir.filePath("projB");
+        QDir().mkpath(projB);
+        writeText(projB + "/input.txt", "1 1\n");
+        writeText(projB + "/output.txt", "2\n");
+        const auto csB = OlerRunner::discoverCases(projB + "/main.cpp");
+        check(csB.size() == 1 && csB.at(0).inputFile.endsWith("input.txt"),
+              "discover: input.txt fallback");
     }
 
     if (failures == 0) {

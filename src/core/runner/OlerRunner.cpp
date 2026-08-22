@@ -65,6 +65,34 @@ OlerRunnerConfig OlerRunnerConfig::fromSettings(const OlerSettings *settings) {
 
 OlerRunner::OlerRunner(QObject *parent) : QObject(parent) {}
 
+QVector<OlerTestCase> OlerRunner::discoverCases(const QString &sourcePath) {
+    QVector<OlerTestCase> cases;
+    const QDir srcDir(QFileInfo(sourcePath).absolutePath());
+
+    // 1. tests/*.in paired with same-basename .out, name-sorted.
+    const QDir testsDir(srcDir.filePath(QStringLiteral("tests")));
+    if (testsDir.exists()) {
+        const QStringList inFiles =
+            testsDir.entryList({QStringLiteral("*.in")}, QDir::Files, QDir::Name);
+        for (const QString &in : inFiles) {
+            const QFileInfo fi(testsDir.filePath(in));
+            const QString out = fi.completeBaseName() + QStringLiteral(".out");
+            if (QFileInfo::exists(testsDir.filePath(out))) {
+                cases.append({fi.absoluteFilePath(), testsDir.filePath(out)});
+            }
+        }
+    }
+    if (!cases.isEmpty())
+        return cases;
+
+    // 2. Legacy single-sample layout: input.txt / output.txt.
+    const QString in = srcDir.filePath(QStringLiteral("input.txt"));
+    const QString out = srcDir.filePath(QStringLiteral("output.txt"));
+    if (QFileInfo::exists(in) && QFileInfo::exists(out))
+        cases.append({in, out});
+    return cases;
+}
+
 bool OlerRunner::compile(const OlerRunnerConfig &config,
                          const QString &sourcePath,
                          const QString &exePath,

@@ -55,6 +55,11 @@ public:
                       const QString &sourcePath,
                       const QVector<OlerTestCase> &cases);
 
+    // Convention-based sample lookup relative to the source folder:
+    //   1. tests/<name>.in + tests/<name>.out pairs (sorted)
+    //   2. fallback: <dir>/input.txt + <dir>/output.txt
+    static QVector<OlerTestCase> discoverCases(const QString &sourcePath);
+
 private:
     bool compile(const OlerRunnerConfig &config,
                  const QString &sourcePath,

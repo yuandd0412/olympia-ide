@@ -8,7 +8,9 @@ class QLabel;
 class OlerEditor;
 class OlerRunner;
 class OlerRunPanel;
-class QTextEdit;
+class OlerProblemsPage;
+class OlerMistakesPage;
+struct OlerProblem;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -27,12 +29,15 @@ private:
     void openFile();
     bool saveCurrentFile(bool saveAs);
     void runCurrentFile();
+    void openProblem(const OlerProblem &problem);
 
     QToolBar *m_activityBar = nullptr;  // 56px
     QTabBar *m_tabBar = nullptr;        // 36px
     QStackedWidget *m_pages = nullptr;
-    OlerEditor *m_editorPage = nullptr;  // 1st tab (Editor)
-    OlerRunPanel *m_runPanel = nullptr;  // bottom half of the editor page
-    QLabel *m_editorTitle = nullptr;     // file name + dirty dot
+    OlerEditor *m_editorPage = nullptr;      // 1st tab (Editor)
+    OlerRunPanel *m_runPanel = nullptr;      // bottom half of the editor page
+    QLabel *m_editorTitle = nullptr;         // file name + dirty dot
+    OlerProblemsPage *m_problemsPage = nullptr; // 2nd tab
+    OlerMistakesPage *m_mistakesPage = nullptr; // 4th tab
     OlerRunner *m_runner = nullptr;
 };

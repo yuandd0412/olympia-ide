@@ -20,6 +20,8 @@ struct OlerProblem {
 class OlerProblems : public QObject {
     Q_OBJECT
 public:
+    static OlerProblems *instance(); // ~/.oleride/problems.json
+
     explicit OlerProblems(const QString &filePath, QObject *parent = nullptr);
 
     QVector<OlerProblem> all() const;

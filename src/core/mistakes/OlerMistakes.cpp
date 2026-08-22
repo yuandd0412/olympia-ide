@@ -36,6 +36,12 @@ OlerMistake mistakeFromJson(const QJsonObject &o) {
 
 } // namespace
 
+OlerMistakes *OlerMistakes::instance() {
+    static OlerMistakes inst(
+        QDir::homePath() + QStringLiteral("/.oleride/mistakes.json"));
+    return &inst;
+}
+
 OlerMistakes::OlerMistakes(const QString &filePath, QObject *parent)
     : QObject(parent), m_path(filePath) {
     load();

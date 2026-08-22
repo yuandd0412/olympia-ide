@@ -11,8 +11,12 @@
 #include <QtConcurrent/QtConcurrentRun>
 #include "ui/editor/OlerEditor.h"
 #include "ui/runner/OlerRunPanel.h"
+#include "ui/problems/OlerProblemsPage.h"
+#include "ui/mistakes/OlerMistakesPage.h"
 #include "core/runner/OlerRunner.h"
 #include "core/settings/OlerSettings.h"
+#include "core/problems/OlerProblems.h"
+#include "core/mistakes/OlerMistakes.h"
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("Oler IDE v2");
@@ -82,12 +86,17 @@ void MainWindow::buildContentPages() {
         return lbl;
     };
     m_pages->addWidget(buildEditorPage());      // index 0: Editor
-    m_pages->addWidget(placeholder("Problems"));
+    m_problemsPage = new OlerProblemsPage;      // index 1: Problems
+    m_pages->addWidget(m_problemsPage);
     m_pages->addWidget(placeholder("Training"));
-    m_pages->addWidget(placeholder("Mistakes"));
+    m_mistakesPage = new OlerMistakesPage;      // index 3: Mistakes
+    m_pages->addWidget(m_mistakesPage);
     m_pages->addWidget(placeholder("AI Coach"));
     m_pages->addWidget(placeholder("Settings"));
     setCentralWidget(m_pages);
+
+    connect(m_problemsPage, &OlerProblemsPage::openRequested,
+            this, &MainWindow::openProblem);
 }
 
 QWidget *MainWindow::buildEditorPage() {
@@ -184,6 +193,36 @@ bool MainWindow::saveCurrentFile(bool saveAs) {
     return true;
 }
 
+void MainWindow::openProblem(const OlerProblem &problem) {
+    // Per-problem workspace: ~/.oleride/workspace/<id>/ with main.cpp +
+    // input.txt/output.txt placeholders on first open.
+    QDir ws(QDir::homePath() + QStringLiteral("/.oleride/workspace/") + problem.id);
+    if (!ws.exists() && !QDir().mkpath(ws.absolutePath())) {
+        m_runPanel->showMessage(tr("<span style='color:#ff453a'>Cannot create %1</span>")
+                                    .arg(ws.absolutePath().toHtmlEscaped()));
+        return;
+    }
+    const QString mainCpp = ws.filePath(QStringLiteral("main.cpp"));
+    if (!QFileInfo::exists(mainCpp)) {
+        QFile f(mainCpp);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            const QString tmpl =
+                QStringLiteral("// %1 - %2 (%3)\n"
+                               "#include <bits/stdc++.h>\n"
+                               "using namespace std;\n\n"
+                               "int main() {\n"
+                               "    \n"
+                               "    return 0;\n"
+                               "}\n")
+                    .arg(problem.id, problem.title.toHtmlEscaped(), problem.oj);
+            f.write(tmpl.toUtf8());
+        }
+    }
+    if (!m_editorPage->loadFile(mainCpp))
+        return;
+    m_tabBar->setCurrentIndex(0); // switch to Editor
+}
+
 void MainWindow::runCurrentFile() {
     if (m_editorPage->filePath().isEmpty()) {
         if (!saveCurrentFile(/*saveAs=*/true))
@@ -211,8 +250,25 @@ void MainWindow::runCurrentFile() {
     auto *watcher = new QFutureWatcher<OlerRunResult>(this);
     connect(watcher, &QFutureWatcher<OlerRunResult>::finished, this,
             [this, watcher, src] {
-                m_runPanel->showResult(watcher->result(), src);
+                const OlerRunResult result = watcher->result();
+                m_runPanel->showResult(result, src);
                 watcher->deleteLater();
+
+                // Auto-journal non-AC runs (docs/05-test-results/panel.md
+                // cross-reference: every non-AC row writes to the journal).
+                bool hasFail = false;
+                for (const OlerCaseResult &r : result.cases)
+                    if (r.verdict != QLatin1String("AC"))
+                        hasFail = true;
+                if (hasFail) {
+                    OlerMistake m;
+                    m.problemId = QFileInfo(src).completeBaseName();
+                    m.oj = QStringLiteral("Local");
+                    m.title = src;
+                    m.verdict = result.cases.first().verdict;
+                    OlerMistakes::instance()->add(m);
+                    OlerMistakes::instance()->save();
+                }
             });
     watcher->setFuture(QtConcurrent::run([cfg, src, cases] {
         OlerRunner runner;

@@ -18,6 +18,8 @@ struct OlerMistake {
 class OlerMistakes : public QObject {
     Q_OBJECT
 public:
+    static OlerMistakes *instance(); // ~/.oleride/mistakes.json
+
     explicit OlerMistakes(const QString &filePath, QObject *parent = nullptr);
 
     QVector<OlerMistake> entries(bool includeReviewed = false) const;

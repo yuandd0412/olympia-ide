@@ -37,6 +37,12 @@ OlerProblem problemFromJson(const QJsonObject &o) {
 
 } // namespace
 
+OlerProblems *OlerProblems::instance() {
+    static OlerProblems inst(
+        QDir::homePath() + QStringLiteral("/.oleride/problems.json"));
+    return &inst;
+}
+
 OlerProblems::OlerProblems(const QString &filePath, QObject *parent)
     : QObject(parent), m_path(filePath) {
     load();

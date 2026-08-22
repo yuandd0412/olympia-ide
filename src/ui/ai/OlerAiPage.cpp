@@ -1,4 +1,6 @@
 #include "OlerAiPage.h"
+#include <QComboBox>
+#include <QLabel>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTextBrowser>
@@ -15,6 +17,21 @@ OlerAiPage::OlerAiPage(QWidget *parent) : QWidget(parent) {
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(16, 16, 16, 16);
     layout->setSpacing(8);
+
+    // Header: brand + model selector (spec section 4.4).
+    auto *header = new QHBoxLayout;
+    auto *brand = new QLabel(QStringLiteral("<b>dots.ai</b>"), this);
+    brand->setObjectName(QStringLiteral("settingsGroupHeader"));
+    m_model = new QComboBox(this);
+    m_model->addItems({QStringLiteral("dots3-note-prev"),
+                       QStringLiteral("dots3-mini")});
+    m_model->setEnabled(false); // real models land in Phase 7+
+    m_model->setToolTip(tr("dots.ai model directory arrives in Phase 7+"));
+    header->addWidget(brand);
+    header->addStretch();
+    header->addWidget(new QLabel(tr("Model"), this));
+    header->addWidget(m_model);
+    layout->addLayout(header);
 
     m_log = new QTextBrowser(this);
     m_log->setOpenExternalLinks(false);
@@ -52,12 +69,14 @@ OlerAiPage::OlerAiPage(QWidget *parent) : QWidget(parent) {
 }
 
 void OlerAiPage::appendBubble(bool user, const QString &text) {
-    // User bubble: elevated surface; assistant: transparent + border.
+    // User bubble: elevated surface; assistant: surface + border (spec 4.4).
     const QString style = user
-        ? QStringLiteral("background-color:#252524;color:#f1f1ef;"
-                         "margin-left:120px;padding:6px;border-radius:6px;")
-        : QStringLiteral("border:1px solid #252524;color:#f1f1ef;"
-                         "margin-right:120px;padding:6px;border-radius:6px;");
+        ? QStringLiteral("background-color:#2c2c2b;color:#f1f1ef;"
+                         "margin-left:120px;padding:6px;border-radius:8px;")
+        : QStringLiteral("border:1px solid rgba(255,255,255,0.06);"
+                         "background-color:rgba(255,255,255,0.02);"
+                         "color:#f1f1ef;margin-right:120px;padding:6px;"
+                         "border-radius:8px;");
     m_log->append(QStringLiteral("<div style='%1'>%2</div>")
                       .arg(style, text.toHtmlEscaped()));
 }

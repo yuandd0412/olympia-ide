@@ -3,18 +3,19 @@
 #include "core/problems/OlerProblems.h"
 
 class QLineEdit;
-class QTableWidget;
-class QLabel;
+class QScrollArea;
+class QGridLayout;
+class QVBoxLayout;
 
-// Problems tab (docs/03-shell-pages/problems.md): search bar, problem
-// cards, recent strip. Dense list style — no hero, no marketing chrome.
+// Problems tab (00-design-spec section 4.1): search bar, recent strip,
+// problem-card grid. Dense file-browser style — no hero, no marketing.
 class OlerProblemsPage : public QWidget {
     Q_OBJECT
 public:
     explicit OlerProblemsPage(QWidget *parent = nullptr);
 
 signals:
-    // Double-click / Enter on a card: user wants to work on this problem.
+    // Double-click on a card: user wants to work on this problem.
     void openRequested(const OlerProblem &problem);
 
 private slots:
@@ -22,10 +23,13 @@ private slots:
     void addProblem();
 
 private:
-    void openRow(int row);
+    void rebuildRecent();
 
     OlerProblems *m_store;
     QLineEdit *m_search = nullptr;
-    QLabel *m_recentLabel = nullptr;
-    QTableWidget *m_table = nullptr;
+    QWidget *m_recentRow = nullptr;
+    QVBoxLayout *m_recentLayout = nullptr;
+    QScrollArea *m_scroll = nullptr;
+    QWidget *m_gridHost = nullptr;
+    QGridLayout *m_grid = nullptr;
 };

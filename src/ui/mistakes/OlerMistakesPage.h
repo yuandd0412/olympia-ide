@@ -5,8 +5,8 @@
 class QTableWidget;
 class QLabel;
 
-// Mistakes tab (docs/03-shell-pages/mistakes.md): verdict filter rail,
-// journal list, review actions. Verdict color is the primary dimension.
+// Mistakes tab (00-design-spec section 4.3): verdict filter chips,
+// journal list, frequency heatmap hint rail.
 class OlerMistakesPage : public QWidget {
     Q_OBJECT
 public:

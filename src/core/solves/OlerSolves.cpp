@@ -40,6 +40,13 @@ int OlerSolves::countOn(const QDate &date) const {
     return m_counts.value(date, 0);
 }
 
+int OlerSolves::totalCount() const {
+    int total = 0;
+    for (auto it = m_counts.constBegin(); it != m_counts.constEnd(); ++it)
+        total += it.value();
+    return total;
+}
+
 int OlerSolves::streak() const {
     const QDate today = QDate::currentDate();
     QDate cursor = countOn(today) > 0 ? today : today.addDays(-1);

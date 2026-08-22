@@ -14,6 +14,7 @@ public:
 
     void addSolve(const QDate &date);
     int countOn(const QDate &date) const;
+    int totalCount() const;
 
     // Consecutive days with >= 1 solve, ending today (or yesterday if
     // nothing solved today yet — a streak must not die at midnight).

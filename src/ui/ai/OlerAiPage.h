@@ -4,6 +4,7 @@
 class QTextBrowser;
 class QPlainTextEdit;
 class QPushButton;
+class QComboBox;
 
 // AI Coach tab (docs/03-shell-pages/ai.md): chat surface with message
 // bubbles + prompt chips. Mocked assistant until Phase 7+ (dots.ai).
@@ -21,4 +22,5 @@ private:
     QTextBrowser *m_log = nullptr;
     QPlainTextEdit *m_input = nullptr;
     QPushButton *m_send = nullptr;
+    QComboBox *m_model = nullptr;
 };

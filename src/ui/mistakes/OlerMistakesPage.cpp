@@ -1,7 +1,9 @@
 #include "OlerMistakesPage.h"
+#include <QDate>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QPainter>
 #include <QPushButton>
 #include <QStringList>
 #include <QTableWidget>
@@ -9,6 +11,7 @@
 
 namespace {
 
+// Verdict tokens (00-design-spec section 1.5).
 QString colorFor(const QString &v) {
     if (v == QLatin1String("AC"))  return QStringLiteral("#34c759");
     if (v == QLatin1String("WA"))  return QStringLiteral("#ff453a");
@@ -18,15 +21,62 @@ QString colorFor(const QString &v) {
     return QStringLiteral("#a0a0a3");
 }
 
+// 7x4 frequency heatmap of the last 28 days (visual hint, non-interactive
+// in v1 per docs/03-shell-pages/mistakes.md).
+class Heatmap : public QWidget {
+public:
+    explicit Heatmap(OlerMistakes *store, QWidget *parent = nullptr)
+        : QWidget(parent), m_store(store) {
+        setFixedSize(154, 92);
+    }
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        const QDate today = QDate::currentDate();
+        QVector<int> counts(28, 0);
+        for (const OlerMistake &m : m_store->entries(true)) {
+            const int daysAgo =
+                static_cast<int>(m.when.date().daysTo(today));
+            if (daysAgo >= 0 && daysAgo < 28)
+                ++counts[27 - daysAgo];
+        }
+        int maxV = 1;
+        for (int c : counts) maxV = qMax(maxV, c);
+
+        constexpr int kCell = 18, kGap = 3;
+        for (int i = 0; i < 28; ++i) {
+            const int r = i / 7, c = i % 7;
+            const int level = counts[i] == 0 ? 0
+                              : 1 + counts[i] * 3 / maxV; // 0..4
+            QColor cell(Qt::GlobalColor::white);
+            switch (level) { // primary #d97757 with rising alpha
+            case 0: cell = QColor(255, 255, 255, 12); break;
+            case 1: cell = QColor(217, 119, 87, 60); break;
+            case 2: cell = QColor(217, 119, 87, 120); break;
+            case 3: cell = QColor(217, 119, 87, 180); break;
+            default: cell = QColor(217, 119, 87); break;
+            }
+            p.fillRect(c * (kCell + kGap), r * (kCell + kGap),
+                       kCell, kCell, cell);
+        }
+    }
+private:
+    OlerMistakes *m_store;
+};
+
 } // namespace
 
 OlerMistakesPage::OlerMistakesPage(QWidget *parent)
     : QWidget(parent), m_store(OlerMistakes::instance()) {
-    auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(12, 12, 12, 12);
-    layout->setSpacing(8);
+    auto *rootLayout = new QHBoxLayout(this);
+    rootLayout->setContentsMargins(12, 12, 12, 12);
+    rootLayout->setSpacing(16);
 
-    // Verdict filter rail with live counts.
+    auto *mainCol = new QVBoxLayout;
+    mainCol->setSpacing(8);
+
+    // Verdict filter chips with live counts.
     auto *rail = new QHBoxLayout;
     m_countsLabel = new QLabel(this);
     rail->addWidget(m_countsLabel);
@@ -36,9 +86,7 @@ OlerMistakesPage::OlerMistakesPage(QWidget *parent)
                                   QStringLiteral("CE")};
     for (const QString &v : verdicts) {
         auto *btn = new QPushButton(v.isEmpty() ? tr("All") : v, this);
-        if (!v.isEmpty())
-            btn->setStyleSheet(
-                QStringLiteral("color: %1;").arg(colorFor(v)));
+        btn->setProperty("verdictChip", true);
         btn->setCheckable(true);
         btn->setChecked(m_verdictFilter == v);
         connect(btn, &QPushButton::clicked, this, [this, v] {
@@ -47,7 +95,7 @@ OlerMistakesPage::OlerMistakesPage(QWidget *parent)
         });
         rail->addWidget(btn);
     }
-    layout->addLayout(rail);
+    mainCol->addLayout(rail);
 
     m_table = new QTableWidget(this);
     m_table->setColumnCount(5);
@@ -59,7 +107,7 @@ OlerMistakesPage::OlerMistakesPage(QWidget *parent)
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->setSelectionMode(QAbstractItemView::SingleSelection);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    layout->addWidget(m_table, /*stretch*/ 1);
+    mainCol->addWidget(m_table, /*stretch*/ 1);
 
     auto *actions = new QHBoxLayout;
     auto *reviewedBtn = new QPushButton(tr("Mark reviewed"), this);
@@ -67,7 +115,17 @@ OlerMistakesPage::OlerMistakesPage(QWidget *parent)
     actions->addWidget(reviewedBtn);
     actions->addWidget(removeBtn);
     actions->addStretch();
-    layout->addLayout(actions);
+    mainCol->addLayout(actions);
+    rootLayout->addLayout(mainCol, /*stretch*/ 1);
+
+    // Right rail: heatmap hint card.
+    auto *railCard = new QVBoxLayout;
+    auto *heatCaption = new QLabel(tr("Last 28 days"), this);
+    heatCaption->setObjectName(QStringLiteral("sectionCaption"));
+    railCard->addWidget(heatCaption);
+    railCard->addWidget(new Heatmap(m_store, this));
+    railCard->addStretch();
+    rootLayout->addLayout(railCard);
 
     connect(reviewedBtn, &QPushButton::clicked, this,
             &OlerMistakesPage::markReviewed);

@@ -4,9 +4,13 @@
 class QComboBox;
 class QSpinBox;
 class QLineEdit;
+class QListWidget;
+class QStackedWidget;
+class QFormLayout;
 
-// Settings tab (docs/03-shell-pages/settings.md): flat grouped sections,
-// every control bound to an OlerSettings key and persisted immediately.
+// Settings tab (docs/03-shell-pages/settings.md + 00-design-spec §4.5):
+// left section rail, right control panes. Every control binds to an
+// OlerSettings key and persists immediately.
 class OlerSettingsPage : public QWidget {
     Q_OBJECT
 public:
@@ -17,7 +21,14 @@ private slots:
     void detectCompiler();
 
 private:
-    QComboBox *m_theme = nullptr;
+    QWidget *buildAppearancePane();
+    QWidget *buildCompilerPane();
+    QWidget *buildBudgetsPane();
+    QWidget *buildTrainingPane();
+    QWidget *group(const QString &title, QFormLayout *form);
+
+    QListWidget *m_sections = nullptr;
+    QStackedWidget *m_panes = nullptr;
     QSpinBox *m_fontSize = nullptr;
     QLineEdit *m_gxxPath = nullptr;
     QComboBox *m_optLevel = nullptr;

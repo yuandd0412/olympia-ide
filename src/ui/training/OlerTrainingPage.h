@@ -3,8 +3,8 @@
 
 class QLabel;
 
-// Training tab (docs/03-shell-pages/training.md): streak counter,
-// daily-goal progress, last-30-days bar chart. Data: OlerSolves log.
+// Training tab (00-design-spec section 4.2): 3 KPI cards (Streak / Today
+// goal / Total), planned-sessions empty state, 30-day bar chart.
 class OlerTrainingPage : public QWidget {
     Q_OBJECT
 public:
@@ -14,7 +14,8 @@ private slots:
     void rebuild();
 
 private:
-    QLabel *m_streakLabel = nullptr;
-    QLabel *m_goalLabel = nullptr;
+    QLabel *m_streakValue = nullptr;
+    QLabel *m_todayValue = nullptr;
+    QLabel *m_totalValue = nullptr;
     QWidget *m_goalBar = nullptr;
 };

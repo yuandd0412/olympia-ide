@@ -1,63 +1,159 @@
 #include "OlerProblemsPage.h"
-#include <QFileDialog>
-#include <QHBoxLayout>
-#include <QHeaderView>
+#include <QGridLayout>
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMouseEvent>
 #include <QPushButton>
-#include <QTableWidget>
+#include <QScrollArea>
+#include <QVBoxLayout>
 
 namespace {
 
+// Difficulty chip colors (00-design-spec section 4.1):
+// 入门 grey / 普及 info blue / 提高 warning orange / NOI error red.
 QString difficultyColor(const QString &d) {
-    // docs/03-shell-pages/problems.md state colors:
-    // 入门(灰) 普及(info蓝) 提高(warning橙) NOI(error红)
-    if (d == QLatin1String("入门")) return QStringLiteral("#a0a0a3");
+    if (d == QLatin1String("入门")) return QStringLiteral("#6e6d68");
     if (d == QLatin1String("普及")) return QStringLiteral("#7daed4");
     if (d == QLatin1String("提高")) return QStringLiteral("#ff9f0a");
     if (d == QLatin1String("NOI"))  return QStringLiteral("#ff453a");
     return QStringLiteral("#a0a0a3");
 }
 
+QString elide(const QString &s, int n) {
+    return s.size() <= n ? s : s.left(n - 1) + QStringLiteral("…");
+}
+
+// One problem card: id (mono, accent), title, OJ + difficulty chips.
+class ProblemCard : public QFrame {
+    Q_OBJECT
+public:
+    explicit ProblemCard(const OlerProblem &p, QWidget *parent = nullptr)
+        : QFrame(parent), m_problem(p) {
+        setObjectName(QStringLiteral("problemCard"));
+        setFixedSize(190, 84);
+        auto *layout = new QVBoxLayout(this);
+        layout->setContentsMargins(10, 8, 10, 8);
+        layout->setSpacing(2);
+
+        auto *id = new QLabel(p.id, this);
+        id->setObjectName(QStringLiteral("cardId"));
+        layout->addWidget(id);
+
+        auto *title = new QLabel(elide(p.title.isEmpty() ? p.id : p.title, 22), this);
+        title->setObjectName(QStringLiteral("cardTitle"));
+        layout->addWidget(title);
+
+        auto *row = new QHBoxLayout;
+        row->setSpacing(6);
+        auto *oj = new QLabel(p.oj, this);
+        oj->setObjectName(QStringLiteral("chipBadge"));
+        oj->setProperty("chipKind", "oj");
+        auto *diff = new QLabel(p.difficulty, this);
+        diff->setObjectName(QStringLiteral("chipBadge"));
+        diff->setStyleSheet(
+            QStringLiteral("color: %1;").arg(difficultyColor(p.difficulty)));
+        row->addWidget(oj);
+        row->addWidget(diff);
+        row->addStretch();
+        layout->addLayout(row);
+    }
+
+signals:
+    void clicked(const OlerProblem &problem);
+
+protected:
+    void mouseReleaseEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton)
+            emit clicked(m_problem);
+        QFrame::mouseReleaseEvent(e);
+    }
+
+private:
+    OlerProblem m_problem;
+};
+
 } // namespace
+
+#include "OlerProblemsPage.moc"
 
 OlerProblemsPage::OlerProblemsPage(QWidget *parent)
     : QWidget(parent), m_store(OlerProblems::instance()) {
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(12, 12, 12, 12);
-    layout->setSpacing(8);
+    layout->setSpacing(10);
 
     auto *topRow = new QHBoxLayout;
     m_search = new QLineEdit(this);
     m_search->setPlaceholderText(tr("Search title / OJ / id ..."));
+    m_search->setFixedHeight(28);
     auto *addBtn = new QPushButton(tr("+ Add problem"), this);
     topRow->addWidget(m_search, /*stretch*/ 1);
     topRow->addWidget(addBtn);
     layout->addLayout(topRow);
 
-    m_recentLabel = new QLabel(this);
-    m_recentLabel->setObjectName("recentStrip");
-    layout->addWidget(m_recentLabel);
+    // Recent strip (8 cards max, MRU order).
+    auto *recentBlock = new QVBoxLayout;
+    recentBlock->setSpacing(4);
+    auto *recentHeader =
+        new QLabel(tr("Recent problems"), this);
+    recentHeader->setObjectName(QStringLiteral("sectionCaption"));
+    recentBlock->addWidget(recentHeader);
+    m_recentRow = new QWidget(this);
+    m_recentLayout = new QVBoxLayout(m_recentRow);
+    m_recentLayout->setContentsMargins(0, 0, 0, 0);
+    recentBlock->addWidget(m_recentRow);
+    layout->addLayout(recentBlock);
 
-    m_table = new QTableWidget(this);
-    m_table->setColumnCount(4);
-    m_table->setHorizontalHeaderLabels({tr("ID"), tr("Title"), tr("OJ"), tr("Difficulty")});
-    m_table->horizontalHeader()->setStretchLastSection(true);
-    m_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    m_table->verticalHeader()->setVisible(false);
-    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_table->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    layout->addWidget(m_table, /*stretch*/ 1);
+    // Card grid.
+    auto *allHeader = new QLabel(tr("All problems"), this);
+    allHeader->setObjectName(QStringLiteral("sectionCaption"));
+    layout->addWidget(allHeader);
+
+    m_scroll = new QScrollArea(this);
+    m_scroll->setWidgetResizable(true);
+    m_scroll->setFrameShape(QFrame::NoFrame);
+    m_gridHost = new QWidget;
+    m_grid = new QGridLayout(m_gridHost);
+    m_grid->setContentsMargins(0, 0, 8, 0);
+    m_grid->setSpacing(10);
+    m_grid->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+    m_scroll->setWidget(m_gridHost);
+    layout->addWidget(m_scroll, /*stretch*/ 1);
 
     connect(m_search, &QLineEdit::textChanged, this, &OlerProblemsPage::rebuild);
     connect(addBtn, &QPushButton::clicked, this, &OlerProblemsPage::addProblem);
-    connect(m_table, &QTableWidget::cellDoubleClicked,
-            this, [this](int row, int) { openRow(row); });
-
     connect(m_store, &OlerProblems::changed, this, &OlerProblemsPage::rebuild);
     rebuild();
+}
+
+void OlerProblemsPage::rebuildRecent() {
+    // Drop old mini-cards.
+    while (QWidget *w = m_recentRow->findChild<QWidget *>())
+        delete w;
+
+    const auto recents = m_store->recent();
+    if (recents.isEmpty()) {
+        auto *empty = new QLabel(tr("Pick a problem to start"), m_recentRow);
+        empty->setObjectName(QStringLiteral("recentEmpty"));
+        m_recentLayout->addWidget(empty);
+        return;
+    }
+    auto *row = new QHBoxLayout;
+    row->setSpacing(8);
+    for (const OlerProblem &p : recents) {
+        auto *mini = new QPushButton(
+            QStringLiteral("%1  %2").arg(p.id, elide(p.title, 12)), m_recentRow);
+        mini->setObjectName(QStringLiteral("recentChip"));
+        mini->setFixedHeight(26);
+        const QString id = p.id;
+        connect(mini, &QPushButton::clicked, this, [this, id] {
+            emit openRequested(m_store->find(id));
+        });
+        row->addWidget(mini);
+    }
+    row->addStretch();
+    m_recentLayout->addLayout(row);
 }
 
 void OlerProblemsPage::rebuild() {
@@ -71,36 +167,32 @@ void OlerProblemsPage::rebuild() {
             continue;
         items.append(p);
     }
+    rebuildRecent();
 
-    QString recents;
-    for (const OlerProblem &p : m_store->recent())
-        recents += p.id + QStringLiteral("  ");
-    m_recentLabel->setText(recents.isEmpty()
-                               ? tr("Recent: pick a problem to start")
-                               : tr("Recent: %1").arg(recents.trimmed()));
+    // Clear the grid.
+    while (QWidget *w = m_gridHost->findChild<QWidget *>())
+        delete w;
+    delete m_grid;
+    m_grid = new QGridLayout(m_gridHost);
+    m_grid->setContentsMargins(0, 0, 8, 0);
+    m_grid->setSpacing(10);
+    m_grid->setAlignment(Qt::AlignTop | Qt::AlignLeft);
 
-    m_table->setRowCount(items.size());
-    for (int i = 0; i < items.size(); ++i) {
-        const OlerProblem &p = items.at(i);
-        auto *idItem = new QTableWidgetItem(p.id);
-        idItem->setData(Qt::UserRole, p.id); // row -> id mapping
-        m_table->setItem(i, 0, idItem);
-        m_table->setItem(i, 1, new QTableWidgetItem(p.title));
-        m_table->setItem(i, 2, new QTableWidgetItem(p.oj));
-        auto *diff = new QTableWidgetItem(p.difficulty);
-        diff->setForeground(QColor(difficultyColor(p.difficulty)));
-        m_table->setItem(i, 3, diff);
+    constexpr int kCols = 5;
+    int col = 0, row = 0;
+    for (const OlerProblem &p : items) {
+        auto *card = new ProblemCard(p, m_gridHost);
+        connect(card, &ProblemCard::clicked, this, [this](const OlerProblem &pr) {
+            m_store->touchRecent(pr.id);
+            emit openRequested(pr);
+        });
+        m_grid->addWidget(card, row, col);
+        if (++col >= kCols) { col = 0; ++row; }
     }
-}
-
-void OlerProblemsPage::openRow(int row) {
-    if (row < 0 || row >= m_table->rowCount())
-        return;
-    const QString id = m_table->item(row, 0)->data(Qt::UserRole).toString();
-    const OlerProblem p = m_store->find(id);
-    if (p.isValid()) {
-        m_store->touchRecent(id);
-        emit openRequested(p);
+    if (items.isEmpty()) {
+        m_grid->addWidget(new QLabel(tr("No problems yet - use "
+                                        "\"+ Add problem\""), m_gridHost),
+                          0, 0);
     }
 }
 

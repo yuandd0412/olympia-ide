@@ -75,6 +75,38 @@ QTableView::corner { background-color: #f0eee8; border: none; }
 #shortcutRef { color: #6a6864; }
 #goalBar { border-radius: 2px; min-width: 240px; max-width: 360px; }
 
+/* Problem cards + KPI cards */
+#problemCard {
+  background-color: #ffffff;
+  border: 1px solid #d0cdc5;
+  border-radius: 8px;
+}
+#problemCard:hover { background-color: #f7f3ee; border-color: rgba(217,119,87,0.50); }
+#cardId { color: #d97757; font-family: Consolas, monospace; font-weight: bold; }
+#cardTitle { color: #2c2a26; }
+#chipBadge { background-color: rgba(0,0,0,0.04); border-radius: 2px; padding: 1px 6px; }
+#recentChip {
+  background-color: #ffffff; color: #6a6864;
+  border: 1px solid #e0ddd5;
+  border-radius: 6px; padding: 4px 10px;
+}
+#recentChip:hover { border-color: rgba(217,119,87,0.50); color: #b85c3f; }
+#sectionCaption { color: #6a6864; font-size: 11px; letter-spacing: 1px; }
+#recentEmpty { color: #6a6864; }
+#kpiCard {
+  background-color: #ffffff;
+  border: 1px solid #d0cdc5;
+  border-radius: 8px;
+}
+QListWidget {
+  background-color: #fafaf7; color: #6a6864;
+  border: 1px solid #e0ddd5; border-radius: 8px;
+  outline: none;
+}
+QListWidget::item { padding: 8px 10px; border-radius: 6px; }
+QListWidget::item:selected { background-color: rgba(217,119,87,0.15); color: #2c2a26; }
+QListWidget::item:hover:!selected { background-color: #f0eee8; }
+
 QTabBar::tab { background-color: #f0eee8; color: #6a6864; padding: 7px 14px; border-right: 1px solid #e0ddd5; }
 QTabBar::tab:selected { background-color: #fafaf7; color: #2c2a26; border-bottom: 2px solid #d97757; }
 

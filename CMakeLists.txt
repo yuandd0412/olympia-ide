@@ -29,6 +29,7 @@ add_subdirectory(third_party/syntax-highlighting EXCLUDE_FROM_ALL)
 add_executable(oler-ide
     src/app/main.cpp
     src/core/theme/CThemeManager.cpp
+    src/core/settings/OlerSettings.cpp
     src/ui/editor/OlerEditor.cpp
     src/ui/mainwindow/MainWindow.cpp
     resources/themes/themes.qrc
@@ -63,6 +64,17 @@ target_link_libraries(test_highlight PRIVATE
     Qt6::Core Qt6::Gui Qt6::Widgets
     KF6SyntaxHighlighting
 )
+
+# Phase 4a regression test: OlerSettings defaults / persistence / signals.
+add_executable(test_settings
+    tests/test_settings.cpp
+    src/core/settings/OlerSettings.cpp
+)
+target_include_directories(test_settings PRIVATE src)
+if(MINGW)
+    set_target_properties(test_settings PROPERTIES WIN32_EXECUTABLE FALSE)
+endif()
+target_link_libraries(test_settings PRIVATE Qt6::Core)
 
 # KSyntax DLL lives in build/bin/ (KSyntax's install target), but oler-ide.exe
 # is in build/. Without this copy, `oler-ide.exe` 启动时找不到 libKF6SyntaxHighlighting.dll → 0xC0000135 STATUS_DLL_NOT_FOUND.

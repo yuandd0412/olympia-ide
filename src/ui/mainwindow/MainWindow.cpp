@@ -1,4 +1,4 @@
-#include "MainWindow.h"
+﻿#include "MainWindow.h"
 #include "ui/common/OlerIcons.h"
 #include "ui/common/OlerTheme.h"
 #include "core/theme/CThemeManager.h"
@@ -82,7 +82,6 @@ void MainWindow::buildTitlebar() {
     m_titlebar = new QWidget;
     m_titlebar->setObjectName(QStringLiteral("titlebar"));
     m_titlebar->setFixedHeight(32);
-
     auto *layout = new QHBoxLayout(m_titlebar);
     layout->setContentsMargins(12, 0, 8, 0);
     layout->setSpacing(8);
@@ -141,7 +140,6 @@ void MainWindow::buildTitlebar() {
     layout->addWidget(m_maxBtn);
     layout->addWidget(m_closeBtn);
 
-    m_titlebar->installEventFilter(this); // double-click -> maximize toggle
 }
 
 void MainWindow::toggleMaxRestore() {
@@ -152,26 +150,60 @@ void MainWindow::toggleMaxRestore() {
     refreshChromeIcons();
 }
 
-bool MainWindow::eventFilter(QObject *obj, QEvent *ev) {
-    if (obj == m_titlebar) {
-        if (ev->type() == QEvent::MouseButtonPress) {
-            auto *me = static_cast<QMouseEvent *>(ev);
-            if (me->button() == Qt::LeftButton &&
-                !m_titlebar->childAt(me->pos())) {
-                // Empty caption area: hand off to the native move loop.
-                if (windowHandle())
-                    windowHandle()->startSystemMove();
-                return true;
-            }
-        } else if (ev->type() == QEvent::MouseButtonDblClick) {
-            auto *me = static_cast<QMouseEvent *>(ev);
-            if (me->button() != Qt::LeftButton || m_titlebar->childAt(me->pos()))
-                return QMainWindow::eventFilter(obj, ev);
-            toggleMaxRestore();
-            return true;
+#ifdef Q_OS_WIN
+void MainWindow::applyNativeWindowTreatments() {
+    // Restore native frame styles so DWM animations, snap and resize work,
+    // then strip the visible frame in WM_NCCALCSIZE. Standard recipe for
+    // custom-titlebar windows on Windows 10/11.
+    HWND hwnd = reinterpret_cast<HWND>(winId());
+    const LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+    SetWindowLongPtrW(hwnd, GWL_STYLE,
+                      style | WS_CAPTION | WS_THICKFRAME | WS_MAXIMIZEBOX |
+                          WS_MINIMIZEBOX);
+
+    // Win11: rounded corners + dark system chrome.
+    HMODULE dwm = GetModuleHandleW(L"dwmapi.dll");
+    if (dwm) {
+        using Fn = HRESULT(WINAPI *)(HWND, DWORD, LPCVOID, DWORD);
+        auto setAttr = reinterpret_cast<Fn>(
+            GetProcAddress(dwm, "DwmSetWindowAttribute"));
+        if (setAttr) {
+            BOOL dark = TRUE;
+            setAttr(hwnd, 20 /*DWMWA_USE_IMMERSIVE_DARK_MODE*/, &dark,
+                    sizeof(dark));
+            UINT round = 2 /*DWMWCP_ROUND*/;
+            setAttr(hwnd, 33 /*DWMWA_WINDOW_CORNER_PREFERENCE*/, &round,
+                    sizeof(round));
         }
     }
-    return QMainWindow::eventFilter(obj, ev);
+}
+#endif
+
+void MainWindow::showEvent(QShowEvent *ev) {
+    QMainWindow::showEvent(ev);
+#ifdef Q_OS_WIN
+    static bool applied = false;
+    if (!applied) {
+        applied = true;
+        applyNativeWindowTreatments();
+    }
+#endif
+}
+
+void MainWindow::changeEvent(QEvent *ev) {
+    QMainWindow::changeEvent(ev);
+    if (ev->type() == QEvent::WindowStateChange) {
+        // Maximized frameless+thickframe windows overflow the screen by the
+        // invisible resize border; compensate with content margins.
+        const int pad = isMaximized() ? 8 : 0;
+        centralWidget()->setContentsMargins(pad, 0, pad, 0);
+        if (m_maxBtn) {
+            m_maxBtn->setIcon(OlerIcons::make(
+                isMaximized() ? OlerIcons::Name::Restore
+                              : OlerIcons::Name::Maximize,
+                QColor("#a0a0a3"), 14));
+        }
+    }
 }
 
 QColor MainWindow::accentColor() const {
@@ -238,25 +270,49 @@ void MainWindow::refreshChromeIcons() {
 #ifdef Q_OS_WIN
 bool MainWindow::nativeEvent(const QByteArray &eventType, void *message,
                              qint64 *result) {
-    // Resize edges only. Caption dragging is handled in Qt via
-    // startSystemMove() (eventFilter on m_titlebar) because WM_NCHITTEST
-    // coordinates break under display scaling and swallow button clicks.
     MSG *msg = static_cast<MSG *>(message);
-    if (msg && msg->message == WM_NCHITTEST && !isMaximized()) {
-        const QPoint g(GET_X_LPARAM(msg->lParam), GET_Y_LPARAM(msg->lParam));
-        const QPoint p = mapFromGlobal(g);
-        constexpr int B = 6; // resize border thickness
+    if (msg->message == WM_NCCALCSIZE && msg->wParam &&
+        IsWindowVisible(msg->hwnd)) {
+        // Remove the standard frame entirely; we draw our own titlebar.
+        *result = 0;
+        return true;
+    }
+    if (msg->message == WM_NCHITTEST) {
+        // lParam is in physical screen px; convert to local logical px
+        // (DPI-safe, unlike mapFromGlobal on the raw value).
+        POINT pt{GET_X_LPARAM(msg->lParam), GET_Y_LPARAM(msg->lParam)};
+        ScreenToClient(msg->hwnd, &pt);
+        const qreal dpr = devicePixelRatioF();
+        const QPoint p{qRound(pt.x / dpr), qRound(pt.y / dpr)};
+
+        constexpr int B = 6; // resize border thickness (logical px)
         const int w = width(), h = height();
-        if (p.y() < m_titlebar->height() + B)
-            return false; // never resize-grip the caption zone
-        const bool L = p.x() < B, R = p.x() > w - B;
-        const bool Bo = p.y() > h - B;
-        if (L && Bo)     { *result = HTBOTTOMLEFT;  return true; }
-        if (R && Bo)     { *result = HTBOTTOMRIGHT; return true; }
-        if (L)           { *result = HTLEFT;        return true; }
-        if (R)           { *result = HTRIGHT;       return true; }
-        if (Bo)          { *result = HTBOTTOM;      return true; }
-        return false;
+        const bool maximized = isMaximized();
+        auto overButton = [&] {
+            QWidget *c = childAt(p);
+            return qobject_cast<QAbstractButton *>(c) != nullptr;
+        };
+
+        if (!maximized) {
+            const bool L = p.x() < B, R = p.x() > w - B;
+            const bool T = p.y() < B, Bo = p.y() > h - B;
+            if (T && L)      { *result = HTTOPLEFT;     return true; }
+            if (T && R)      { *result = HTTOPRIGHT;    return true; }
+            if (Bo && L)     { *result = HTBOTTOMLEFT;  return true; }
+            if (Bo && R)     { *result = HTBOTTOMRIGHT; return true; }
+            if (L)           { *result = HTLEFT;        return true; }
+            if (R)           { *result = HTRIGHT;       return true; }
+            if (Bo)          { *result = HTBOTTOM;      return true; }
+            if (T && !overButton()) { *result = HTTOP;  return true; }
+        }
+        // Caption zone: our custom bar. Everything except buttons drags,
+        // giving native drag + double-click + Aero Snap for free.
+        if (p.y() <= m_titlebar->height() && !overButton()) {
+            *result = HTCAPTION;
+            return true;
+        }
+        *result = HTCLIENT;
+        return true;
     }
     return QMainWindow::nativeEvent(eventType, message, result);
 }
@@ -393,7 +449,7 @@ void MainWindow::openFile() {
                                     .arg(path.toHtmlEscaped()));
         return;
     }
-    m_runPanel->showMessage(tr("<span style='color:#6e6d68'>opened %1 — "
+    m_runPanel->showMessage(tr("<span style='color:#6e6d68'>opened %1 鈥?"
                                "Ctrl+R to compile &amp; run</span>")
                                 .arg(QFileInfo(path).fileName().toHtmlEscaped()));
 }

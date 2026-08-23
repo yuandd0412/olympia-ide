@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QFont>
 #include <QHash>
+#include <QTimer>
 #include "core/theme/CThemeManager.h"
 #include "core/settings/OlerSettings.h"
 
@@ -36,7 +37,126 @@ OlerEditor::OlerEditor(QWidget *parent)
     applyThemeFromManager();
     connect(CThemeManager::instance(), &CThemeManager::themeChanged,
             this, &OlerEditor::applyThemeFromManager);
+
+    // Live structure analysis (bracket matching + unclosed detection).
+    m_scanTimer = new QTimer(this);
+    m_scanTimer->setSingleShot(true);
+    m_scanTimer->setInterval(150);
+    connect(m_scanTimer, &QTimer::timeout, this, [this] {
+        rescanStructure();
+        updateBracketMatch();
+    });
+    connect(this, &QPlainTextEdit::textChanged,
+            this, &OlerEditor::onTextChanged);
+    connect(this, &QPlainTextEdit::cursorPositionChanged,
+            this, &OlerEditor::onCursorPositionChanged);
+    onTextChanged();
 }
+
+// ---- structure analysis -------------------------------------------------
+//
+// A lightweight lexer that understands // and block comments, string and
+// char literals, so brackets inside "..." or /* */ do not confuse the
+// depth counting. This lets us answer "is the code written so far
+// structurally balanced?" — the core of the incomplete-code heuristic.
+
+OlerEditor::ScanResult OlerEditor::scanStructure() const {
+    ScanResult r;
+    const QString text = toPlainText();
+    const int n = text.size();
+    r.partner.assign(n, -1);
+
+    enum State { Code, LineComment, BlockComment, Str, Char } st = Code;
+    QVector<int> curly, round; // stacks of opener positions
+    QVector<QPair<int, int>> stackAll; // pos + kind ('{','(','[')
+    QVector<char> kinds;
+
+    for (int i = 0; i < n; ++i) {
+        const QChar ch = text.at(i);
+        const QChar next = i + 1 < n ? text.at(i + 1) : QChar();
+        switch (st) {
+        case Code:
+            if (ch == '/' && next == '/') { st = LineComment; ++i; }
+            else if (ch == '/' && next == '*') { st = BlockComment; ++i; }
+            else if (ch == '"') st = Str;
+            else if (ch == '\'') st = Char;
+            else if (ch == '{' || ch == '(' || ch == '[') {
+                stackAll.append({i, ch.toLatin1()});
+                kinds.append(ch.toLatin1());
+            } else if (ch == '}' || ch == ')' || ch == ']') {
+                const char want =
+                    ch == '}' ? '{' : ch == ')' ? '(' : '[';
+                if (!kinds.isEmpty() && kinds.last() == want) {
+                    const int openPos = stackAll.last().first;
+                    r.partner[openPos] = i;
+                    r.partner[i] = openPos;
+                    stackAll.removeLast();
+                    kinds.removeLast();
+                    if (want == '{') { curly.removeLast(); }
+                    else { round.removeLast(); }
+                }
+                // Mismatched closer: ignore (treated as incomplete code).
+            }
+            break;
+        case LineComment: if (ch == '\n') st = Code; break;
+        case BlockComment: if (ch == '*' && next == '/') { st = Code; ++i; } break;
+        case Str: if (ch == '\\') ++i; else if (ch == '"') st = Code; break;
+        case Char: if (ch == '\\') ++i; else if (ch == '\'') st = Code; break;
+        }
+        if (st == Code) {
+            if (ch == '{') curly.append(i);
+            else if (ch == '(' || ch == '[') round.append(i);
+        }
+    }
+
+    r.unclosedCurly = curly.size();
+    r.unclosedRound = round.size();
+    return r;
+}
+
+void OlerEditor::rescanStructure() {
+    m_scan = scanStructure();
+    emit structureChanged(m_scan.unclosedCurly, m_scan.unclosedRound);
+}
+
+void OlerEditor::onTextChanged() {
+    emit structureChanged(-1, -1); // analyzing...
+    m_scanTimer->start();
+}
+
+void OlerEditor::updateBracketMatch() {
+    QList<QTextEdit::ExtraSelection> sels;
+
+    // Highlight the pair around the caret when it sits next to a bracket.
+    const int pos = textCursor().position();
+    const QString t = toPlainText();
+    auto isBracket = [](QChar c) {
+        return c == '{' || c == '}' || c == '(' || c == ')' ||
+               c == '[' || c == ']';
+    };
+    int anchor = -1;
+    if (pos < t.size() && isBracket(t.at(pos))) anchor = pos;
+    else if (pos - 1 >= 0 && isBracket(t.at(pos - 1))) anchor = pos - 1;
+
+    if (anchor >= 0 && anchor < m_scan.partner.size() &&
+        m_scan.partner[anchor] >= 0) {
+        QTextEdit::ExtraSelection s1, s2;
+        const QColor c =
+            palette().highlight().color();
+        s1.format.setBackground(c);
+        s2.format.setBackground(c.lighter(160));
+        QTextCursor c1(document()), c2(document());
+        c1.setPosition(anchor); c1.movePosition(QTextCursor::NextCharacter,
+                                               QTextCursor::KeepAnchor);
+        c2.setPosition(m_scan.partner[anchor]);
+        c2.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+        s1.cursor = c1; s2.cursor = c2;
+        sels << s1 << s2;
+    }
+    setExtraSelections(sels);
+}
+
+void OlerEditor::onCursorPositionChanged() { updateBracketMatch(); }
 
 void OlerEditor::applyFontSize() {
     QFont f(QStringLiteral("Consolas"));

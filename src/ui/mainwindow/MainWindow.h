@@ -32,7 +32,8 @@ protected:
     bool nativeEvent(const QByteArray &eventType, void *message,
                      qint64 *result) override;
 #endif
-    bool eventFilter(QObject *obj, QEvent *ev) override;
+    void showEvent(QShowEvent *ev) override;
+    void changeEvent(QEvent *ev) override;
 
 private slots:
     void onTabChanged(int index);
@@ -40,6 +41,9 @@ private slots:
 
 private:
     void buildTitlebar();
+#ifdef Q_OS_WIN
+    void applyNativeWindowTreatments();
+#endif
     void buildActivityBar();
     void buildTabBar();
     void buildContentPages();

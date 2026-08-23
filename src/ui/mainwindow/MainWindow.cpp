@@ -86,28 +86,11 @@ void MainWindow::buildTitlebar() {
     layout->setContentsMargins(12, 0, 8, 0);
     layout->setSpacing(8);
 
-    // Logo: 18px primary circle with white bolt (SVG), rendered at full size.
+    // Logo: Aether brand mark (halo + star), tinted with the theme accent.
     {
-        const QString svg = QStringLiteral(
-            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>"
-            "<path d='M13 2L3 14h9l-1 8 10-12h-9l1-8z'"
-            " fill='%1'/></svg>").arg(QColor("#ffffff").name());
-        QPixmap pm(72, 72); // 4x for crisp display
-        pm.fill(Qt::transparent);
-        QPainter p(&pm);
-        p.setRenderHint(QPainter::Antialiasing);
-        p.setBrush(accentColor());
-        p.setPen(Qt::NoPen);
-        p.drawEllipse(1, 1, 70, 70);
-        QSvgRenderer bolt(svg.toUtf8());
-        bolt.render(&p, QRectF(20, 20, 32, 32));
-        p.end();
         auto *logo = new QLabel(m_titlebar);
-        logo->setPixmap(pm);
-        logo->setFixedSize(18, 18);
-        logo->setScaledContents(true);
-        logo->setStyleSheet(
-            "border-radius:9px;background:" + accentColor().name() + ";");
+        logo->setPixmap(OlerIcons::make(OlerIcons::Name::Logo,
+                                        accentColor(), 18).pixmap(18, 18));
         layout->addWidget(logo);
     }
 

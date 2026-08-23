@@ -1,243 +1,327 @@
 ﻿#include "OlerSettingsPage.h"
 #include "core/settings/OlerSettings.h"
 #include "core/theme/CThemeManager.h"
+#include "ui/common/OlerIcons.h"
+#include "ui/common/OlerTheme.h"
+#include <QButtonGroup>
 #include <QComboBox>
 #include <QFile>
-#include <QFormLayout>
+#include <QFont>
 #include <QFrame>
-#include <QGridLayout>
+#include <functional>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
-#include <QListWidget>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSpinBox>
-#include <QStackedWidget>
 #include <QVBoxLayout>
 
 namespace {
 
-QSpinBox *makeSpin(int lo, int hi, int step, const QString &suffix) {
+constexpr int kContentWidth = 660;
+
+QSpinBox *makeSpin(int lo, int hi, int step) {
     auto *s = new QSpinBox;
     s->setRange(lo, hi);
     s->setSingleStep(step);
-    if (!suffix.isEmpty())
-        s->setSuffix(suffix);
+    s->setFixedWidth(140);
+    s->setAlignment(Qt::AlignLeft);
     return s;
 }
 
-// Theme -> (base bg, accent) for the 2x2 picker swatches.
-struct ThemeSwatch {
-    const char *name;
-    const char *base;
-    const char *accent;
-};
-const ThemeSwatch kThemes[] = {
-    {"MistBlue",   "#131311", "#7daed4"},
-    {"AmberDark",  "#131311", "#d97757"},
-    {"OneDarkPro", "#282c34", "#61afef"},
-    {"AmberLight", "#fafaf7", "#d97757"},
-    {"OneLight",   "#fafafa", "#4078f2"},
-};
+QWidget *inputWithSuffix(QLineEdit **out, const QString &value,
+                         const QString &suffix, int maxW = 260) {
+    auto *wrap = new QWidget;
+    auto *lay = new QHBoxLayout(wrap);
+    lay->setContentsMargins(0, 0, 0, 0);
+    lay->setSpacing(8);
+    auto *edit = new QLineEdit(value);
+    edit->setFixedWidth(maxW);
+    edit->setFont(QFont(QStringLiteral("Consolas"), 10));
+    auto *suf = new QLabel(suffix);
+    suf->setObjectName(QStringLiteral("fSuffix"));
+    lay->addWidget(edit);
+    lay->addWidget(suf);
+    lay->addStretch();
+    *out = edit;
+    return wrap;
+}
 
 } // namespace
 
 OlerSettingsPage::OlerSettingsPage(QWidget *parent) : QWidget(parent) {
-    auto *rootLayout = new QHBoxLayout(this);
-    rootLayout->setContentsMargins(12, 12, 12, 12);
-    rootLayout->setSpacing(16);
+    auto *rootLayout = new QVBoxLayout(this);
+    rootLayout->setContentsMargins(0, 0, 0, 0);
 
-    m_sections = new QListWidget(this);
-    m_sections->setFixedWidth(150);
-    for (const QString &s :
-         {tr("外观"), tr("编译器"), tr("运行预算"), tr("训练"),
-          tr("快捷键"), tr("关于")})
-        m_sections->addItem(s);
-
-    m_panes = new QStackedWidget(this);
-    m_panes->addWidget(buildAppearancePane());
-    m_panes->addWidget(buildCompilerPane());
-    m_panes->addWidget(buildBudgetsPane());
-    m_panes->addWidget(buildTrainingPane());
-
-    auto *shortcutsPane = new QLabel(
-        tr("<b>键盘</b><br>"
-           "Ctrl+O&nbsp;&nbsp;&nbsp;打开<br>"
-           "Ctrl+S&nbsp;&nbsp;&nbsp;保存<br>"
-           "Ctrl+R&nbsp;&nbsp;&nbsp;编译运行"));
-    shortcutsPane->setObjectName("shortcutRef");
-    shortcutsPane->setAlignment(Qt::AlignTop | Qt::AlignLeft);
-    m_panes->addWidget(shortcutsPane);
-
-    auto *aboutPane = new QLabel(
-        QStringLiteral(
-            "<div style='font-size:20px;font-weight:600;'>Aether"
-            "</div>"
-            "<div style='color:#6e6d68;font-style:italic;margin:4px 0 12px;'>"
-            "Code in the void. Light in the Aether.</div>"
-            "<p style='line-height:1.7'>"
-            "Aether（/ˈiːθər/）源自古希腊语 Αἰθήρ —— "
-            "地、水、火、风之外的第五元素，承载星光穿越黑暗的介质。"
-            "</p>"
-            "<p style='line-height:1.7'>"
-            "它不是你手中的工具，而是代码运行的通路 —— "
-            "像以太承载星光一样，承载你的思路从模糊意象精确抵达评测机的 verdict。"
-            "在 Aether 中，你面对的只有问题、算法和你自己。"
-            "</p>"
-            "<hr style='border:none;border-top:1px solid rgba(255,255,255,0.06);"
-            "margin:10px 0'>"
-            "<b>版本</b> v0.1.0<br>"
-            "<b>基于</b> Qt 6.8 · KSyntaxHighlighting 6.8<br>"
-            "<b>许可</b> MIT License"),
-        this);
-    aboutPane->setObjectName("aboutPane");
-    aboutPane->setAlignment(Qt::AlignTop | Qt::AlignLeft);
-    m_panes->addWidget(aboutPane);
-
-    rootLayout->addWidget(m_sections);
-    rootLayout->addWidget(m_panes, /*stretch*/ 1);
-
-    connect(m_sections, &QListWidget::currentRowChanged,
-            m_panes, &QStackedWidget::setCurrentIndex);
+    auto *scroll = new QScrollArea(this);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidget(buildPage());
+    rootLayout->addWidget(scroll);
 }
 
-QWidget *OlerSettingsPage::group(const QString &title, QFormLayout *form) {
-    auto *box = new QWidget;
-    auto *layout = new QVBoxLayout(box);
-    layout->setContentsMargins(0, 0, 0, 0);
-    auto *header = new QLabel(title);
-    header->setObjectName("settingsGroupHeader");
-    layout->addWidget(header);
-    layout->addLayout(form);
-    layout->addStretch();
-    return box;
-}
-
-QWidget *OlerSettingsPage::buildAppearancePane() {
-    auto *form = new QFormLayout;
-
-    // Theme picker: 2x2 swatches (00-design-spec section 4.5).
-    auto *grid = new QGridLayout;
-    grid->setSpacing(8);
+QWidget *OlerSettingsPage::buildPage() {
     OlerSettings *st = OlerSettings::instance();
-    const QString currentTheme = st->value(QStringLiteral("theme")).toString();
-    int idx = 0;
-    for (const auto &t : kThemes) {
-        auto *btn = new QPushButton(QString::fromLatin1(t.name));
-        btn->setFixedSize(140, 56);
-        btn->setStyleSheet(
-            QStringLiteral(
-                "QPushButton { background-color: %1; color: %2;"
-                " border: 1px solid rgba(128,128,128,0.4); border-radius: 6px;"
-                " font-weight: bold; }")
-                .arg(QString::fromLatin1(t.base),
-                     QString::fromLatin1(t.name == currentTheme
-                                             ? "#ffffff"
-                                             : t.accent)));
-        btn->setProperty("themeName", QString::fromLatin1(t.name));
-        connect(btn, &QPushButton::clicked, this, [this](bool) {
-            onThemeChanged(static_cast<QPushButton *>(sender())
-                               ->property("themeName").toString());
-        });
-        grid->addWidget(btn, idx / 2, idx % 2);
-        ++idx;
-    }
 
-    // Keep the swatch buttons self-contained; theme applies on click.
-    m_fontSize = makeSpin(9, 28, 1, QStringLiteral(" px"));
-    m_fontSize->setValue(st->value(QStringLiteral("editor/fontSize")).toInt());
-    connect(m_fontSize, &QSpinBox::valueChanged, this,
-            [st](int v) { st->setValue(QStringLiteral("editor/fontSize"), v); st->save(); });
+    auto *host = new QWidget;
+    auto *outer = new QVBoxLayout(host);
+    outer->setContentsMargins(24, 20, 24, 20);
+    outer->setSpacing(0);
 
-    form->addRow(tr("主题（点击应用）"), grid);
-    form->addRow(tr("编辑器字号"), m_fontSize);
-    return group(tr("外观"), form);
-}
+    // Centered-left single column (max 660px), per prototype.
+    auto *colHost = new QWidget;
+    colHost->setMaximumWidth(kContentWidth);
+    auto *col = new QVBoxLayout(colHost);
+    col->setContentsMargins(0, 0, 0, 0);
+    col->setSpacing(0);
 
-QWidget *OlerSettingsPage::buildCompilerPane() {
-    auto *form = new QFormLayout;
-    auto *pathRow = new QHBoxLayout;
-    m_gxxPath = new QLineEdit(OlerSettings::instance()->value(
-                                  QStringLiteral("compiler/gxxPath")).toString());
-    connect(m_gxxPath, &QLineEdit::editingFinished, this, [this] {
-        auto *st = OlerSettings::instance();
-        st->setValue(QStringLiteral("compiler/gxxPath"), m_gxxPath->text());
+    auto *headerTitle =
+        new QLabel(QStringLiteral("<h1>设置</h1>"), colHost);
+    headerTitle->setObjectName(QStringLiteral("settingsH1"));
+    auto *headerSub = new QLabel(
+        tr("配置编译器、运行参数、快捷键等选项"), colHost);
+    headerSub->setObjectName(QStringLiteral("settingsSub"));
+    col->addWidget(headerTitle);
+    col->addWidget(headerSub);
+    col->addSpacing(16);
+
+    // ---- 外观 ----
+    auto *themeRow = pillGroup(CThemeManager::instance()->availableThemes(),
+                               st->value(QStringLiteral("theme")).toString(),
+                               [](const QString &t) {
+                                   CThemeManager::instance()->applyTheme(t);
+                                   OlerSettings *s = OlerSettings::instance();
+                                   s->setValue(QStringLiteral("theme"), t);
+                                   s->save();
+                               });
+    auto *fontSpin = makeSpin(9, 28, 1);
+    fontSpin->setValue(st->value(QStringLiteral("editor/fontSize")).toInt());
+    connect(fontSpin, &QSpinBox::valueChanged, this, [st](int v) {
+        st->setValue(QStringLiteral("editor/fontSize"), v);
         st->save();
     });
-    auto *detectBtn = new QPushButton(tr("检测"), this);
+    col->addWidget(section(tr("外观"),
+                           {formRow(tr("主题"), themeRow,
+                                    tr("切换立即生效，四套主题均已适配")),
+                            formRow(tr("编辑器字号"), fontSpin)}));
+
+    // ---- 编译器 ----
+    m_gxxPath = new QLineEdit(
+        st->value(QStringLiteral("compiler/gxxPath")).toString());
+    m_gxxPath->setFont(QFont(QStringLiteral("Consolas"), 10));
+    connect(m_gxxPath, &QLineEdit::editingFinished, this, [this] {
+        OlerSettings *s = OlerSettings::instance();
+        s->setValue(QStringLiteral("compiler/gxxPath"), m_gxxPath->text());
+        s->save();
+    });
+    auto *pathRow = new QWidget;
+    auto *pathLay = new QHBoxLayout(pathRow);
+    pathLay->setContentsMargins(0, 0, 0, 0);
+    pathLay->setSpacing(8);
+    pathLay->addWidget(m_gxxPath, /*stretch*/ 1);
+    auto *detectBtn = new QPushButton(tr("检测编译器"));
+    detectBtn->setProperty("psPrimary", true);
     connect(detectBtn, &QPushButton::clicked,
             this, &OlerSettingsPage::detectCompiler);
-    pathRow->addWidget(m_gxxPath, /*stretch*/ 1);
-    pathRow->addWidget(detectBtn);
-    form->addRow(tr("g++ 路径"), pathRow);
+    pathLay->addWidget(detectBtn);
 
-    m_optLevel = new QComboBox;
-    m_optLevel->addItems({"-O0", "-O1", "-O2", "-O3"});
-    m_optLevel->setCurrentText(OlerSettings::instance()->value(
-                                   QStringLiteral("compiler/optLevel")).toString());
-    connect(m_optLevel, &QComboBox::currentTextChanged, this, [](const QString &v) {
-        auto *st = OlerSettings::instance();
-        st->setValue(QStringLiteral("compiler/optLevel"), v);
-        st->save();
+    auto *stdSel = new QComboBox;
+    stdSel->addItems({QStringLiteral("C++14"), QStringLiteral("C++17"),
+                      QStringLiteral("C++20")});
+    stdSel->setCurrentText(
+        st->value(QStringLiteral("compiler/stdFlag")).toString()
+            .mid(5)); // strip "-std="
+    stdSel->setFixedWidth(160);
+    connect(stdSel, &QComboBox::currentTextChanged, this, [](const QString &v) {
+        OlerSettings *s = OlerSettings::instance();
+        s->setValue(QStringLiteral("compiler/stdFlag"),
+                    QStringLiteral("-std=") + v);
+        s->save();
     });
-    form->addRow(tr("优化等级"), m_optLevel);
 
-    m_stdFlag = new QComboBox;
-    m_stdFlag->addItems({"-std=c++14", "-std=c++17", "-std=c++20"});
-    m_stdFlag->setCurrentText(OlerSettings::instance()->value(
-                                  QStringLiteral("compiler/stdFlag")).toString());
-    connect(m_stdFlag, &QComboBox::currentTextChanged, this, [](const QString &v) {
-        auto *st = OlerSettings::instance();
-        st->setValue(QStringLiteral("compiler/stdFlag"), v);
-        st->save();
-    });
-    form->addRow(tr("语言标准"), m_stdFlag);
-    return group(tr("编译器"), form);
-}
+    const QStringList opts = {QStringLiteral("-O0"), QStringLiteral("-O2"),
+                              QStringLiteral("-O3")};
+    auto *optPills = pillGroup(
+        opts, st->value(QStringLiteral("compiler/optLevel")).toString(),
+        [](const QString &v) {
+            OlerSettings *s = OlerSettings::instance();
+            s->setValue(QStringLiteral("compiler/optLevel"), v);
+            s->save();
+        });
 
-QWidget *OlerSettingsPage::buildBudgetsPane() {
-    auto *form = new QFormLayout;
-    m_timeMs = makeSpin(100, 30000, 100, QStringLiteral(" ms"));
-    m_timeMs->setValue(OlerSettings::instance()->value(
-                           QStringLiteral("limits/timeMs")).toInt());
-    connect(m_timeMs, &QSpinBox::valueChanged, this, [](int v) {
-        auto *st = OlerSettings::instance();
+    col->addWidget(section(tr("编译器"),
+                           {formRow(tr("编译器路径"), pathRow,
+                                    tr("C++ 编译器可执行文件路径")),
+                            formRow(tr("C++ 标准"), stdSel),
+                            formRow(tr("优化等级"), optPills)}));
+
+    // ---- 运行预算 ----
+    auto *timeMs = makeSpin(100, 30000, 100);
+    timeMs->setValue(st->value(QStringLiteral("limits/timeMs")).toInt());
+    connect(timeMs, &QSpinBox::valueChanged, this, [st](int v) {
         st->setValue(QStringLiteral("limits/timeMs"), v);
         st->save();
     });
-    form->addRow(tr("时间限制"), m_timeMs);
-
-    m_memoryMb = makeSpin(8, 4096, 8, QStringLiteral(" MB"));
-    m_memoryMb->setValue(OlerSettings::instance()->value(
-                             QStringLiteral("limits/memoryMb")).toInt());
-    connect(m_memoryMb, &QSpinBox::valueChanged, this, [](int v) {
-        auto *st = OlerSettings::instance();
+    auto *memMb = makeSpin(8, 4096, 8);
+    memMb->setValue(st->value(QStringLiteral("limits/memoryMb")).toInt());
+    connect(memMb, &QSpinBox::valueChanged, this, [st](int v) {
         st->setValue(QStringLiteral("limits/memoryMb"), v);
         st->save();
     });
-    form->addRow(tr("内存限制"), m_memoryMb);
-    return group(tr("运行预算"), form);
-}
+    col->addWidget(section(tr("运行预算"),
+                           {formRow(tr("时间限制"), timeMs,
+                                    tr("单个测试点的最长运行时间（毫秒）")),
+                            formRow(tr("内存限制"), memMb,
+                                    tr("单个测试点的内存上限（MB）"))}));
 
-QWidget *OlerSettingsPage::buildTrainingPane() {
-    auto *form = new QFormLayout;
-    m_dailyGoal = makeSpin(1, 50, 1, QString());
-    m_dailyGoal->setValue(OlerSettings::instance()->value(
-                              QStringLiteral("training/dailyGoal")).toInt());
-    connect(m_dailyGoal, &QSpinBox::valueChanged, this, [](int v) {
-        auto *st = OlerSettings::instance();
+    // ---- 训练 ----
+    auto *goal = makeSpin(1, 50, 1);
+    goal->setValue(st->value(QStringLiteral("training/dailyGoal")).toInt());
+    connect(goal, &QSpinBox::valueChanged, this, [st](int v) {
         st->setValue(QStringLiteral("training/dailyGoal"), v);
         st->save();
     });
-    form->addRow(tr("每日目标（题）"), m_dailyGoal);
-    return group(tr("训练"), form);
+    col->addWidget(section(tr("训练"),
+                           {formRow(tr("每日目标（题）"), goal)}));
+
+    // ---- 快捷键 ----
+    auto makeKbd = [](const QString &desc, const QStringList &keys) {
+        auto *row = new QWidget;
+        auto *lay = new QHBoxLayout(row);
+        lay->setContentsMargins(0, 0, 0, 0);
+        auto *d = new QLabel(desc, row);
+        d->setObjectName(QStringLiteral("fHint"));
+        lay->addWidget(d);
+        lay->addStretch();
+        for (int i = 0; i < keys.size(); ++i) {
+            if (i > 0) {
+                auto *plus = new QLabel(QStringLiteral("+"), row);
+                plus->setObjectName(QStringLiteral("fHint"));
+                lay->addWidget(plus);
+            }
+            auto *k = new QLabel(keys.at(i), row);
+            k->setObjectName(QStringLiteral("kbdKey"));
+            lay->addWidget(k);
+        }
+        return row;
+    };
+    col->addWidget(section(
+        tr("快捷键"),
+        {makeKbd(tr("打开搜索"), {QStringLiteral("Ctrl"), QStringLiteral("K")}),
+         makeKbd(tr("保存文件"), {QStringLiteral("Ctrl"), QStringLiteral("S")}),
+         makeKbd(tr("编译运行"), {QStringLiteral("Ctrl"), QStringLiteral("R")}),
+         makeKbd(tr("切换页面"),
+                 {QStringLiteral("Ctrl"), QStringLiteral("1 ~ 6")})}));
+
+    // ---- 关于 ----
+    auto *aboutBody = new QWidget;
+    auto *aboutLay = new QHBoxLayout(aboutBody);
+    aboutLay->setContentsMargins(0, 4, 0, 4);
+    aboutLay->setSpacing(18);
+    auto *mark = new QLabel(aboutBody);
+    mark->setPixmap(OlerIcons::make(
+        OlerIcons::Name::Logo,
+        OlerTheme::accentForTheme(CThemeManager::instance()->currentTheme()),
+        56).pixmap(56, 56));
+    mark->setFixedSize(56, 56);
+    aboutLay->addWidget(mark, /*stretch*/ 0, Qt::AlignTop);
+
+    auto *info = new QLabel(
+        QStringLiteral(
+            "<div style='font-size:16px;font-weight:600;'>Aether</div>"
+            "<div style='color:#6e6d68;font-style:italic;margin:2px 0 10px;'>"
+            "Code in the void. Light in the Aether.</div>"
+            "<div style='line-height:1.7'>"
+            "源自古希腊语 Αἰθήρ —— 地、水、火、风之外的第五元素，"
+            "承载星光穿越黑暗的介质。它不是工具，而是代码运行的通路："
+            "承载你的思路从模糊意象，精确抵达评测机的 verdict。"
+            "</div><br>"
+            "<span style='color:#6e6d68'>版本</span> "
+            "<b>v0.1.0</b>&nbsp;&nbsp;"
+            "<span style='color:#6e6d68'>基于</span> Qt 6.8 · "
+            "KSyntaxHighlighting&nbsp;&nbsp;"
+            "<span style='color:#6e6d68'>许可</span> MIT"),
+        aboutBody);
+    info->setTextFormat(Qt::RichText);
+    info->setWordWrap(true);
+    aboutLay->addWidget(info, /*stretch*/ 1);
+    col->addWidget(section(tr("关于"), {aboutBody}));
+
+    col->addStretch();
+    outer->addWidget(colHost);
+    return host;
 }
 
-void OlerSettingsPage::onThemeChanged(const QString &theme) {
-    OlerSettings *st = OlerSettings::instance();
-    CThemeManager::instance()->applyTheme(theme);
-    st->setValue(QStringLiteral("theme"), theme);
-    st->save();
+QWidget *OlerSettingsPage::section(const QString &titleText,
+                                   const QList<QWidget *> &rows) {
+    auto *box = new QWidget;
+    auto *lay = new QVBoxLayout(box);
+    lay->setContentsMargins(0, 18, 0, 18);
+    lay->setSpacing(14);
+
+    auto *title = new QLabel(titleText, box);
+    title->setObjectName(QStringLiteral("sectionTitleLabel"));
+    lay->addWidget(title);
+
+    for (QWidget *r : rows)
+        if (r) lay->addWidget(r);
+
+    auto *divider = new QFrame(box);
+    divider->setFrameShape(QFrame::HLine);
+    divider->setObjectName(QStringLiteral("divider"));
+    lay->addWidget(divider);
+    return box;
+}
+
+QWidget *OlerSettingsPage::formRow(const QString &label, QWidget *control,
+                                   const QString &hint) {
+    auto *row = new QWidget;
+    auto *lay = new QHBoxLayout(row);
+    lay->setContentsMargins(0, 0, 0, 0);
+    lay->setSpacing(16);
+
+    auto *l = new QLabel(label, row);
+    l->setObjectName(QStringLiteral("fLabel"));
+    l->setFixedWidth(140);
+    l->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    lay->addWidget(l);
+
+    auto *right = new QWidget(row);
+    auto *rl = new QVBoxLayout(right);
+    rl->setContentsMargins(0, 0, 0, 0);
+    rl->setSpacing(4);
+    rl->addWidget(control);
+    if (!hint.isEmpty()) {
+        auto *h = new QLabel(hint, right);
+        h->setObjectName(QStringLiteral("fHint"));
+        rl->addWidget(h);
+    }
+    lay->addWidget(right, /*stretch*/ 1);
+    return row;
+}
+
+QWidget *OlerSettingsPage::pillGroup(
+    const QStringList &items, const QString &checked,
+    const std::function<void(const QString &)> &onPick) {
+    auto *wrap = new QWidget;
+    auto *lay = new QHBoxLayout(wrap);
+    lay->setContentsMargins(0, 0, 0, 0);
+    lay->setSpacing(8);
+    auto *group = new QButtonGroup(wrap);
+    group->setExclusive(true);
+    for (const QString &it : items) {
+        auto *b = new QPushButton(it, wrap);
+        b->setProperty("pill", true);
+        b->setCheckable(true);
+        b->setChecked(it == checked);
+        group->addButton(b);
+        connect(b, &QPushButton::clicked, wrap,
+                [onPick, it] { onPick(it); });
+        lay->addWidget(b);
+    }
+    lay->addStretch();
+    return wrap;
 }
 
 void OlerSettingsPage::detectCompiler() {
@@ -250,7 +334,7 @@ void OlerSettingsPage::detectCompiler() {
     for (const QString &c : candidates) {
         if (!c.isEmpty() && QFile::exists(c)) {
             m_gxxPath->setText(c);
-            auto *st = OlerSettings::instance();
+            OlerSettings *st = OlerSettings::instance();
             st->setValue(QStringLiteral("compiler/gxxPath"), c);
             st->save();
             return;

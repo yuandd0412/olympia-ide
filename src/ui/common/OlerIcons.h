@@ -25,6 +25,7 @@ enum class Name {
     Folder,
     Chevron,
     Zap,         // brand bolt
+    Logo,        // Aether mark: halo ring + star + flares (brand v1)
     Minimize,
     Maximize,
     Restore,

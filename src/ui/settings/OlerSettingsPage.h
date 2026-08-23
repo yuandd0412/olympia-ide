@@ -1,39 +1,31 @@
 #pragma once
 #include <QWidget>
+#include <functional>
 
 class QComboBox;
 class QSpinBox;
 class QLineEdit;
-class QListWidget;
-class QStackedWidget;
-class QFormLayout;
+class QLabel;
 
-// Settings tab (docs/03-shell-pages/settings.md + 00-design-spec §4.5):
-// left section rail, right control panes. Every control binds to an
-// OlerSettings key and persists immediately.
+// Settings page — single-column (max 660px) stacked sections, per the
+// v0 HTML prototype: form rows = [140px right-aligned label][control][hint],
+// radio pills for enum choices, kbd chips for shortcuts. Every control
+// binds to an OlerSettings key and persists immediately.
 class OlerSettingsPage : public QWidget {
     Q_OBJECT
 public:
     explicit OlerSettingsPage(QWidget *parent = nullptr);
 
 private slots:
-    void onThemeChanged(const QString &theme);
     void detectCompiler();
 
 private:
-    QWidget *buildAppearancePane();
-    QWidget *buildCompilerPane();
-    QWidget *buildBudgetsPane();
-    QWidget *buildTrainingPane();
-    QWidget *group(const QString &title, QFormLayout *form);
+    QWidget *buildPage();
+    QWidget *section(const QString &titleText, const QList<QWidget *> &rows);
+    QWidget *formRow(const QString &label, QWidget *control,
+                     const QString &hint = {});
+    QWidget *pillGroup(const QStringList &items, const QString &checked,
+                       const std::function<void(const QString &)> &onPick);
 
-    QListWidget *m_sections = nullptr;
-    QStackedWidget *m_panes = nullptr;
-    QSpinBox *m_fontSize = nullptr;
     QLineEdit *m_gxxPath = nullptr;
-    QComboBox *m_optLevel = nullptr;
-    QComboBox *m_stdFlag = nullptr;
-    QSpinBox *m_timeMs = nullptr;
-    QSpinBox *m_memoryMb = nullptr;
-    QSpinBox *m_dailyGoal = nullptr;
 };

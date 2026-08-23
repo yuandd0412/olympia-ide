@@ -103,11 +103,29 @@ QString body(Name name) {
 } // namespace
 
 QIcon make(Name name, const QColor &stroke, int size) {
-    const QString svg = QStringLiteral(
-        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'"
-        " stroke='%1' stroke-width='1.8' stroke-linecap='round'"
-        " stroke-linejoin='round'>%2</svg>")
-                            .arg(stroke.name(QColor::HexRgb), body(name));
+    QString svg;
+    if (name == Name::Logo) {
+        // Brand mark v1: halo ring + filled star core + four flares
+        // (00-design-spec: "被光环包裹的暗星").
+        svg = QStringLiteral(
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>"
+            "<g fill='none' stroke='%1' stroke-width='1.5'"
+            " stroke-linecap='round'>"
+            "<circle cx='12' cy='12' r='8.5'/>"
+            "<line x1='12' y1='1.2' x2='12' y2='3.8'/>"
+            "<line x1='12' y1='20.2' x2='12' y2='22.8'/>"
+            "<line x1='1.2' y1='12' x2='3.8' y2='12'/>"
+            "<line x1='20.2' y1='12' x2='22.8' y2='12'/>"
+            "</g>"
+            "<circle cx='12' cy='12' r='3.4' fill='%1'/></svg>")
+                  .arg(stroke.name(QColor::HexRgb));
+    } else {
+        svg = QStringLiteral(
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'"
+            " stroke='%1' stroke-width='1.8' stroke-linecap='round'"
+            " stroke-linejoin='round'>%2</svg>")
+                .arg(stroke.name(QColor::HexRgb), body(name));
+    }
 
     QPixmap pm(size * 2, size * 2); // 2x for crisp display
     pm.fill(Qt::transparent);

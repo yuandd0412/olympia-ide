@@ -85,9 +85,9 @@ OlerProblemsPage::OlerProblemsPage(QWidget *parent)
 
     auto *topRow = new QHBoxLayout;
     m_search = new QLineEdit(this);
-    m_search->setPlaceholderText(tr("Search title / OJ / id ..."));
+    m_search->setPlaceholderText(tr("搜索题目、OJ、标签..."));
     m_search->setFixedHeight(28);
-    auto *addBtn = new QPushButton(tr("+ Add problem"), this);
+    auto *addBtn = new QPushButton(tr("+ 添加题目"), this);
     topRow->addWidget(m_search, /*stretch*/ 1);
     topRow->addWidget(addBtn);
     layout->addLayout(topRow);
@@ -96,7 +96,7 @@ OlerProblemsPage::OlerProblemsPage(QWidget *parent)
     auto *recentBlock = new QVBoxLayout;
     recentBlock->setSpacing(4);
     auto *recentHeader =
-        new QLabel(tr("Recent problems"), this);
+        new QLabel(tr("最近题目"), this);
     recentHeader->setObjectName(QStringLiteral("sectionCaption"));
     recentBlock->addWidget(recentHeader);
     m_recentRow = new QWidget(this);
@@ -106,7 +106,7 @@ OlerProblemsPage::OlerProblemsPage(QWidget *parent)
     layout->addLayout(recentBlock);
 
     // Card grid.
-    auto *allHeader = new QLabel(tr("All problems"), this);
+    auto *allHeader = new QLabel(tr("全部题目"), this);
     allHeader->setObjectName(QStringLiteral("sectionCaption"));
     layout->addWidget(allHeader);
 
@@ -134,7 +134,7 @@ void OlerProblemsPage::rebuildRecent() {
 
     const auto recents = m_store->recent();
     if (recents.isEmpty()) {
-        auto *empty = new QLabel(tr("Pick a problem to start"), m_recentRow);
+        auto *empty = new QLabel(tr("从题库选一道题，开始今天的训练"), m_recentRow);
         empty->setObjectName(QStringLiteral("recentEmpty"));
         m_recentLayout->addWidget(empty);
         return;
@@ -190,29 +190,28 @@ void OlerProblemsPage::rebuild() {
         if (++col >= kCols) { col = 0; ++row; }
     }
     if (items.isEmpty()) {
-        m_grid->addWidget(new QLabel(tr("No problems yet - use "
-                                        "\"+ Add problem\""), m_gridHost),
+        m_grid->addWidget(new QLabel(tr("还没有题目 —— 点右上角「+ 添加题目」")),
                           0, 0);
     }
 }
 
 void OlerProblemsPage::addProblem() {
-    const QString id = QInputDialog::getText(this, tr("Add problem"),
-                                             tr("Problem id (e.g. P1001):"));
+    const QString id = QInputDialog::getText(this, tr("添加题目"),
+                                             tr("题号（如 P1001）："));
     if (id.trimmed().isEmpty())
         return;
     OlerProblem p;
     p.id = id.trimmed();
-    p.title = QInputDialog::getText(this, tr("Add problem"), tr("Title:"));
+    p.title = QInputDialog::getText(this, tr("添加题目"), tr("标题："));
     static const QStringList ojs = {QStringLiteral("Luogu"), QStringLiteral("Codeforces"),
                                     QStringLiteral("AtCoder")};
     bool ok = false;
-    p.oj = QInputDialog::getItem(this, tr("Add problem"), tr("OJ:"),
+    p.oj = QInputDialog::getItem(this, tr("添加题目"), tr("OJ 来源："),
                                  ojs, 0, false, &ok);
     if (!ok) return;
     static const QStringList diffs = {QStringLiteral("入门"), QStringLiteral("普及"),
                                       QStringLiteral("提高"), QStringLiteral("NOI")};
-    p.difficulty = QInputDialog::getItem(this, tr("Add problem"), tr("Difficulty:"),
+    p.difficulty = QInputDialog::getItem(this, tr("添加题目"), tr("难度："),
                                          diffs, 0, false, &ok);
     if (!ok) return;
     m_store->upsert(p);

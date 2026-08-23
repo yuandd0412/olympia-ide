@@ -39,7 +39,7 @@
 #include "core/solves/OlerSolves.h"
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
-    setWindowTitle("Oler IDE v2");
+    setWindowTitle("Aether");
     resize(1280, 800);
 #ifdef Q_OS_WIN
     setWindowFlag(Qt::FramelessWindowHint); // custom titlebar (spec 3.1)
@@ -72,7 +72,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(runAct, &QAction::triggered, this, &MainWindow::runCurrentFile);
     addAction(runAct);
 
-    statusBar()->showMessage(tr("Ready - Ctrl+O open, Ctrl+R run"));
+    statusBar()->showMessage(tr("就绪 · Ctrl+O 打开 · Ctrl+R 编译运行"));
 }
 
 MainWindow::~MainWindow() = default;
@@ -111,7 +111,7 @@ void MainWindow::buildTitlebar() {
         layout->addWidget(logo);
     }
 
-    auto *title = new QLabel(QStringLiteral("Oler IDE"), m_titlebar);
+    auto *title = new QLabel(QStringLiteral("Aether"), m_titlebar);
     title->setObjectName(QStringLiteral("titlebarTitle"));
     layout->addWidget(title);
     layout->addStretch();
@@ -221,12 +221,12 @@ void MainWindow::buildActivityBar() {
     railLayout->setSpacing(4);
 
     const struct { OlerIcons::Name icon; const char *full; } acts[] = {
-        {OlerIcons::Name::Code,        "Editor"},
-        {OlerIcons::Name::CheckSquare, "Problems"},
-        {OlerIcons::Name::Target,      "Training"},
-        {OlerIcons::Name::Book,        "Mistakes"},
-        {OlerIcons::Name::Message,     "AI Coach"},
-        {OlerIcons::Name::Settings,    "Settings"},
+        {OlerIcons::Name::Code,        "编辑器"},
+        {OlerIcons::Name::CheckSquare, "题库"},
+        {OlerIcons::Name::Target,      "训练"},
+        {OlerIcons::Name::Book,        "错题本"},
+        {OlerIcons::Name::Message,     "AI 教练"},
+        {OlerIcons::Name::Settings,    "设置"},
     };
     for (const auto &a : acts) {
         auto *btn = new QToolButton(m_activityRail);
@@ -324,12 +324,12 @@ void MainWindow::buildTabBar() {
     m_tabBar = new QTabBar;
     m_tabBar->setFixedHeight(36);
     m_tabBar->setExpanding(false);
-    m_tabBar->addTab(tr("Editor"));      // 1st tab
-    m_tabBar->addTab(tr("Problems"));
-    m_tabBar->addTab(tr("Training"));
-    m_tabBar->addTab(tr("Mistakes"));
-    m_tabBar->addTab(tr("AI Coach"));
-    m_tabBar->addTab(tr("Settings"));
+    m_tabBar->addTab(tr("编辑器"));      // 1st tab
+    m_tabBar->addTab(tr("题库"));
+    m_tabBar->addTab(tr("训练"));
+    m_tabBar->addTab(tr("错题本"));
+    m_tabBar->addTab(tr("AI 教练"));
+    m_tabBar->addTab(tr("设置"));
     connect(m_tabBar, &QTabBar::currentChanged, this, &MainWindow::onTabChanged);
 }
 
@@ -440,12 +440,12 @@ void MainWindow::onTabChanged(int index) {
 
 void MainWindow::openFile() {
     const QString path = QFileDialog::getOpenFileName(
-        this, tr("Open source file"), QString(),
-        tr("Source files (*.cpp *.cc *.cxx *.c *.h *.hpp *.py *.java);;All files (*)"));
+        this, tr("打开源文件"), QString(),
+        tr("源文件 (*.cpp *.cc *.cxx *.c *.h *.hpp *.py *.java);;所有文件 (*)"));
     if (path.isEmpty())
         return;
     if (!m_editorPage->loadFile(path)) {
-        m_runPanel->showMessage(tr("<span style='color:#ff453a'>Cannot open %1</span>")
+        m_runPanel->showMessage(tr("<span style='color:#ff453a'>无法打开 %1</span>")
                                     .arg(path.toHtmlEscaped()));
         return;
     }
@@ -458,14 +458,14 @@ bool MainWindow::saveCurrentFile(bool saveAs) {
     QString path = m_editorPage->filePath();
     if (path.isEmpty() || saveAs) {
         path = QFileDialog::getSaveFileName(
-            this, tr("Save source file"),
+            this, tr("保存源文件"),
             path.isEmpty() ? QDir::homePath() + "/main.cpp" : path,
-            tr("C++ sources (*.cpp);;All files (*)"));
+            tr("C++ 源文件 (*.cpp);;所有文件 (*)"));
         if (path.isEmpty())
             return false;
     }
     if (!m_editorPage->saveFile(path)) {
-        m_runPanel->showMessage(tr("<span style='color:#ff453a'>Cannot write %1</span>")
+        m_runPanel->showMessage(tr("<span style='color:#ff453a'>无法写入 %1</span>")
                                     .arg(path.toHtmlEscaped()));
         return false;
     }
@@ -515,14 +515,13 @@ void MainWindow::runCurrentFile() {
     const QVector<OlerTestCase> cases = OlerRunner::discoverCases(src);
     if (cases.isEmpty()) {
         m_runPanel->showMessage(
-            tr("<div style='color:#6e6d68'>No test cases found. Put "
-               "<b>tests/caseN.in/.out</b> or <b>input.txt/output.txt</b> next to "
-               "%1.</div>")
+            tr("<div style='color:#6e6d68'>未找到测试点：把 <b>tests/caseN.in/.out</b> "
+               "或 <b>input.txt / output.txt</b> 放在 %1 旁边。</div>")
                 .arg(QFileInfo(src).fileName().toHtmlEscaped()));
         return;
     }
 
-    m_runPanel->showMessage(tr("<div style='color:#a0a0a3'>Compiling %1 ...</div>")
+    m_runPanel->showMessage(tr("<div style='color:#a0a0a3'>正在编译 %1 …</div>")
                                 .arg(QFileInfo(src).fileName().toHtmlEscaped()));
 
     const OlerRunnerConfig cfg = OlerRunnerConfig::fromSettings(OlerSettings::instance());

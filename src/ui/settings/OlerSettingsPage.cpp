@@ -1,4 +1,4 @@
-#include "OlerSettingsPage.h"
+﻿#include "OlerSettingsPage.h"
 #include "core/settings/OlerSettings.h"
 #include "core/theme/CThemeManager.h"
 #include <QComboBox>
@@ -50,8 +50,8 @@ OlerSettingsPage::OlerSettingsPage(QWidget *parent) : QWidget(parent) {
     m_sections = new QListWidget(this);
     m_sections->setFixedWidth(150);
     for (const QString &s :
-         {tr("Appearance"), tr("Compiler"), tr("Budgets"), tr("Training"),
-          tr("Shortcuts")})
+         {tr("外观"), tr("编译器"), tr("运行预算"), tr("训练"),
+          tr("快捷键"), tr("关于")})
         m_sections->addItem(s);
 
     m_panes = new QStackedWidget(this);
@@ -61,13 +61,38 @@ OlerSettingsPage::OlerSettingsPage(QWidget *parent) : QWidget(parent) {
     m_panes->addWidget(buildTrainingPane());
 
     auto *shortcutsPane = new QLabel(
-        tr("<b>Keyboard</b><br>"
-           "Ctrl+O&nbsp;&nbsp;&nbsp;Open<br>"
-           "Ctrl+S&nbsp;&nbsp;&nbsp;Save<br>"
-           "Ctrl+R&nbsp;&nbsp;&nbsp;Run"));
+        tr("<b>键盘</b><br>"
+           "Ctrl+O&nbsp;&nbsp;&nbsp;打开<br>"
+           "Ctrl+S&nbsp;&nbsp;&nbsp;保存<br>"
+           "Ctrl+R&nbsp;&nbsp;&nbsp;编译运行"));
     shortcutsPane->setObjectName("shortcutRef");
     shortcutsPane->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     m_panes->addWidget(shortcutsPane);
+
+    auto *aboutPane = new QLabel(
+        QStringLiteral(
+            "<div style='font-size:20px;font-weight:600;'>Aether"
+            "</div>"
+            "<div style='color:#6e6d68;font-style:italic;margin:4px 0 12px;'>"
+            "Code in the void. Light in the Aether.</div>"
+            "<p style='line-height:1.7'>"
+            "Aether（/ˈiːθər/）源自古希腊语 Αἰθήρ —— "
+            "地、水、火、风之外的第五元素，承载星光穿越黑暗的介质。"
+            "</p>"
+            "<p style='line-height:1.7'>"
+            "它不是你手中的工具，而是代码运行的通路 —— "
+            "像以太承载星光一样，承载你的思路从模糊意象精确抵达评测机的 verdict。"
+            "在 Aether 中，你面对的只有问题、算法和你自己。"
+            "</p>"
+            "<hr style='border:none;border-top:1px solid rgba(255,255,255,0.06);"
+            "margin:10px 0'>"
+            "<b>版本</b> v0.1.0<br>"
+            "<b>基于</b> Qt 6.8 · KSyntaxHighlighting 6.8<br>"
+            "<b>许可</b> MIT License"),
+        this);
+    aboutPane->setObjectName("aboutPane");
+    aboutPane->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+    m_panes->addWidget(aboutPane);
 
     rootLayout->addWidget(m_sections);
     rootLayout->addWidget(m_panes, /*stretch*/ 1);
@@ -124,9 +149,9 @@ QWidget *OlerSettingsPage::buildAppearancePane() {
     connect(m_fontSize, &QSpinBox::valueChanged, this,
             [st](int v) { st->setValue(QStringLiteral("editor/fontSize"), v); st->save(); });
 
-    form->addRow(tr("Theme (click to apply)"), grid);
-    form->addRow(tr("Editor font size"), m_fontSize);
-    return group(tr("Appearance"), form);
+    form->addRow(tr("主题（点击应用）"), grid);
+    form->addRow(tr("编辑器字号"), m_fontSize);
+    return group(tr("外观"), form);
 }
 
 QWidget *OlerSettingsPage::buildCompilerPane() {
@@ -139,12 +164,12 @@ QWidget *OlerSettingsPage::buildCompilerPane() {
         st->setValue(QStringLiteral("compiler/gxxPath"), m_gxxPath->text());
         st->save();
     });
-    auto *detectBtn = new QPushButton(tr("Detect"), this);
+    auto *detectBtn = new QPushButton(tr("检测"), this);
     connect(detectBtn, &QPushButton::clicked,
             this, &OlerSettingsPage::detectCompiler);
     pathRow->addWidget(m_gxxPath, /*stretch*/ 1);
     pathRow->addWidget(detectBtn);
-    form->addRow(tr("g++ path"), pathRow);
+    form->addRow(tr("g++ 路径"), pathRow);
 
     m_optLevel = new QComboBox;
     m_optLevel->addItems({"-O0", "-O1", "-O2", "-O3"});
@@ -155,7 +180,7 @@ QWidget *OlerSettingsPage::buildCompilerPane() {
         st->setValue(QStringLiteral("compiler/optLevel"), v);
         st->save();
     });
-    form->addRow(tr("Optimization"), m_optLevel);
+    form->addRow(tr("优化等级"), m_optLevel);
 
     m_stdFlag = new QComboBox;
     m_stdFlag->addItems({"-std=c++14", "-std=c++17", "-std=c++20"});
@@ -166,8 +191,8 @@ QWidget *OlerSettingsPage::buildCompilerPane() {
         st->setValue(QStringLiteral("compiler/stdFlag"), v);
         st->save();
     });
-    form->addRow(tr("Standard"), m_stdFlag);
-    return group(tr("Compiler"), form);
+    form->addRow(tr("语言标准"), m_stdFlag);
+    return group(tr("编译器"), form);
 }
 
 QWidget *OlerSettingsPage::buildBudgetsPane() {
@@ -180,7 +205,7 @@ QWidget *OlerSettingsPage::buildBudgetsPane() {
         st->setValue(QStringLiteral("limits/timeMs"), v);
         st->save();
     });
-    form->addRow(tr("Time limit"), m_timeMs);
+    form->addRow(tr("时间限制"), m_timeMs);
 
     m_memoryMb = makeSpin(8, 4096, 8, QStringLiteral(" MB"));
     m_memoryMb->setValue(OlerSettings::instance()->value(
@@ -190,8 +215,8 @@ QWidget *OlerSettingsPage::buildBudgetsPane() {
         st->setValue(QStringLiteral("limits/memoryMb"), v);
         st->save();
     });
-    form->addRow(tr("Memory limit"), m_memoryMb);
-    return group(tr("Test budgets"), form);
+    form->addRow(tr("内存限制"), m_memoryMb);
+    return group(tr("运行预算"), form);
 }
 
 QWidget *OlerSettingsPage::buildTrainingPane() {
@@ -204,8 +229,8 @@ QWidget *OlerSettingsPage::buildTrainingPane() {
         st->setValue(QStringLiteral("training/dailyGoal"), v);
         st->save();
     });
-    form->addRow(tr("Daily goal (problems)"), m_dailyGoal);
-    return group(tr("Training"), form);
+    form->addRow(tr("每日目标（题）"), m_dailyGoal);
+    return group(tr("训练"), form);
 }
 
 void OlerSettingsPage::onThemeChanged(const QString &theme) {

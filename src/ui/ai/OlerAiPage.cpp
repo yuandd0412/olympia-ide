@@ -8,9 +8,9 @@
 
 namespace {
 const char *kWelcome =
-    "hi, what are we working on?\n\n"
-    "(dots.ai mock - the real model lands in Phase 7+. For now I echo "
-    "helpful hints about your local judge.)";
+    "你好！我们今天做哪道题？\n\n"
+    "（当前为本地 mock —— 真实模型将于 Phase 7+ 接入，"
+    "现在会针对本地评测给出提示。）";
 } // namespace
 
 OlerAiPage::OlerAiPage(QWidget *parent) : QWidget(parent) {
@@ -26,7 +26,7 @@ OlerAiPage::OlerAiPage(QWidget *parent) : QWidget(parent) {
     m_model->addItems({QStringLiteral("dots3-note-prev"),
                        QStringLiteral("dots3-mini")});
     m_model->setEnabled(false); // real models land in Phase 7+
-    m_model->setToolTip(tr("dots.ai model directory arrives in Phase 7+"));
+    m_model->setToolTip(tr("dots.ai 模型管理将在 Phase 7+ 提供"));
     header->addWidget(brand);
     header->addStretch();
     header->addWidget(new QLabel(tr("Model"), this));
@@ -40,8 +40,8 @@ OlerAiPage::OlerAiPage(QWidget *parent) : QWidget(parent) {
     // Suggested prompt chips.
     auto *chips = new QHBoxLayout;
     for (const QString &chip :
-         {tr("Why is my last run WA?"), tr("How do I debug TLE?"),
-          tr("What is Oler workspace layout?")}) {
+         {tr("解释我的 WA"), tr("如何排查 TLE？"),
+          tr("工作区是怎么组织的？")}) {
         auto *b = new QPushButton(chip, this);
         connect(b, &QPushButton::clicked, this, [this, chip] {
             m_input->setPlainText(chip);
@@ -55,8 +55,8 @@ OlerAiPage::OlerAiPage(QWidget *parent) : QWidget(parent) {
     auto *composer = new QHBoxLayout;
     m_input = new QPlainTextEdit(this);
     m_input->setFixedHeight(56);
-    m_input->setPlaceholderText(tr("type a message..."));
-    m_send = new QPushButton(tr("Send"), this);
+    m_input->setPlaceholderText(tr("输入消息…"));
+    m_send = new QPushButton(tr("发送"), this);
     composer->addWidget(m_input, /*stretch*/ 1);
     composer->addWidget(m_send);
     layout->addLayout(composer);
@@ -90,20 +90,20 @@ void OlerAiPage::send() {
 
     QString reply;
     if (msg.contains(QLatin1String("WA"), Qt::CaseInsensitive)) {
-        reply = tr("For WA: check overflow (use long long), edge cases n=0/1, "
-                   "and compare your output against tests/caseN.out byte by "
-                   "byte with Ctrl+R.");
+        reply = tr("WA 排查：检查溢出（改用 long long）、n=0/1 边界，"
+                   "并用 Ctrl+R 将输出与 tests/caseN.out 逐字节比对。");
+                   
     } else if (msg.contains(QLatin1String("TLE"), Qt::CaseInsensitive)) {
-        reply = tr("For TLE: profile complexity first. If your algorithm is "
-                   "already optimal, try faster IO (scanf / sync_with_stdio) "
-                   "and constant-factor tuning.");
+        reply = tr("TLE 排查：先确认算法复杂度。若已是最优，尝试更快的 IO"
+                   "（scanf / 关闭流同步）与常数优化。");
+                   
     } else if (msg.contains(QLatin1String("workspace"), Qt::CaseInsensitive)) {
-        reply = tr("~/.oleride/workspace/<problem-id>/ holds main.cpp and your "
-                   "test cases. tests/*.in/.out pairs are picked up "
-                   "automatically by Ctrl+R.");
+        reply = tr("~/.oleride/workspace/<题号>/ 目录存放 main.cpp 与测试点；"
+                   "tests/*.in/.out 成对文件会被 Ctrl+R 自动发现。");
+                   
     } else {
-        reply = tr("Got it. Local judging works now; real dots.ai answers "
-                   "arrive in Phase 7+.");
+        reply = tr("收到。本地评测已经可用；dots.ai 的真实回答将从 Phase 7+ 接入。");
+                   
     }
     appendBubble(false, reply);
 }

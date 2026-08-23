@@ -89,7 +89,7 @@ OlerMistakesPage::OlerMistakesPage(QWidget *parent)
                                   QStringLiteral("TLE"), QStringLiteral("RE"),
                                   QStringLiteral("CE")};
     for (const QString &v : verdicts) {
-        auto *btn = new QPushButton(v.isEmpty() ? tr("All") : v, this);
+        auto *btn = new QPushButton(v.isEmpty() ? tr("全部") : v, this);
         btn->setProperty("verdictChip", true);
         btn->setCheckable(true);
         btn->setChecked(m_verdictFilter == v);
@@ -103,8 +103,8 @@ OlerMistakesPage::OlerMistakesPage(QWidget *parent)
 
     m_table = new QTableWidget(this);
     m_table->setColumnCount(5);
-    m_table->setHorizontalHeaderLabels({tr("Problem"), tr("Title"), tr("OJ"),
-                                        tr("Verdict"), tr("Time")});
+    m_table->setHorizontalHeaderLabels({tr("题号"), tr("标题"), tr("OJ"),
+                                        tr("判定"), tr("时间")});
     m_table->horizontalHeader()->setStretchLastSection(true);
     m_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_table->verticalHeader()->setVisible(false);
@@ -114,8 +114,8 @@ OlerMistakesPage::OlerMistakesPage(QWidget *parent)
     mainCol->addWidget(m_table, /*stretch*/ 1);
 
     auto *actions = new QHBoxLayout;
-    auto *reviewedBtn = new QPushButton(tr("Mark reviewed"), this);
-    auto *removeBtn = new QPushButton(tr("Delete"), this);
+    auto *reviewedBtn = new QPushButton(tr("标记已掌握"), this);
+    auto *removeBtn = new QPushButton(tr("删除"), this);
     actions->addWidget(reviewedBtn);
     actions->addWidget(removeBtn);
     actions->addStretch();
@@ -124,7 +124,7 @@ OlerMistakesPage::OlerMistakesPage(QWidget *parent)
 
     // Right rail: heatmap hint card.
     auto *railCard = new QVBoxLayout;
-    auto *heatCaption = new QLabel(tr("Last 28 days"), this);
+    auto *heatCaption = new QLabel(tr("近 28 天"), this);
     heatCaption->setObjectName(QStringLiteral("sectionCaption"));
     railCard->addWidget(heatCaption);
     railCard->addWidget(new Heatmap(m_store, this));

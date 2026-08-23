@@ -47,7 +47,7 @@ protected:
         p.drawText(rect().adjusted(0, height() - 18, 0, 0), Qt::AlignLeft,
                    today.addDays(-(kDays - 1)).toString("MM-dd"));
         p.drawText(rect().adjusted(0, height() - 18, 0, 0), Qt::AlignRight,
-                   QStringLiteral("today %1").arg(vals.last()));
+                   tr("今日 %1").arg(vals.last()));
     }
 };
 
@@ -77,11 +77,11 @@ OlerTrainingPage::OlerTrainingPage(QWidget *parent) : QWidget(parent) {
 
     // KPI row (00-design-spec section 4.2).
     auto *kpiRow = new QHBoxLayout;
-    kpiRow->addWidget(kpiCard(&m_streakValue, tr("days streak"),
+    kpiRow->addWidget(kpiCard(&m_streakValue, tr("连续打卡（天）"),
                               QStringLiteral("streakHero"), this));
-    kpiRow->addWidget(kpiCard(&m_todayValue, tr("solved today"),
+    kpiRow->addWidget(kpiCard(&m_todayValue, tr("今日已解决"),
                               QStringLiteral("kpiValue"), this));
-    kpiRow->addWidget(kpiCard(&m_totalValue, tr("total solved"),
+    kpiRow->addWidget(kpiCard(&m_totalValue, tr("累计解决"),
                               QStringLiteral("kpiValue"), this));
     kpiRow->addStretch();
     layout->addLayout(kpiRow);

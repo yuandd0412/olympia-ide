@@ -1,6 +1,8 @@
 #include "OlerTrainingPage.h"
 #include "core/solves/OlerSolves.h"
 #include "core/settings/OlerSettings.h"
+#include "core/theme/CThemeManager.h"
+#include "ui/common/OlerTheme.h"
 #include <QDate>
 #include <QFrame>
 #include <QLabel>
@@ -14,6 +16,9 @@ class Chart : public QWidget {
 public:
     explicit Chart(QWidget *parent = nullptr) : QWidget(parent) {
         setFixedHeight(200);
+        // Re-render with the new accent when the theme changes.
+        connect(CThemeManager::instance(), &CThemeManager::themeChanged,
+                this, QOverload<>::of(&QWidget::update));
     }
 protected:
     void paintEvent(QPaintEvent *) override {
@@ -29,8 +34,9 @@ protected:
                 today.addDays(i - (kDays - 1)));
             maxV = qMax(maxV, vals[i]);
         }
-        const QColor bar("#d97757");
-        const QColor barToday("#e08a6c");
+        const QColor bar =
+            OlerTheme::accentForTheme(CThemeManager::instance()->currentTheme());
+        const QColor barToday = bar.lighter(115);
         for (int i = 0; i < kDays; ++i) {
             const qreal h = vals[i] == 0 ? 1.0
                                          : (height() - 24.0) * vals[i] / maxV;
@@ -130,9 +136,11 @@ void OlerTrainingPage::rebuild() {
         QStringLiteral("<span style='color:#f1f1ef;font-size:28px;font-weight:bold;"
                        "font-family:Consolas,monospace'>%1</span>").arg(total));
 
-    // Fill: primary; >=100% switches to success green (token spec).
-    const QString fill = done >= goal ? QStringLiteral("#34c759")
-                                      : QStringLiteral("#d97757");
+    // Fill: accent; >=100% switches to success green (token spec).
+    const QString fill = done >= goal
+        ? QStringLiteral("#34c759")
+        : OlerTheme::accentForTheme(
+              CThemeManager::instance()->currentTheme()).name();
     const int pct = goal > 0 ? qBound(0, done * 100 / goal, 100) : 0;
     m_goalBar->setStyleSheet(
         QStringLiteral("border-radius:2px; min-width:240px; max-width:360px;"

@@ -102,6 +102,7 @@ void OlerEditor::applyThemeFromManager() {
     // fall back to the default and ignore the user's chosen theme.
     static const QHash<QString, QString> kThemeMap = {
         {QStringLiteral("AmberDark"),  QStringLiteral("Breeze Dark")},
+        {QStringLiteral("MistBlue"),   QStringLiteral("Atom One Dark")},
         {QStringLiteral("AmberLight"), QStringLiteral("Breeze Light")},
         {QStringLiteral("OneDarkPro"), QStringLiteral("Atom One Dark")},
         {QStringLiteral("OneLight"),   QStringLiteral("Atom One Light")},

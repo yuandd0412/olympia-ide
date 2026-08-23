@@ -1,4 +1,6 @@
 #include "OlerMistakesPage.h"
+#include "ui/common/OlerTheme.h"
+#include "core/theme/CThemeManager.h"
 #include <QDate>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -28,6 +30,9 @@ public:
     explicit Heatmap(OlerMistakes *store, QWidget *parent = nullptr)
         : QWidget(parent), m_store(store) {
         setFixedSize(154, 92);
+        // Re-render with the new accent when the theme changes.
+        connect(CThemeManager::instance(), &CThemeManager::themeChanged,
+                this, QOverload<>::of(&QWidget::update));
     }
 protected:
     void paintEvent(QPaintEvent *) override {
@@ -45,17 +50,16 @@ protected:
         for (int c : counts) maxV = qMax(maxV, c);
 
         constexpr int kCell = 18, kGap = 3;
+        const QColor accent = OlerTheme::accentForTheme(
+            CThemeManager::instance()->currentTheme());
         for (int i = 0; i < 28; ++i) {
             const int r = i / 7, c = i % 7;
             const int level = counts[i] == 0 ? 0
                               : 1 + counts[i] * 3 / maxV; // 0..4
-            QColor cell(Qt::GlobalColor::white);
-            switch (level) { // primary #d97757 with rising alpha
-            case 0: cell = QColor(255, 255, 255, 12); break;
-            case 1: cell = QColor(217, 119, 87, 60); break;
-            case 2: cell = QColor(217, 119, 87, 120); break;
-            case 3: cell = QColor(217, 119, 87, 180); break;
-            default: cell = QColor(217, 119, 87); break;
+            QColor cell(255, 255, 255, 12);
+            if (level > 0) {
+                cell = accent;
+                cell.setAlpha(level == 4 ? 255 : 60 * level);
             }
             p.fillRect(c * (kCell + kGap), r * (kCell + kGap),
                        kCell, kCell, cell);

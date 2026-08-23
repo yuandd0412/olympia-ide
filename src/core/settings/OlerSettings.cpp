@@ -1,4 +1,4 @@
-#include "OlerSettings.h"
+﻿#include "OlerSettings.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -11,7 +11,7 @@ namespace {
 // Keys use "group/name" so the Settings UI can group them without
 // re-mapping. Values must stay JSON-serializable.
 const QJsonObject kDefaults = {
-    {QStringLiteral("theme"),                QStringLiteral("AmberDark")},
+    {QStringLiteral("theme"),                QStringLiteral("MistBlue")},
     {QStringLiteral("editor/fontSize"),      13},
     {QStringLiteral("compiler/gxxPath"),     QStringLiteral("C:/Qt/Tools/mingw1310_64/bin/g++.exe")},
     {QStringLiteral("compiler/optLevel"),    QStringLiteral("-O2")},

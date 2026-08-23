@@ -33,6 +33,7 @@ struct ThemeSwatch {
     const char *accent;
 };
 const ThemeSwatch kThemes[] = {
+    {"MistBlue",   "#131311", "#7daed4"},
     {"AmberDark",  "#131311", "#d97757"},
     {"OneDarkPro", "#282c34", "#61afef"},
     {"AmberLight", "#fafaf7", "#d97757"},

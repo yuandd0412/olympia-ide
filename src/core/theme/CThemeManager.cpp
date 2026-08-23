@@ -1,4 +1,4 @@
-#include "CThemeManager.h"
+﻿#include "CThemeManager.h"
 #include <QApplication>
 #include <QFile>
 #include <QTextStream>
@@ -8,10 +8,10 @@ CThemeManager *CThemeManager::instance() {
     return &inst;
 }
 
-CThemeManager::CThemeManager(QObject *parent) : QObject(parent), m_current("AmberDark") {}
+CThemeManager::CThemeManager(QObject *parent) : QObject(parent), m_current("MistBlue") {}
 
 QStringList CThemeManager::availableThemes() const {
-    return {"OneDarkPro", "OneLight", "AmberDark", "AmberLight"};
+    return {"MistBlue", "OneDarkPro", "OneLight", "AmberDark", "AmberLight"};
 }
 
 QString CThemeManager::currentTheme() const {

@@ -38,9 +38,10 @@ QColor token(Token t) {
 }
 
 QColor accentForTheme(const QString &themeName) {
-    // 00-design-spec section 2 theme palette table.
+    // 00-design-spec section 2 theme palette table + MistBlue (v1.0).
     if (themeName == QLatin1String("OneDarkPro")) return QColor(0x61, 0xaf, 0xef);
     if (themeName == QLatin1String("OneLight"))   return QColor(0x40, 0x78, 0xf2);
+    if (themeName == QLatin1String("MistBlue"))   return QColor(0x7d, 0xae, 0xd4);
     return token(Token::Primary); // AmberDark / AmberLight
 }
 

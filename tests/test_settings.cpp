@@ -32,7 +32,7 @@ int main() {
     // 1. First run: defaults are applied and file does not exist yet.
     {
         OlerSettings s(path);
-        check(s.value("theme").toString() == "AmberDark", "default theme");
+        check(s.value("theme").toString() == "MistBlue", "default theme");
         check(s.value("limits/timeMs").toInt() == 1000, "default time limit");
         check(s.value("compiler/optLevel").toString() == "-O2", "default opt level");
         check(!QFile::exists(path), "no file written until save()");
@@ -70,7 +70,7 @@ int main() {
         f.write("{not valid json");
         f.close();
         OlerSettings s(path);
-        check(s.value("theme").toString() == "AmberDark",
+        check(s.value("theme").toString() == "MistBlue",
               "corrupt file falls back to defaults");
     }
 

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Oler IDE — 主题色候选</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#131311;color:#f1f1ef;font-family:'Segoe UI',system-ui,sans-serif;
+  font-size:13px;padding:32px}
+h1{font-size:16px;font-weight:600;margin-bottom:4px}
+.sub{color:#6e6d68;font-size:12px;margin-bottom:28px}
+.row{border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:16px;
+  margin-bottom:14px;display:flex;align-items:center;gap:20px}
+.row:hover{background:#1a1915}
+.swatch{width:64px;height:64px;border-radius:8px;flex-shrink:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:2px}
+.swatch b{font-size:9px;font-weight:600}
+.info{width:200px;flex-shrink:0}
+.info .name{font-weight:600;font-size:13px;margin-bottom:2px}
+.info .hex{font-family:Consolas,monospace;font-size:11px;color:#6e6d68}
+.info .desc{font-size:11px;color:#a0a0a3;margin-top:4px;line-height:1.5}
+.demo{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.btnp{height:30px;padding:0 12px;border:none;border-radius:6px;color:#fff;
+  font-size:12px;font-weight:500;cursor:pointer}
+.nav{display:flex;gap:4px;background:#1a1915;border:1px solid rgba(255,255,255,.06);
+  border-radius:8px;padding:6px}
+.nv{padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer;
+  display:flex;align-items:center;gap:6px}
+.nv svg{width:14px;height:14px}
+.tabdemo{font-size:12px;padding:6px 14px;position:relative;color:#a0a0a3}
+.link{font-size:12px;text-decoration:none}
+.badge{font-family:Consolas,monospace;font-size:10px;font-weight:600;height:18px;
+  padding:0 6px;border-radius:9999px;display:inline-flex;align-items:center;
+  background:rgba(255,255,255,.04);color:#f1f1ef}
+input{height:30px;background:#252524;border:1px solid rgba(255,255,255,.06);
+  border-radius:6px;color:#f1f1ef;padding:0 10px;width:130px;font-family:inherit;
+  font-size:12px;outline:none}
+input:focus{border-color:var(--a)}
+</style>
+</head>
+<body>
+<h1>Oler IDE 主题色候选</h1>
+<p class="sub">底色恒为 #131311 暖黑 · 判定色(AC绿/WA红)不变 · 点击行首色块可全页预览该 accent</p>
+<div id="list"></div>
+
+<script>
+const CANDIDATES = [
+ {name:'青瓷 Teal',      hex:'#4fb8a8', desc:'冷静专注。Zed/Warp 系现代编辑器主流选择，长时间编码最不易疲劳，与暖黑底对比舒服。'},
+ {name:'雾蓝 Slate',     hex:'#7daed4', desc:'即现有 info 色。VSCode 同源气质，最「标准」，但辨识度略低。'},
+ {name:'鼠尾草 Sage',    hex:'#8aa889', desc:'低饱和自然绿。GitHub Dimmed 风格，温和护眼，与 AC 绿有轻微撞色需注意。'},
+ {name:'暖金沙 Gold',    hex:'#c9a26b', desc:'保留现在的暖调身份但大幅降饱和。Cursor 金同路数，优雅、品牌延续性最好。'},
+ {name:'黛紫 Mauve',     hex:'#9d8cd8', desc:'One Dark Pro 紫的现代柔化版。冷色相里带一点温度，个性强。'},
+ {name:'灰玫 Rose',      hex:'#c48b9b', desc:'陶土红的近亲但灰度更高。想要保留一点现在气质又不想太抢，选它。'},
+];
+
+const list=document.getElementById('list');
+CANDIDATES.forEach((c,i)=>{
+  const row=document.createElement('div');
+  row.className='row'; row.style.setProperty('--a',c.hex);
+  row.innerHTML=`
+    <div class="swatch" style="background:${c.hex};cursor:pointer" data-i="${i}">
+      <b style="color:${luma(c.hex)>0.55?'#131311':'#fff'}">${c.hex.slice(1)}</b></div>
+    <div class="info">
+      <div class="name">${i+1}. ${c.name}</div>
+      <div class="hex">${c.hex} · hover ${shade(c.hex,1.12)} · muted ${hex2rgba(c.hex,.15)}</div>
+      <div class="desc">${c.desc}</div>
+    </div>
+    <div class="demo">
+      <button class="btnp" style="background:${c.hex}" onmouseover="this.style.background='${shade(c.hex,1.1)}'" onmouseout="this.style.background='${c.hex}'">拉取题目</button>
+      <div class="nav">
+        <span class="nv" style="color:#6e6d68"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+        <span class="nv" style="background:${hex2rgba(c.hex,.15)};color:${c.hex}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/></svg>题库</span>
+        <span class="nv" style="color:#6e6d68"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/></svg>训练</span>
+      </div>
+      <div>
+        <div class="tabdemo" style="color:${c.hex};border-bottom:2px solid ${c.hex};display:inline-block">Problems ▾</div><br>
+        <a class="link" style="color:${c.hex}" href="javascript:void(0)">P1001 详细统计 →</a>
+      </div>
+      <input placeholder="搜索...">
+      <span class="badge" style="background:${hex2rgba(c.hex,.15)};color:${c.hex}">P1001</span>
+    </div>`;
+  list.appendChild(row);
+});
+
+function luma(hex){const n=parseInt(hex.slice(1),16);
+  return (0.299*(n>>16&255)+0.587*(n>>8&255)+0.114*(n&255))/255;}
+function shade(hex,f){const n=parseInt(hex.slice(1),16);
+  const r=Math.min(255,Math.round((n>>16&255)*f)),g=Math.min(255,Math.round((n>>8&255)*f)),
+  b=Math.min(255,Math.round((n&255)*f));
+  return '#'+((r<<16)|(g<<8)|b).toString(16).padStart(6,'0');}
+function hex2rgba(hex,a){const n=parseInt(hex.slice(1),16);
+  return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`;}
+
+document.querySelectorAll('.swatch').forEach(s=>s.onclick=()=>{
+  const c=CANDIDATES[+s.dataset.i];
+  document.documentElement.style.setProperty('--primary',c.hex);
+  document.body.style.setProperty('--primary',c.hex);
+  // quick global recolor of demo elements via CSS var injection
+  const st=document.createElement('style');
+  st.textContent=`.btn-primary,.nav-btn.active{background:${c.hex}!important}
+    .nav-btn.active{color:${c.hex}!important}`;
+  document.head.appendChild(st);
+});
+</script>
+</body>
+</html>

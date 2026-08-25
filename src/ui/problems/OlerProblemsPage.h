@@ -7,15 +7,14 @@ class QScrollArea;
 class QGridLayout;
 class QVBoxLayout;
 
-// Problems tab (00-design-spec section 4.1): search bar, recent strip,
-// problem-card grid. Dense file-browser style — no hero, no marketing.
+// Problems tab — pixel port of pages/shell-problems.html:
+// search(36px) → quick actions → recent horizontal strip → 4-col grid → stats.
 class OlerProblemsPage : public QWidget {
     Q_OBJECT
 public:
     explicit OlerProblemsPage(QWidget *parent = nullptr);
 
 signals:
-    // Double-click on a card: user wants to work on this problem.
     void openRequested(const OlerProblem &problem);
 
 private slots:
@@ -24,12 +23,13 @@ private slots:
 
 private:
     void rebuildRecent();
+    QWidget *makeRecentCard(const OlerProblem &p);
+    QWidget *makeCard(const OlerProblem &p);
+    QWidget *buildStatsStrip();
 
     OlerProblems *m_store;
     QLineEdit *m_search = nullptr;
-    QWidget *m_recentRow = nullptr;
-    QVBoxLayout *m_recentLayout = nullptr;
-    QScrollArea *m_scroll = nullptr;
-    QWidget *m_gridHost = nullptr;
+    QWidget *m_recentRowHost = nullptr;
     QGridLayout *m_grid = nullptr;
+    QWidget *m_gridHost = nullptr;
 };

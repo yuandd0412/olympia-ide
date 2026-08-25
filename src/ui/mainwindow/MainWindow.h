@@ -70,6 +70,9 @@ private:
     OlerEditor *m_editorPage = nullptr;      // 1st tab (Editor)
     OlerRunPanel *m_runPanel = nullptr;      // bottom half of the editor page
     QLabel *m_editorTitle = nullptr;         // file name + dirty dot
+    QLabel *m_edTabActive = nullptr;         // file tab strip (editor page)
+    QLabel *m_edTabInactive = nullptr;
+    QLabel *m_posLabel = nullptr;            // statusbar Ln/Col
     OlerProblemsPage *m_problemsPage = nullptr; // 2nd tab
     OlerMistakesPage *m_mistakesPage = nullptr; // 4th tab
     OlerTrainingPage *m_trainingPage = nullptr; // 3rd tab

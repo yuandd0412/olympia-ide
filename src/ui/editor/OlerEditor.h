@@ -24,6 +24,13 @@ public:
     bool loadFile(const QString &path);
     bool saveFile(const QString &path);
 
+    // Line-number gutter (docs/04-editor: 56px, right-aligned, muted).
+    void lineNumberAreaPaintEvent(QPaintEvent *ev);
+    int lineNumberAreaWidth() const;
+
+protected:
+    void resizeEvent(QResizeEvent *ev) override;
+
 signals:
     void fileChanged(const QString &path);
     // Live structure analysis: how many braces / parens are still open.
@@ -33,6 +40,8 @@ signals:
 private slots:
     void onTextChanged();
     void onCursorPositionChanged();
+    void updateLineNumberArea();
+    void highlightCurrentLine();
 
 private:
     struct ScanResult {
@@ -51,4 +60,21 @@ private:
     QString m_filePath;
     QTimer *m_scanTimer = nullptr;
     ScanResult m_scan;
+    QWidget *m_lineNumberArea = nullptr;
+};
+
+// Gutter host widget (standard Qt CodeEditor pattern).
+class OlerLineNumberArea : public QWidget {
+public:
+    explicit OlerLineNumberArea(OlerEditor *editor)
+        : QWidget(editor), m_editor(editor) {}
+    QSize sizeHint() const override {
+        return {m_editor->lineNumberAreaWidth(), 0};
+    }
+protected:
+    void paintEvent(QPaintEvent *ev) override {
+        m_editor->lineNumberAreaPaintEvent(ev);
+    }
+private:
+    OlerEditor *m_editor;
 };

@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QFont>
 #include <QHash>
+#include <QPainter>
 #include <QTimer>
 #include "core/theme/CThemeManager.h"
 #include "core/settings/OlerSettings.h"
@@ -50,7 +51,76 @@ OlerEditor::OlerEditor(QWidget *parent)
             this, &OlerEditor::onTextChanged);
     connect(this, &QPlainTextEdit::cursorPositionChanged,
             this, &OlerEditor::onCursorPositionChanged);
+
+    // Line-number gutter (56px per docs/04-editor/subpages.md).
+    m_lineNumberArea = new OlerLineNumberArea(this);
+    connect(this, &QPlainTextEdit::blockCountChanged,
+            this, [this](int) { updateLineNumberArea(); });
+    connect(this, &QPlainTextEdit::updateRequest,
+            this, [this](const QRect &, int dy) {
+                if (dy != 0)
+                    m_lineNumberArea->scroll(0, dy);
+                else
+                    m_lineNumberArea->update();
+            });
+    connect(this, &QPlainTextEdit::cursorPositionChanged,
+            this, &OlerEditor::highlightCurrentLine);
+    updateLineNumberArea();
+    highlightCurrentLine();
     onTextChanged();
+}
+
+// ---- line-number gutter -------------------------------------------------
+
+void OlerEditor::resizeEvent(QResizeEvent *ev) {
+    QPlainTextEdit::resizeEvent(ev);
+    const QRect cr = contentsRect();
+    m_lineNumberArea->setGeometry(
+        QRect(cr.left(), cr.top(), lineNumberAreaWidth(), cr.height()));
+}
+
+int OlerEditor::lineNumberAreaWidth() const {
+    int digits = 1;
+    for (int max = qMax(1, blockCount()); max >= 10; max /= 10)
+        ++digits;
+    return 24 + fontMetrics().horizontalAdvance(QLatin1Char('9')) *
+                    qMax(digits, 3);
+}
+
+void OlerEditor::updateLineNumberArea() {
+    setViewportMargins(lineNumberAreaWidth(), 0, 0, 0);
+}
+
+void OlerEditor::highlightCurrentLine() {
+    // Merged into updateBracketMatch's extra selections.
+    updateBracketMatch();
+}
+
+void OlerEditor::lineNumberAreaPaintEvent(QPaintEvent *ev) {
+    QPainter p(m_lineNumberArea);
+    p.fillRect(ev->rect(), QColor(0x1a, 0x19, 0x15));
+    p.setPen(QColor(0x46, 0x44, 0x3b));
+    p.setFont(font());
+
+    QTextBlock block = firstVisibleBlock();
+    int blockNumber = block.blockNumber();
+    int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
+    int bottom = top + qRound(blockBoundingRect(block).height());
+
+    const QColor currentFg(0xf1, 0xf1, 0xef);
+    while (block.isValid() && top <= ev->rect().bottom()) {
+        if (block.isVisible() && bottom >= ev->rect().top()) {
+            const bool isCurrent = blockNumber == textCursor().blockNumber();
+            p.setPen(isCurrent ? currentFg : QColor(0x46, 0x44, 0x3b));
+            p.drawText(0, top, m_lineNumberArea->width() - 16,
+                       fontMetrics().height(), Qt::AlignRight,
+                       QString::number(blockNumber + 1));
+        }
+        block = block.next();
+        top = bottom;
+        bottom = top + qRound(blockBoundingRect(block).height());
+        ++blockNumber;
+    }
 }
 
 // ---- structure analysis -------------------------------------------------
@@ -126,6 +196,14 @@ void OlerEditor::onTextChanged() {
 
 void OlerEditor::updateBracketMatch() {
     QList<QTextEdit::ExtraSelection> sels;
+
+    // Current line: full-width wash, no border (docs/04-editor).
+    QTextEdit::ExtraSelection lineSel;
+    lineSel.format.setBackground(QColor(217, 119, 87, 15));
+    lineSel.format.setProperty(QTextFormat::FullWidthSelection, true);
+    lineSel.cursor = textCursor();
+    lineSel.cursor.clearSelection();
+    sels.append(lineSel);
 
     // Highlight the pair around the caret when it sits next to a bracket.
     const int pos = textCursor().position();

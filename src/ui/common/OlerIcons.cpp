@@ -83,6 +83,19 @@ QString body(Name name) {
     case Name::Zap:
         return QStringLiteral(
             "<path d='M13 2L3 14h9l-1 8 10-12h-9l1-8z'/>");
+    case Name::Send:
+        return QStringLiteral(
+            "<line x1='22' y1='2' x2='11' y2='13'/>"
+            "<polygon points='22 2 15 22 11 13 2 9 22 2'/>");
+    case Name::Flame:
+        return QStringLiteral(
+            "<path d='M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3"
+            "-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 "
+            "5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z'/>");
+    case Name::TrendUp:
+        return QStringLiteral(
+            "<polyline points='23 6 13.5 15.5 8.5 10.5 1 18'/>"
+            "<polyline points='17 6 23 6 23 12'/>");
     case Name::Minimize:
         return QStringLiteral("<line x1='5' y1='12' x2='19' y2='12'/>");
     case Name::Maximize:

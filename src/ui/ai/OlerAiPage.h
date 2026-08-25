@@ -1,13 +1,15 @@
 #pragma once
 #include <QWidget>
 
-class QTextBrowser;
+class QVBoxLayout;
 class QPlainTextEdit;
 class QPushButton;
 class QComboBox;
+class QLabel;
 
-// AI Coach tab (docs/03-shell-pages/ai.md): chat surface with message
-// bubbles + prompt chips. Mocked assistant until Phase 7+ (dots.ai).
+// AI Coach tab — pixel port of pages/shell-ai.html: centered 720px chat
+// flow with avatars, asymmetric bubbles, prompt chips, circular send.
+// Mocked assistant until Phase 7+ (dots.ai).
 class OlerAiPage : public QWidget {
     Q_OBJECT
 public:
@@ -19,7 +21,8 @@ private slots:
 private:
     void appendBubble(bool user, const QString &text);
 
-    QTextBrowser *m_log = nullptr;
+    QWidget *m_chatHost = nullptr;
+    QVBoxLayout *m_chatLayout = nullptr;
     QPlainTextEdit *m_input = nullptr;
     QPushButton *m_send = nullptr;
     QComboBox *m_model = nullptr;

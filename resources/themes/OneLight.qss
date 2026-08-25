@@ -151,10 +151,7 @@ QPushButton[pill="true"] {
   color: %SECONDARY%; font-size: 12px;
 }
 QPushButton[pill="true"]:hover { border-color: %BORDER_HOVER%; color: #383a42; }
-QPushButton[pill="true"]:checked {
-  border-color: %BORDER_ACTIVE%; background: %PRIMARY_SUBTLE%;
-  color: %PRIMARY%; font-weight: 600;
-}
+QPushButton[pill="true"]:checked { background-color: #4078f2; border-color: #4078f2; color: #ffffff; }
 QPushButton[pill="true"]:pressed { background: %PRIMARY_MUTED%; }
 #kbdKey {
   background: %ELEVATED%; border: 1px solid %BORDER_HOVER%;
@@ -163,3 +160,56 @@ QPushButton[pill="true"]:pressed { background: %PRIMARY_MUTED%; }
 }
 QMenu { border-radius: 8px; padding: 6px; }
 QMenu::item { padding: 7px 24px 7px 16px; border-radius: 6px; margin: 0 4px; }
+
+
+/* ---- v1.2: problems page pixel-port ---- */
+#searchWrap { background: %ELEVATED%; border: 1px solid %BORDER%; border-radius: 8px; }
+#searchWrap:focus-within { border-color: %BORDER_ACTIVE%; }
+#searchInput { background: transparent; border: none; font-size: 13px; color: #383a42; }
+#searchInput::placeholder { color: #a0a1a7; }
+QPushButton[psPrimary="true"] { background: %PRIMARY%; color: #ffffff; border: none; border-radius: 6px; min-height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; }
+QPushButton[psPrimary="true"]:hover { background: %PRIMARY_HOVER%; }
+QPushButton[psPrimary="true"]:pressed { background: %PRIMARY%; }
+QPushButton[psPrimary="true"]:disabled { color: rgba(255,255,255,0.5); }
+QPushButton[psSecondary="true"] { background: %ELEVATED%; color: %SECONDARY%; border: 1px solid %BORDER%; border-radius: 6px; min-height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; }
+QPushButton[psSecondary="true"]:hover { background: %OVERLAY%; border-color: %BORDER_HOVER%; color: #383a42; }
+QPushButton[psSecondary="true"]:pressed { background: %BORDER%; }
+QPushButton[psSecondary="true"]:disabled { color: #a0a1a7; }
+#sectionTitle { font-size: 14px; font-weight: 600; letter-spacing: -0.2px; }
+#sectionAction { font-size: 11px; color: %TERTIARY%; }
+#favCard { background: %SURFACE%; border: 1px solid %BORDER%; border-radius: 8px; }
+#favCard:hover { background: %ELEVATED%; border-color: %BORDER_HOVER%; }
+#favId { font-family: 'Consolas'; font-size: 11px; font-weight: 500; color: %ACCENT%; }
+#favTitle { font-size: 12px; color: %SECONDARY%; }
+#problemCard { background: %SURFACE%; border: 1px solid %BORDER%; border-radius: 8px; }
+#problemCard:hover { background: %ELEVATED%; border-color: %BORDER_HOVER%; }
+#problemCard:pressed { background: %OVERLAY%; }
+#cardId { font-family: 'Consolas'; font-size: 12px; font-weight: 500; letter-spacing: 0.3px; color: %ACCENT%; }
+#cardTitle { font-size: 13px; font-weight: 500; line-height: 1.35; color: #383a42; }
+#ojPill { border-radius: 9999px; padding: 2px 7px; font-size: 10px; font-weight: 600; }
+#diffLabel { font-size: 10px; color: %TERTIARY%; }
+#statsStrip { background: %SURFACE%; border: 1px solid %BORDER%; border-radius: 8px; }
+#statValue { font-family: 'Consolas'; font-size: 15px; font-weight: 600; letter-spacing: -0.3px; color: #383a42; }
+#statStripLabel { font-size: 11px; color: %TERTIARY%; }
+#statsDiv { background: %BORDER%; border: none; max-width: 1px; }
+
+/* ---- v1.2: mistakes cards ---- */
+QWidget[mistakeCard="true"] { background: %SURFACE%; border: 1px solid %BORDER%; border-left: 3px solid #ff453a; border-radius: 8px; }
+QWidget[mistakeCard="true"]:hover { background: %ELEVATED%; }
+#redoBtn { background: %PRIMARY_MUTED%; color: %PRIMARY%; border: 1px solid %BORDER_ACTIVE%; border-radius: 6px; padding: 4px 10px; font-size: 11px; }
+#redoBtn:hover { background: %PRIMARY_SUBTLE%; }
+QPushButton[mchipBtn="true"] { height: 26px; padding: 0 10px; border-radius: 6px; font-family: 'Consolas'; font-size: 11px; font-weight: 600; background: transparent; border: 1px solid transparent; color: %TERTIARY%; }
+QPushButton[mchipBtn="true"]:checked { background: %OVERLAY%; color: #383a42; border-color: %BORDER_HOVER%; }
+
+/* ---- v1.2: ai chat ---- */
+#aiBubbleUser { background: #2c2520; border: 1px solid rgba(217,119,87,0.12); border-radius: 8px; border-top-right-radius: 6px; padding: 10px 14px; }
+#aiBubbleAi { background: %ELEVATED%; border: 1px solid %BORDER%; border-radius: 8px; border-top-left-radius: 6px; padding: 10px 14px; }
+#aiAvatar { border-radius: 14px; font-size: 11px; font-weight: 600; }
+#aiComposer { background: %ELEVATED%; border: 1px solid %BORDER%; border-radius: 8px; color: #383a42; font-size: 13px; }
+#aiSend { background: %PRIMARY%; border-radius: 18px; border: none; }
+#aiSend:hover { background: %PRIMARY_HOVER%; }
+
+/* ---- v1.2: editor file tabs ---- */
+#edTabBar { background: %BASE%; border-bottom: 1px solid %BORDER%; }
+#edTab { padding: 0 14px; font-size: 12px; color: %TERTIARY%; border-right: 1px solid %BORDER%; }
+#edTabActive { background: %SURFACE%; color: #383a42; border-top: 2px solid %PRIMARY%; }

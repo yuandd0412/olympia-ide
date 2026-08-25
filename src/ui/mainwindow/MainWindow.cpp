@@ -73,6 +73,15 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     addAction(runAct);
 
     statusBar()->showMessage(tr("就绪 · Ctrl+O 打开 · Ctrl+R 编译运行"));
+
+    // Right side: cursor position + encoding (mono, per docs/04-editor).
+    m_posLabel = new QLabel(QStringLiteral("Ln 1, Col 1"), this);
+    m_posLabel->setObjectName(QStringLiteral("posLabel"));
+    statusBar()->addPermanentWidget(m_posLabel);
+    auto *encTag = new QLabel(QStringLiteral("C++17"), this);
+    encTag->setObjectName(QStringLiteral("encTag"));
+    statusBar()->addPermanentWidget(encTag);
+    statusBar()->addPermanentWidget(new QLabel(QStringLiteral("UTF-8"), this));
 }
 
 MainWindow::~MainWindow() = default;
@@ -176,10 +185,7 @@ void MainWindow::showEvent(QShowEvent *ev) {
 void MainWindow::changeEvent(QEvent *ev) {
     QMainWindow::changeEvent(ev);
     if (ev->type() == QEvent::WindowStateChange) {
-        // Maximized frameless+thickframe windows overflow the screen by the
-        // invisible resize border; compensate with content margins.
-        const int pad = isMaximized() ? 8 : 0;
-        centralWidget()->setContentsMargins(pad, 0, pad, 0);
+        // Maximize-button glyph follows window state.
         if (m_maxBtn) {
             m_maxBtn->setIcon(OlerIcons::make(
                 isMaximized() ? OlerIcons::Name::Restore
@@ -256,7 +262,17 @@ bool MainWindow::nativeEvent(const QByteArray &eventType, void *message,
     MSG *msg = static_cast<MSG *>(message);
     if (msg->message == WM_NCCALCSIZE && msg->wParam &&
         IsWindowVisible(msg->hwnd)) {
-        // Remove the standard frame entirely; we draw our own titlebar.
+        // Strip the standard frame entirely. When maximized, a THICKFRAME
+        // window overshoots the monitor by the resize-border width —
+        // compensate so the client area lands exactly on-screen.
+        auto *params = reinterpret_cast<NCCALCSIZE_PARAMS *>(msg->lParam);
+        if (IsZoomed(msg->hwnd)) {
+            const int pad = GetSystemMetrics(SM_CXFRAME) +
+                            GetSystemMetrics(SM_CXPADDEDBORDER);
+            params->rgrc[0].left += pad;
+            params->rgrc[0].right -= pad;
+            params->rgrc[0].bottom -= pad;
+        }
         *result = 0;
         return true;
     }
@@ -376,6 +392,24 @@ QWidget *MainWindow::buildEditorPage() {
     m_editorTitle->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
     layout->addWidget(m_editorTitle);
 
+    // File tab strip (docs/04-editor: active tab = surface + top accent).
+    auto *edTabs = new QWidget(page);
+    edTabs->setObjectName(QStringLiteral("edTabBar"));
+    edTabs->setFixedHeight(34);
+    auto *edTabsLay = new QHBoxLayout(edTabs);
+    edTabsLay->setContentsMargins(0, 0, 0, 0);
+    edTabsLay->setSpacing(0);
+    m_edTabActive = new QLabel(tr("main.cpp"), edTabs);
+    m_edTabActive->setObjectName(QStringLiteral("edTabActive"));
+    m_edTabActive->setAlignment(Qt::AlignCenter);
+    m_edTabInactive = new QLabel(tr("input.txt"), edTabs);
+    m_edTabInactive->setObjectName(QStringLiteral("edTab"));
+    m_edTabInactive->setAlignment(Qt::AlignCenter);
+    edTabsLay->addWidget(m_edTabActive);
+    edTabsLay->addWidget(m_edTabInactive);
+    edTabsLay->addStretch();
+    layout->addWidget(edTabs);
+
     auto *splitter = new QSplitter(Qt::Vertical, page);
     m_editorPage = new OlerEditor(splitter);
     m_runPanel = new OlerRunPanel(splitter);
@@ -399,8 +433,11 @@ QWidget *MainWindow::buildEditorPage() {
     auto syncTitle = [this] {
         const QString name =
             m_editorPage->filePath().isEmpty()
-                ? tr("untitled")
+                ? tr("main.cpp")
                 : QFileInfo(m_editorPage->filePath()).fileName();
+        m_edTabActive->setText(name + (m_editorPage->document()->isModified()
+                                           ? QStringLiteral(" ●")
+                                           : QString()));
         m_editorTitle->setText(name + (m_editorPage->document()->isModified()
                                            ? QStringLiteral(" *")
                                            : QString()));
@@ -408,6 +445,12 @@ QWidget *MainWindow::buildEditorPage() {
     connect(m_editorPage, &OlerEditor::fileChanged, page, syncTitle);
     connect(m_editorPage->document(), &QTextDocument::modificationChanged,
             page, syncTitle);
+    connect(m_editorPage, &QPlainTextEdit::cursorPositionChanged, page, [this] {
+        const QTextCursor c = m_editorPage->textCursor();
+        m_posLabel->setText(QStringLiteral("Ln %1, Col %2")
+                                .arg(c.blockNumber() + 1)
+                                .arg(c.positionInBlock() + 1));
+    });
     syncTitle();
 
     return page;

@@ -26,6 +26,9 @@ enum class Name {
     Chevron,
     Zap,         // brand bolt
     Logo,        // Aether mark: halo ring + star + flares (brand v1)
+    Send,        // paper plane (composer)
+    Flame,       // streak
+    TrendUp,     // rank/rate
     Minimize,
     Maximize,
     Restore,

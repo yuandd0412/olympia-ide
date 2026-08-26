@@ -8,12 +8,7 @@
 namespace {
 
 // Per-theme palette used to resolve `%TOKEN%` placeholders in each
-// resources/themes/*.qss file. The QSS files use placeholder names so
-// themes can be added without copy-pasting 14 colors into each rule;
-// CThemeManager substitutes them at applyTheme() time.
-//
-// The token names match the docs/02-design-system/tokens.md vocabulary,
-// minus the few QSS-only ones (ACCENT is the per-theme primary tint).
+// resources/themes/*.qss file. Tuned to Apple HIG / Google Material 3 standards.
 struct Palette {
     QString base;
     QString surface;
@@ -21,7 +16,7 @@ struct Palette {
     QString overlay;
     QString secondary;
     QString tertiary;
-    QString textPrimary;     // body text (per theme; usually text-primary)
+    QString textPrimary;     // body text (per theme; high contrast)
     QString border;
     QString borderHover;
     QString borderActive;
@@ -34,53 +29,53 @@ struct Palette {
 
 const QHash<QString, Palette> &paletteTable() {
     static const QHash<QString, Palette> t = {
-        // AmberDark: warm dark, brand-default
-        {"AmberDark", {
-            "#131311", "#1a1915", "#252524", "#2c2c2b",
-            "#a0a0a3", "#6e6d68", "#f1f1ef",
-            "rgba(255,255,255,0.06)", "rgba(255,255,255,0.12)",
-            "rgba(217,119,87,0.40)",
-            "#d97757", "#e08a6c",
-            "rgba(217,119,87,0.15)", "rgba(217,119,87,0.08)",
-            "#d97757"
-        }},
-        // MistBlue: cool dark, slate-blue accent
+        // MistBlue: Apple-style dark, cool slate-blue accent (Default)
         {"MistBlue", {
-            "#131311", "#1a1915", "#252524", "#2c2c2b",
-            "#a0a0a3", "#6e6d68", "#f1f1ef",
-            "rgba(255,255,255,0.06)", "rgba(255,255,255,0.12)",
-            "rgba(125,174,212,0.40)",
-            "#7daed4", "#8fbcdc",
+            "#121316", "#181a1f", "#22252c", "#2b2f38",
+            "#9da5b4", "#5c6370", "#f0f2f5",
+            "rgba(255,255,255,0.07)", "rgba(255,255,255,0.14)",
+            "rgba(125,174,212,0.50)",
+            "#7daed4", "#9bc5e5",
             "rgba(125,174,212,0.15)", "rgba(125,174,212,0.08)",
             "#7daed4"
         }},
+        // AmberDark: warm dark, brand-default
+        {"AmberDark", {
+            "#131311", "#1a1916", "#242320", "#2c2a26",
+            "#a8a69e", "#6e6d68", "#f5f4ef",
+            "rgba(255,255,255,0.07)", "rgba(255,255,255,0.14)",
+            "rgba(217,119,87,0.50)",
+            "#d97757", "#e68c6e",
+            "rgba(217,119,87,0.15)", "rgba(217,119,87,0.08)",
+            "#d97757"
+        }},
         // OneDarkPro: Atom One Dark, distinct base palette
         {"OneDarkPro", {
-            "#282c34", "#21252b", "#2c313a", "#2c313a",
-            "#abb2bf", "#5c6370", "#abb2bf",
-            "rgba(255,255,255,0.10)", "rgba(255,255,255,0.20)",
-            "rgba(97,175,239,0.40)",
-            "#61afef", "#61afef",
+            "#21252b", "#282c34", "#2f343f", "#383e4c",
+            "#abb2bf", "#5c6370", "#f0f2f6",
+            "rgba(255,255,255,0.08)", "rgba(255,255,255,0.16)",
+            "rgba(97,175,239,0.50)",
+            "#61afef", "#7ec0ff",
             "rgba(97,175,239,0.15)", "rgba(97,175,239,0.08)",
             "#61afef"
         }},
-        // AmberLight: warm light, brand accent preserved
+        // AmberLight: warm light, brand accent preserved, high contrast text
         {"AmberLight", {
-            "#fafaf7", "#f0eee8", "#e8e6df", "#e0ded6",
-            "#5c5a55", "#7c7a75", "#2c2a26",
-            "rgba(0,0,0,0.10)", "rgba(0,0,0,0.18)",
-            "rgba(217,119,87,0.40)",
-            "#d97757", "#e08a6c",
+            "#f8f7f4", "#ffffff", "#f0ede6", "#e6e2d8",
+            "#5c5a55", "#888680", "#1c1b18",
+            "rgba(0,0,0,0.08)", "rgba(0,0,0,0.16)",
+            "rgba(217,119,87,0.50)",
+            "#d97757", "#c66748",
             "rgba(217,119,87,0.12)", "rgba(217,119,87,0.06)",
             "#d97757"
         }},
-        // OneLight: Atom One Light
+        // OneLight: macOS clean light base with pure white card surfaces
         {"OneLight", {
-            "#fafafa", "#ffffff", "#f0f0f0", "#e8e8e8",
-            "#383a42", "#a0a1a7", "#383a42",
-            "#d0d0d0", "#b0b0b0",
-            "rgba(64,120,242,0.40)",
-            "#4078f2", "#4078f2",
+            "#f5f6f8", "#ffffff", "#eceef2", "#e0e3e9",
+            "#4f5666", "#9096a2", "#20232a",
+            "rgba(0,0,0,0.08)", "rgba(0,0,0,0.16)",
+            "rgba(64,120,242,0.50)",
+            "#4078f2", "#3065dc",
             "rgba(64,120,242,0.12)", "rgba(64,120,242,0.06)",
             "#4078f2"
         }},
@@ -89,7 +84,7 @@ const QHash<QString, Palette> &paletteTable() {
 }
 
 QHash<QString, QString> tokenTable(const QString &theme) {
-    const Palette p = paletteTable().value(theme, paletteTable().value("MistBlue"));
+    const Palette p = paletteTable().value(theme, paletteTable().value(QStringLiteral("MistBlue")));
     return {
         {"BASE",           p.base},
         {"SURFACE",        p.surface},

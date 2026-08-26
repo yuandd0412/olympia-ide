@@ -279,8 +279,7 @@ void MainWindow::buildActivityBar() {
 }
 
 void MainWindow::refreshChromeIcons() {
-    const QColor idle("#6e6d68");
-    const QColor hover("#a0a0a3"); // hover tint handled by QSS overlay
+    const QColor idle = OlerTheme::token(OlerTheme::Token::TextTertiary);
     static const OlerIcons::Name names[] = {
         OlerIcons::Name::Code,     OlerIcons::Name::CheckSquare,
         OlerIcons::Name::Target,   OlerIcons::Name::Book,
@@ -291,7 +290,10 @@ void MainWindow::refreshChromeIcons() {
         m_railButtons[i]->setIcon(
             OlerIcons::make(names[i], active ? accentColor() : idle, 20));
     }
-    Q_UNUSED(hover);
+    if (m_logo) {
+        m_logo->setPixmap(OlerIcons::make(OlerIcons::Name::Logo,
+                                          accentColor(), 18).pixmap(18, 18));
+    }
 }
 
 #ifdef Q_OS_WIN

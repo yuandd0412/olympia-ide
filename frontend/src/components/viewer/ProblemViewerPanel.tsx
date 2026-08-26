@@ -10,7 +10,8 @@ import {
   Cpu,
   Copy,
   Check,
-  PanelLeftClose
+  PanelLeftClose,
+  ExternalLink
 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
 
@@ -93,9 +94,21 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
         ) : viewerProblem ? (
           <div className="space-y-5">
             <div className="flex flex-col gap-2 border-b border-[var(--border)] pb-3">
-              <h1 className="text-sm font-bold text-[var(--text-primary)] leading-tight">
-                {viewerProblem.title}
-              </h1>
+              <div className="flex items-center justify-between gap-2">
+                <h1 className="text-sm font-bold text-[var(--text-primary)] leading-tight flex-1">
+                  {viewerProblem.title}
+                </h1>
+                <a
+                  href={"https://www.luogu.com.cn/problem/" + viewerProblem.id}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1 text-[10px] text-[var(--accent)] hover:underline shrink-0 px-2 py-0.5 rounded bg-[var(--accent-subtle)]"
+                  title="在浏览器中打开原题链接与提交"
+                >
+                  <span>原题提交</span>
+                  <ExternalLink className="w-2.5 h-2.5" />
+                </a>
+              </div>
               <div className="flex items-center gap-3 text-[10px] font-mono text-[var(--text-tertiary)]">
                 <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {viewerProblem.timeLimitMs}ms</span>
                 <span className="flex items-center gap-1"><Cpu className="w-3 h-3" /> {viewerProblem.memoryLimitKb / 1024}MB</span>

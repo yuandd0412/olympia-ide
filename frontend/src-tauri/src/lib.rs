@@ -133,6 +133,9 @@ async fn chat_with_ai(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::default().build())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_settings,
             update_settings,
@@ -148,15 +151,16 @@ pub fn run() {
             run_stress_test,
             run_terminal_command,
             write_temp_code,
-            chat_with_ai
+            chat_with_ai,
+            submit_problem,
+            check_syntax
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 #[tauri::command]
-async fn submit_problem,
-            check_syntax(problem_id: String, code: String) -> Result<String, String> {
-    // Õ¼Î»½Ó¿Ú£¬Î´À´½ÓÈë¸÷ÖÖ OJ µÄ×Ô¶¯Ìá½»»úÖÆ
+async fn submit_problem(problem_id: String, code: String) -> Result<String, String> {
+    // Õ¼Î»ï¿½Ó¿Ú£ï¿½Î´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ OJ ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½á½»ï¿½ï¿½ï¿½ï¿½
     Ok(format!("Submitted {} successfully", problem_id))
 }
 #[derive(serde::Serialize, Clone)]

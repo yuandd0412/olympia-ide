@@ -13,7 +13,7 @@ if(WIN32 AND NOT DEFINED CMAKE_PREFIX_PATH)
     list(APPEND CMAKE_PREFIX_PATH "C:/Qt/6.8.0/mingw_64")
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Concurrent Svg)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Concurrent Svg Network)
 
 # Vendor ECM
 set(ECM_DIR "${CMAKE_SOURCE_DIR}/cmake/shims" CACHE PATH "ECM shim directory" FORCE)
@@ -36,6 +36,7 @@ add_executable(oler-ide
     src/core/problems/OlerProblems.cpp
     src/core/mistakes/OlerMistakes.cpp
     src/core/solves/OlerSolves.cpp
+    src/core/ingest/OlerIngest.cpp
     src/ui/editor/OlerEditor.cpp
     src/ui/common/OlerIcons.cpp
     src/ui/common/OlerTheme.cpp
@@ -61,15 +62,12 @@ else()
 endif()
 
 target_link_libraries(oler-ide PRIVATE
-    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Svg
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Svg Qt6::Network
     KF6SyntaxHighlighting
 )
 
 # Regression smoke test: proves the pre-generated index.katesyntax is loaded
 # and definitionForName("C++") returns a valid Definition at runtime.
-# Not built by default; invoke with:
-#   cmake --build build --target test_highlight
-# Defends against future breakage of data/CMakeLists.txt or the qrc resource path.
 add_executable(test_highlight
     tests/test_highlight.cpp
 )
@@ -128,15 +126,27 @@ if(MINGW)
 endif()
 target_link_libraries(test_solves PRIVATE Qt6::Core)
 
+# Phase 6 regression test: OlerIngest scraping / parsing / workspace creation.
+add_executable(test_ingest
+    tests/test_ingest.cpp
+    src/core/ingest/OlerIngest.cpp
+    src/core/problems/OlerProblems.cpp
+)
+target_include_directories(test_ingest PRIVATE src)
+if(MINGW)
+    set_target_properties(test_ingest PROPERTIES WIN32_EXECUTABLE FALSE)
+endif()
+target_link_libraries(test_ingest PRIVATE Qt6::Core Qt6::Network)
+
 add_test(NAME test_highlight COMMAND test_highlight)
 add_test(NAME test_settings COMMAND test_settings)
 add_test(NAME test_runner COMMAND test_runner)
 add_test(NAME test_models COMMAND test_models)
 add_test(NAME test_solves COMMAND test_solves)
+add_test(NAME test_ingest COMMAND test_ingest)
 
 # KSyntax DLL lives in build/bin/ (KSyntax's install target), but oler-ide.exe
 # is in build/. Without this copy, `oler-ide.exe` 启动时找不到 libKF6SyntaxHighlighting.dll → 0xC0000135 STATUS_DLL_NOT_FOUND.
-# Task 9 will run full windeployqt to also pull Qt DLLs; this just covers the KSyntax one for now.
 add_custom_command(TARGET oler-ide POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE_DIR:oler-ide>/bin/libKF6SyntaxHighlighting.dll"
@@ -158,8 +168,6 @@ add_custom_command(TARGET oler-ide POST_BUILD
 
 # Deploy Qt runtime DLLs alongside oler-ide.exe so it can launch without
 # manually prepending C:\Qt\6.8.0\mingw_64\bin to PATH (0xC0000135 STATUS_DLL_NOT_FOUND otherwise).
-# `find_program` is preferred over a hard-coded path so windeployqt from
-# the same toolchain that built Qt (via CMAKE_PREFIX_PATH) is used.
 find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${CMAKE_PREFIX_PATH}/bin")
 if(WINDEPLOYQT_EXECUTABLE)
     add_custom_command(TARGET oler-ide POST_BUILD

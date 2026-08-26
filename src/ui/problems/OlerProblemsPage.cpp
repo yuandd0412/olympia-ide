@@ -1,16 +1,25 @@
 #include "OlerProblemsPage.h"
+#include "core/ingest/OlerIngest.h"
+#include "core/mistakes/OlerMistakes.h"
+#include "core/settings/OlerSettings.h"
 #include "core/solves/OlerSolves.h"
 #include "core/theme/CThemeManager.h"
 #include "ui/common/OlerIcons.h"
 #include "ui/common/OlerTheme.h"
+#include <QDate>
+#include <QDesktopServices>
+#include <QFileDialog>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
+#include <QMessageBox>
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QUrl>
 #include <QVBoxLayout>
 
 namespace {
@@ -33,9 +42,7 @@ QString ojPillStyle(const QString &oj) {
     else if (oj == QLatin1String("AtCoder"))    fg = QColor("#b57850");
     else if (oj == QLatin1String("LOJ"))   fg = QColor("#c29e5a");
     else if (oj == QLatin1String("UOJ"))   fg = QColor("#a078c8");
-    return QStringLiteral(
-               "color:%1;background:%2;")
-        .arg(fg.name(), rgbaStr(fg, 38));
+    return QStringLiteral("color:%1;background:%2;").arg(fg.name(), rgbaStr(fg, 38));
 }
 
 QString diffColor(const QString &d) {
@@ -45,7 +52,7 @@ QString diffColor(const QString &d) {
 }
 
 QString elide(const QString &s, int n) {
-    return s.size() <= n ? s : s.left(n - 1) + QStringLiteral("\u2026");
+    return s.size() <= n ? s : s.left(n - 1) + QStringLiteral("…");
 }
 
 QWidget *sectionHeader(const QString &title, const QString &action,
@@ -65,7 +72,7 @@ QWidget *sectionHeader(const QString &title, const QString &action,
     return w;
 }
 
-// Minimal clickable card surface.
+// Minimal clickable card surface with left/right click signals.
 class ClickableFrame : public QFrame {
     Q_OBJECT
 public:
@@ -74,10 +81,13 @@ public:
     }
 signals:
     void clicked();
+    void rightClicked(const QPoint &globalPos);
 protected:
     void mouseReleaseEvent(QMouseEvent *e) override {
         if (e->button() == Qt::LeftButton)
             emit clicked();
+        else if (e->button() == Qt::RightButton)
+            emit rightClicked(e->globalPosition().toPoint());
         QFrame::mouseReleaseEvent(e);
     }
 };
@@ -87,7 +97,7 @@ protected:
 #include "OlerProblemsPage.moc"
 
 OlerProblemsPage::OlerProblemsPage(QWidget *parent)
-    : QWidget(parent), m_store(OlerProblems::instance()) {
+    : QWidget(parent), m_store(OlerProblems::instance()), m_ingest(new OlerIngest(this)) {
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(24, 20, 24, 20);
     layout->setSpacing(16);
@@ -124,21 +134,40 @@ OlerProblemsPage::OlerProblemsPage(QWidget *parent)
     qa->setSpacing(8);
     auto *pull = new QPushButton(tr("拉取题目"), this);
     pull->setProperty("psPrimary", true);
-    pull->setEnabled(false); // OJ ingest lands in Phase 6
-    pull->setToolTip(tr("OJ 拉取将在 Phase 6 提供"));
+    pull->setToolTip(tr("从洛谷等在线 OJ 拉取题目元数据与官方样例"));
+    connect(pull, &QPushButton::clicked, this, &OlerProblemsPage::pullProblem);
     qa->addWidget(pull);
+
     auto *addBtn = new QPushButton(tr("新建题目"), this);
     addBtn->setProperty("psSecondary", true);
-    connect(addBtn, &QPushButton::clicked, this,
-            &OlerProblemsPage::addProblem);
+    connect(addBtn, &QPushButton::clicked, this, &OlerProblemsPage::addProblem);
     qa->addWidget(addBtn);
-    auto *importBtn = new QPushButton(tr("导入"), this);
+
+    auto *importBtn = new QPushButton(tr("导入题单"), this);
     importBtn->setProperty("psSecondary", true);
-    importBtn->setEnabled(false);
-    importBtn->setToolTip(tr("批量导入将在 Phase 6 提供"));
+    importBtn->setToolTip(tr("从 JSON 或 Markdown 导入题单"));
+    connect(importBtn, &QPushButton::clicked, this, &OlerProblemsPage::importSheet);
     qa->addWidget(importBtn);
     qa->addStretch();
     layout->addLayout(qa);
+
+    // Ingest signals
+    connect(m_ingest, &OlerIngest::problemFetched, this, [this](const OlerProblemDetail &detail) {
+        QString mainCpp, error;
+        if (!OlerIngest::createWorkspace(detail, &mainCpp, &error)) {
+            QMessageBox::warning(this, tr("拉取题目"), tr("创建工作区失败：%1").arg(error));
+            return;
+        }
+        rebuild();
+        emit openRequested(detail.meta);
+        QMessageBox::information(this, tr("拉取题目"),
+                                 tr("已成功拉取题目 %1 并生成 %2 组样例测例！")
+                                     .arg(detail.meta.id)
+                                     .arg(detail.samples.size()));
+    });
+    connect(m_ingest, &OlerIngest::fetchFailed, this, [this](const QString &pid, const QString &err) {
+        QMessageBox::warning(this, tr("拉取题目失败"), tr("无法拉取题目 %1：\n%2").arg(pid, err));
+    });
 
     // Recent strip (horizontal).
     layout->addWidget(sectionHeader(tr("最近题目"), tr("查看全部"), this));
@@ -157,7 +186,7 @@ OlerProblemsPage::OlerProblemsPage(QWidget *parent)
     layout->addWidget(recentScroll);
 
     // Grid.
-    layout->addWidget(sectionHeader(tr("全部题目"), tr("筛选"), this));
+    layout->addWidget(sectionHeader(tr("全部题目"), tr("右键卡片快捷操作"), this));
     m_gridHost = new QWidget;
     m_grid = new QGridLayout(m_gridHost);
     m_grid->setContentsMargins(0, 0, 0, 0);
@@ -168,14 +197,109 @@ OlerProblemsPage::OlerProblemsPage(QWidget *parent)
     layout->addWidget(buildStatsStrip());
     layout->addStretch();
 
-    connect(m_search, &QLineEdit::textChanged, this,
-            &OlerProblemsPage::rebuild);
+    connect(m_search, &QLineEdit::textChanged, this, &OlerProblemsPage::rebuild);
     connect(m_store, &OlerProblems::changed, this, &OlerProblemsPage::rebuild);
-    connect(OlerSolves::instance(), &OlerSolves::changed,
-            this, &OlerProblemsPage::refreshStats);
-    connect(CThemeManager::instance(), &CThemeManager::themeChanged,
-            this, &OlerProblemsPage::rebuild);
+    connect(OlerSolves::instance(), &OlerSolves::changed, this, &OlerProblemsPage::refreshStats);
+    connect(CThemeManager::instance(), &CThemeManager::themeChanged, this, &OlerProblemsPage::rebuild);
     rebuild();
+}
+
+void OlerProblemsPage::pullProblem() {
+    bool ok = false;
+    const QString pid = QInputDialog::getText(
+        this, tr("拉取题目"),
+        tr("请输入题号（如洛谷 P1001, B2002, CF4A 等）："),
+        QLineEdit::Normal, QStringLiteral("P1001"), &ok).trimmed();
+    if (!ok || pid.isEmpty())
+        return;
+    m_ingest->fetchProblem(pid);
+}
+
+void OlerProblemsPage::importSheet() {
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("导入题单"), QDir::homePath(),
+        tr("题单文件 (*.json *.md *.markdown);;JSON 题单 (*.json);;Markdown 题单 (*.md *.markdown);;所有文件 (*)"));
+    if (path.isEmpty())
+        return;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, tr("导入题单"), tr("无法打开文件：%1").arg(path));
+        return;
+    }
+    const QByteArray content = f.readAll();
+    f.close();
+
+    QVector<OlerProblemDetail> list;
+    if (path.endsWith(QStringLiteral(".json"), Qt::CaseInsensitive)) {
+        QString err;
+        list = OlerIngest::parseProblemSheetJson(content, &err);
+    } else {
+        list = OlerIngest::parseMarkdownSheet(QString::fromUtf8(content));
+    }
+
+    if (list.isEmpty()) {
+        QMessageBox::warning(this, tr("导入题单"), tr("未能从文件中解析出有效题目。"));
+        return;
+    }
+
+    int count = 0;
+    for (const auto &d : list) {
+        if (OlerIngest::createWorkspace(d))
+            ++count;
+    }
+    rebuild();
+    QMessageBox::information(this, tr("导入题单"), tr("成功导入 %1 道题目并生成工作区！").arg(count));
+}
+
+void OlerProblemsPage::showCardContextMenu(const OlerProblem &p, const QPoint &globalPos) {
+    QMenu menu(this);
+    auto *openAct = menu.addAction(tr("在编辑器中打开"));
+    auto *browserAct = menu.addAction(tr("在浏览器中查看"));
+    auto *trainingAct = menu.addAction(tr("加入今日训练计划"));
+    auto *mistakeAct = menu.addAction(tr("加入错题本"));
+    menu.addSeparator();
+    auto *deleteAct = menu.addAction(tr("删除题目"));
+
+    connect(openAct, &QAction::triggered, this, [this, p] {
+        m_store->touchRecent(p.id);
+        emit openRequested(p);
+    });
+    connect(browserAct, &QAction::triggered, this, [p] {
+        const QString url = p.url.isEmpty()
+            ? QStringLiteral("https://www.luogu.com.cn/problem/") + p.id
+            : p.url;
+        QDesktopServices::openUrl(QUrl(url));
+    });
+    connect(trainingAct, &QAction::triggered, this, [p, this] {
+        QStringList sessions = OlerSettings::instance()
+                                   ->value(QStringLiteral("training/sessions"))
+                                   .toStringList();
+        sessions.append(QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd")) +
+                        QStringLiteral("\t") + p.id + QStringLiteral(" ") + p.title);
+        OlerSettings::instance()->setValue(QStringLiteral("training/sessions"), sessions);
+        OlerSettings::instance()->save();
+        QMessageBox::information(this, tr("训练计划"), tr("已将 %1 加入今日训练计划。").arg(p.id));
+    });
+    connect(mistakeAct, &QAction::triggered, this, [p, this] {
+        OlerMistake m;
+        m.problemId = p.id;
+        m.oj = p.oj;
+        m.title = p.title;
+        m.verdict = QStringLiteral("WA");
+        OlerMistakes::instance()->add(m);
+        OlerMistakes::instance()->save();
+        QMessageBox::information(this, tr("错题本"), tr("已将 %1 加入错题本。").arg(p.id));
+    });
+    connect(deleteAct, &QAction::triggered, this, [this, p] {
+        if (QMessageBox::question(this, tr("删除题目"),
+                                  tr("确定要从题库中删除题目 %1 吗？").arg(p.id),
+                                  QMessageBox::Yes | QMessageBox::No) == QMessageBox::Yes) {
+            m_store->remove(p.id);
+            m_store->save();
+            rebuild();
+        }
+    });
+    menu.exec(globalPos);
 }
 
 QWidget *OlerProblemsPage::makeRecentCard(const OlerProblem &p) {
@@ -212,6 +336,9 @@ QWidget *OlerProblemsPage::makeRecentCard(const OlerProblem &p) {
             emit openRequested(pr);
         }
     });
+    connect(card, &ClickableFrame::rightClicked, this, [this, p](const QPoint &pos) {
+        showCardContextMenu(p, pos);
+    });
     return card;
 }
 
@@ -231,8 +358,7 @@ QWidget *OlerProblemsPage::makeCard(const OlerProblem &p) {
     top->addStretch();
     lay->addLayout(top);
 
-    auto *title = new QLabel(elide(p.title.isEmpty() ? p.id : p.title, 26),
-                             card);
+    auto *title = new QLabel(elide(p.title.isEmpty() ? p.id : p.title, 26), card);
     title->setObjectName(QStringLiteral("cardTitle"));
     title->setWordWrap(true);
     title->setMinimumHeight(35);
@@ -247,8 +373,7 @@ QWidget *OlerProblemsPage::makeCard(const OlerProblem &p) {
     meta->addWidget(oj);
     QFrame *dot = new QFrame(card);
     dot->setFixedSize(8, 8);
-    dot->setStyleSheet(QStringLiteral(
-                           "border-radius:4px;background:%1;")
+    dot->setStyleSheet(QStringLiteral("border-radius:4px;background:%1;")
                            .arg(diffColor(p.difficulty)));
     meta->addWidget(dot);
     auto *dlabel = new QLabel(elide(p.difficulty, 10), card);
@@ -265,13 +390,14 @@ QWidget *OlerProblemsPage::makeCard(const OlerProblem &p) {
             emit openRequested(pr);
         }
     });
+    connect(card, &ClickableFrame::rightClicked, this, [this, p](const QPoint &pos) {
+        showCardContextMenu(p, pos);
+    });
     return card;
 }
 
 void OlerProblemsPage::rebuildRecent() {
-    // Drop old mini-cards.
-    auto *rl =
-        qobject_cast<QHBoxLayout *>(m_recentRowHost->layout());
+    auto *rl = qobject_cast<QHBoxLayout *>(m_recentRowHost->layout());
     while (rl->count() > 0) {
         QLayoutItem *item = rl->takeAt(0);
         if (QWidget *widget = item->widget())
@@ -307,7 +433,6 @@ void OlerProblemsPage::rebuild() {
     }
     rebuildRecent();
 
-    // Clear the grid (cards parented to gridHost).
     while (m_grid->count() > 0) {
         QLayoutItem *item = m_grid->takeAt(0);
         if (QWidget *widget = item->widget())

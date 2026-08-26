@@ -1,0 +1,338 @@
+﻿import React, { useState } from 'react';
+import Editor from '@monaco-editor/react';
+import {
+  Swords,
+  Play,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  ArrowRight,
+  FileCode2,
+  AlertTriangle,
+  Copy,
+  Check,
+  } from 'lucide-react';
+import { useAppStore } from '../../stores/useAppStore';
+
+export const StressTesterPage: React.FC = () => {
+  const {
+    stressSolCode,
+    stressBruteCode,
+    stressGenCode,
+    stressMaxRounds,
+    stressResult,
+    isStressRunning,
+    setStressSolCode,
+    setStressBruteCode,
+    setStressGenCode,
+    setStressMaxRounds,
+    runStressAction,
+    importStressFailToRunner,
+    settings,
+  } = useAppStore();
+
+  const [activeCodeTab, setActiveCodeTab] = useState<'sol' | 'brute' | 'gen'>('sol');
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const handleCopy = (text: string, field: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  const isLight = settings.theme === 'GitHubLight';
+
+  return (
+    <div className="w-full h-full flex flex-col overflow-hidden select-none bg-[var(--bg-base)]">
+      {/* Top Header Bar */}
+      <div
+        className="h-11 px-4 border-b flex items-center justify-between shrink-0"
+        style={{
+          backgroundColor: 'var(--bg-surface)',
+          borderColor: 'var(--border)',
+        }}
+      >
+        <div className="flex items-center gap-2">
+          <div className="p-1 rounded-md bg-[var(--accent-subtle)] text-[var(--accent)]">
+            <Swords className="w-4 h-4" />
+          </div>
+          <span className="text-xs font-bold text-[var(--text-primary)]">
+            瀵规媿鍣?(Stress Tester)
+          </span>
+          <span className="text-[11px] text-[var(--text-tertiary)]">
+            閫氳繃闅忔満鐢熸垚娴嬭瘯鏁版嵁锛岃嚜鍔ㄥ寲瀵规瘮寰呮祴瑙ｆ硶涓庢毚鍔涙瑙?          </span>
+        </div>
+
+        {/* Action Controls */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+            <span>瀵规媿缁勬暟:</span>
+            <select
+              value={stressMaxRounds}
+              onChange={(e) => setStressMaxRounds(Number(e.target.value))}
+              disabled={isStressRunning}
+              className="bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] px-2 py-0.5 rounded text-xs outline-none cursor-pointer"
+            >
+              <option value={10}>10 缁组</option>
+              <option value={30}>30 缁组</option>
+              <option value={50}>50 缁组</option>
+              <option value={100}>100 缁组</option>
+              <option value={500}>500 缁组</option>
+            </select>
+          </div>
+
+          <button
+            onClick={runStressAction}
+            disabled={isStressRunning}
+            className="flex items-center gap-1.5 px-3.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110 active:scale-95 text-white shadow-xs"
+            style={{ backgroundColor: 'var(--accent)' }}
+          >
+            {isStressRunning ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>姝ｅ湪鑷姩鍖栧鎷?..</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>开始对拍</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Main Split Layout: Top Code Switcher (55%) + Bottom Result Viewer (45%) */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top 3 Code Editors */}
+        <div className="flex-[5.5] min-h-0 flex flex-col border-b border-[var(--border)]">
+          {/* Sub-tab switcher */}
+          <div
+            className="h-8 px-3 border-b flex items-center justify-between text-xs shrink-0"
+            style={{
+              backgroundColor: 'var(--bg-surface)',
+              borderColor: 'var(--border)',
+            }}
+          >
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setActiveCodeTab('sol')}
+                className={`px-3 py-1 rounded-md font-mono text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeCodeTab === 'sol'
+                    ? 'bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border)] font-semibold'
+                    : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                <FileCode2 className="w-3 h-3 text-[var(--accent)]" />
+                <span>1. 寰呮祴绋嬪簭 (Solution.cpp)</span>
+              </button>
+
+              <button
+                onClick={() => setActiveCodeTab('brute')}
+                className={`px-3 py-1 rounded-md font-mono text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeCodeTab === 'brute'
+                    ? 'bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border)] font-semibold'
+                    : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                <FileCode2 className="w-3 h-3 text-[#34c759]" />
+                <span>2. 鏆村姏/鍩哄噯 (Standard.cpp)</span>
+              </button>
+
+              <button
+                onClick={() => setActiveCodeTab('gen')}
+                className={`px-3 py-1 rounded-md font-mono text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeCodeTab === 'gen'
+                    ? 'bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border)] font-semibold'
+                    : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                <FileCode2 className="w-3 h-3 text-[#ff9f0a]" />
+                <span>3. 鏁版嵁鐢熸垚鍣?(Generator.cpp)</span>
+              </button>
+            </div>
+
+            <span className="text-[11px] text-[var(--text-tertiary)] font-mono">
+              {activeCodeTab === 'sol' && '优化解法 / 待验证代码'}
+              {activeCodeTab === 'brute' && '淇濊瘉姝ｇ‘鎬х殑鏆村姏绠楁硶 / 棰樿В鏍囩▼'}
+              {activeCodeTab === 'gen' && '闅忔満鐢熸垚 stdin 杈撳叆鏁版嵁'}
+            </span>
+          </div>
+
+          {/* Monaco Editor Component */}
+          <div className="flex-1 w-full h-full relative">
+            {activeCodeTab === 'sol' && (
+              <Editor
+                height="100%"
+                language="cpp"
+                value={stressSolCode}
+                theme={isLight ? 'vs' : 'vs-dark'}
+                onChange={(v) => setStressSolCode(v || '')}
+                options={{
+                  fontSize: 13,
+                  fontFamily: 'Cascadia Mono, Consolas, monospace',
+                  minimap: { enabled: false },
+                  automaticLayout: true,
+                  tabSize: 4,
+                  scrollBeyondLastLine: false,
+                  lineNumbers: 'on',
+                }}
+              />
+            )}
+
+            {activeCodeTab === 'brute' && (
+              <Editor
+                height="100%"
+                language="cpp"
+                value={stressBruteCode}
+                theme={isLight ? 'vs' : 'vs-dark'}
+                onChange={(v) => setStressBruteCode(v || '')}
+                options={{
+                  fontSize: 13,
+                  fontFamily: 'Cascadia Mono, Consolas, monospace',
+                  minimap: { enabled: false },
+                  automaticLayout: true,
+                  tabSize: 4,
+                  scrollBeyondLastLine: false,
+                  lineNumbers: 'on',
+                }}
+              />
+            )}
+
+            {activeCodeTab === 'gen' && (
+              <Editor
+                height="100%"
+                language="cpp"
+                value={stressGenCode}
+                theme={isLight ? 'vs' : 'vs-dark'}
+                onChange={(v) => setStressGenCode(v || '')}
+                options={{
+                  fontSize: 13,
+                  fontFamily: 'Cascadia Mono, Consolas, monospace',
+                  minimap: { enabled: false },
+                  automaticLayout: true,
+                  tabSize: 4,
+                  scrollBeyondLastLine: false,
+                  lineNumbers: 'on',
+                }}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Bottom Results Pane */}
+        <div
+          className="flex-[4.5] min-h-0 flex flex-col p-4 overflow-y-auto text-xs"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+          }}
+        >
+          {stressResult ? (
+            <div className="space-y-3">
+              {/* Status Banner */}
+              <div className="flex items-center justify-between">
+                {stressResult.isCompilationError ? (
+                  <div className="flex items-center gap-2 text-[#ff9f0a] font-semibold">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span>编译错误: 对拍前编译失败</span>
+                  </div>
+                ) : stressResult.success ? (
+                  <div className="flex items-center gap-2 text-[#34c759] font-semibold">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>对拍全部通过！已完成 {stressResult.totalRounds} / {stressResult.totalRounds} 组随机数据比对，未发现反例</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-2 text-[#ff453a] font-semibold">
+                      <XCircle className="w-4 h-4" />
+                      <span>
+                        鍦ㄧ {stressResult.failedRound?.round} 缁勬暟鎹彂鐜板樊寮傦紒({stressResult.failedRound?.errorMsg})
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={importStressFailToRunner}
+                      className="flex items-center gap-1 px-3 py-1 rounded-md text-xs font-semibold text-white shadow-xs transition-all hover:brightness-110 cursor-pointer"
+                      style={{ backgroundColor: 'var(--accent)' }}
+                    >
+                      <span>涓€閿鍏ヨ娴嬭瘯鐐硅嚦涓荤紪杈戝櫒</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Compilation Error Details */}
+              {stressResult.isCompilationError && (
+                <pre className="p-3 rounded-xl border bg-[var(--bg-elevated)] border-[var(--border)] text-[#ff9f0a] font-mono text-xs overflow-auto">
+                  {stressResult.compilerOutput}
+                </pre>
+              )}
+
+              {/* Mismatch Diff Box */}
+              {stressResult.failedRound && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* Generated Input */}
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-[var(--text-secondary)]">
+                        闅忔満杈撳叆鏁版嵁 (Input)
+                      </span>
+                      <button
+                        onClick={() => handleCopy(stressResult.failedRound?.input || '', 'input')}
+                        className="flex items-center gap-1 text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] cursor-pointer"
+                      >
+                        {copiedField === 'input' ? (
+                          <>
+                            <Check className="w-3 h-3 text-[#34c759]" /> 宸插鍒?                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" /> 澶嶅埗
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <pre className="p-2.5 rounded-lg border font-mono text-xs overflow-auto h-32 bg-[var(--bg-elevated)] border-[var(--border)]">
+                      {stressResult.failedRound.input}
+                    </pre>
+                  </div>
+
+                  {/* Solution Output (Wrong) */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="font-semibold text-[#ff453a]">
+                      寰呮祴绋嬪簭杈撳嚭 (Solution Output)
+                    </span>
+                    <pre className="p-2.5 rounded-lg border font-mono text-xs overflow-auto h-32 bg-[#ff453a]/5 border-[#ff453a]/30 text-[var(--text-primary)]">
+                      {stressResult.failedRound.solOutput || '(鏃犺緭鍑烘垨杩愯宕╂簝)'}
+                    </pre>
+                  </div>
+
+                  {/* Standard Output (Expected) */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="font-semibold text-[#34c759]">
+                      鏆村姏鏍囧噯杈撳嚭 (Expected Output)
+                    </span>
+                    <pre className="p-2.5 rounded-lg border font-mono text-xs overflow-auto h-32 bg-[#34c759]/5 border-[#34c759]/30 text-[var(--text-primary)]">
+                      {stressResult.failedRound.bruteOutput || '(鏃犺緭鍑?'}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-[var(--text-tertiary)]">
+              <Swords className="w-8 h-8 mb-2 opacity-40 text-[var(--accent)]" />
+              <p className="text-xs font-medium text-[var(--text-secondary)]">
+                鍑嗗灏辩华锛岀偣鍑诲彸涓婅銆屽紑濮嬪鎷嶃€?              </p>
+              <p className="text-[11px] mt-1">
+                鐢熸垚鍣ㄥ皢浜х敓闅忔満鐢ㄤ緥锛屽悓鏃惰繍琛屽緟娴嬩唬鐮佷笌鏆村姏鍩哄噯锛岀洿鑷冲彂鐜拌緭鍑轰笉涓€鑷寸殑娴嬭瘯鏁版嵁
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+

@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+@layer base {
+  :root, [data-theme="OneDarkPro"] {
+    --font-ui: "Segoe UI Variable Text", "Segoe UI", -apple-system, "SF Pro Text", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+    --font-mono: "Cascadia Mono", "Consolas", "SF Mono", Menlo, monospace;
+
+    /* One Dark Pro (Default Dark) */
+    --bg-base: #1e1e1e;
+    --bg-surface: #252526;
+    --bg-elevated: #2d2d2d;
+    --bg-overlay: #333333;
+    --border: #333333;
+    --border-active: #007acc;
+    --accent: #007acc;
+    --accent-hover: #0062a3;
+    --accent-subtle: rgba(0, 122, 204, 0.16);
+    --text-primary: #cccccc;
+    --text-secondary: #858585;
+    --text-tertiary: #5a5a5a;
+
+    --color-ac: #34c759;
+    --color-wa: #ff453a;
+    --color-tle: #ff9f0a;
+    --color-re: #e06c75;
+    --color-ce: #d19a66;
+  }
+
+  [data-theme="GitHubLight"] {
+    --bg-base: #ffffff;
+    --bg-surface: #f6f8fa;
+    --bg-elevated: #eaeef2;
+    --bg-overlay: #dfe3e8;
+    --border: #d0d7de;
+    --border-active: #0969da;
+    --accent: #0969da;
+    --accent-hover: #0550ae;
+    --accent-subtle: rgba(9, 105, 218, 0.12);
+    --text-primary: #1f2328;
+    --text-secondary: #656d76;
+    --text-tertiary: #8c959f;
+
+    --color-ac: #1a7f37;
+    --color-wa: #cf222e;
+    --color-tle: #9a6700;
+    --color-re: #8250df;
+    --color-ce: #bc4c00;
+  }
+
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: var(--font-ui);
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  input, textarea, code, pre {
+    user-select: text;
+  }
+}
+
+/* High-DPI Slim Scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* KaTeX Formula Display Enhancement */
+.katex-display {
+  margin: 0.6em 0 !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+
+

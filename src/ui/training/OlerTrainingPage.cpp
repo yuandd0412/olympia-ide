@@ -136,6 +136,8 @@ OlerTrainingPage::OlerTrainingPage(QWidget *parent) : QWidget(parent) {
 
     connect(OlerSolves::instance(), &OlerSolves::changed,
             this, &OlerTrainingPage::rebuild);
+    connect(CThemeManager::instance(), &CThemeManager::themeChanged,
+            this, &OlerTrainingPage::rebuild);
     connect(OlerSettings::instance(), &OlerSettings::settingChanged,
             this, [this](const QString &k) {
                  if (k == QLatin1String("training/dailyGoal"))
@@ -221,17 +223,20 @@ void OlerTrainingPage::rebuild() {
     // Streak green when active, tertiary grey at 0 (spec section 4.2).
     const QString streakColor = streak > 0 ? QStringLiteral("#34c759")
                                            : QStringLiteral("#6e6d68");
+    const QString textPrimary =
+        OlerTheme::token(OlerTheme::Token::TextPrimary).name(QColor::HexRgb);
     m_streakValue->setText(
         QStringLiteral("<span style='color:%1;font-size:28px;font-weight:600;"
                        "font-family:Consolas,monospace'>%2</span>")
             .arg(streakColor).arg(streak));
     m_todayValue->setText(
-        QStringLiteral("<span style='color:#f1f1ef;font-size:28px;font-weight:600;"
-                       "font-family:Consolas,monospace'>%1 / %2</span>")
-            .arg(done).arg(goal));
+        QStringLiteral("<span style='color:%1;font-size:28px;font-weight:600;"
+                       "font-family:Consolas,monospace'>%2 / %3</span>")
+            .arg(textPrimary).arg(done).arg(goal));
     m_totalValue->setText(
-        QStringLiteral("<span style='color:#f1f1ef;font-size:28px;font-weight:600;"
-                       "font-family:Consolas,monospace'>%1</span>").arg(total));
+        QStringLiteral("<span style='color:%1;font-size:28px;font-weight:600;"
+                       "font-family:Consolas,monospace'>%2</span>")
+            .arg(textPrimary).arg(total));
 
     // Fill: accent; >=100% switches to success green (token spec).
     const QString fill = done >= goal

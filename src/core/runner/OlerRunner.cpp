@@ -81,27 +81,49 @@ QVector<OlerTestCase> OlerRunner::discoverCases(const QString &sourcePath) {
     QVector<OlerTestCase> cases;
     const QDir srcDir(QFileInfo(sourcePath).absolutePath());
 
-    // 1. tests/*.in paired with same-basename .out, name-sorted.
-    const QDir testsDir(srcDir.filePath(QStringLiteral("tests")));
-    if (testsDir.exists()) {
+    auto scanDirForPairs = [](const QDir &dir, QVector<OlerTestCase> &out) {
         const QStringList inFiles =
-            testsDir.entryList({QStringLiteral("*.in")}, QDir::Files, QDir::Name);
+            dir.entryList({QStringLiteral("*.in")}, QDir::Files, QDir::Name);
         for (const QString &in : inFiles) {
-            const QFileInfo fi(testsDir.filePath(in));
-            const QString out = fi.completeBaseName() + QStringLiteral(".out");
-            if (QFileInfo::exists(testsDir.filePath(out))) {
-                cases.append({fi.absoluteFilePath(), testsDir.filePath(out)});
+            const QFileInfo fi(dir.filePath(in));
+            const QString base = fi.completeBaseName();
+            QString outPath = dir.filePath(base + QStringLiteral(".out"));
+            if (!QFileInfo::exists(outPath))
+                outPath = dir.filePath(base + QStringLiteral(".ans"));
+            if (QFileInfo::exists(outPath)) {
+                out.append({fi.absoluteFilePath(), outPath});
             }
         }
+    };
+
+    // 1. tests/*.in paired with .out or .ans, name-sorted.
+    const QDir testsDir(srcDir.filePath(QStringLiteral("tests")));
+    if (testsDir.exists()) {
+        scanDirForPairs(testsDir, cases);
     }
     if (!cases.isEmpty())
         return cases;
 
-    // 2. Legacy single-sample layout: input.txt / output.txt.
-    const QString in = srcDir.filePath(QStringLiteral("input.txt"));
-    const QString out = srcDir.filePath(QStringLiteral("output.txt"));
-    if (QFileInfo::exists(in) && QFileInfo::exists(out))
-        cases.append({in, out});
+    // 2. Direct *.in paired with .out or .ans in the source directory.
+    scanDirForPairs(srcDir, cases);
+    if (!cases.isEmpty())
+        return cases;
+
+    // 3. Single-sample fallbacks: input.txt / output.txt or in.txt / out.txt
+    static const QPair<QString, QString> fallbacks[] = {
+        {QStringLiteral("input.txt"), QStringLiteral("output.txt")},
+        {QStringLiteral("input.txt"), QStringLiteral("answer.txt")},
+        {QStringLiteral("in.txt"), QStringLiteral("out.txt")},
+        {QStringLiteral("in.txt"), QStringLiteral("ans.txt")},
+    };
+    for (const auto &pair : fallbacks) {
+        const QString in = srcDir.filePath(pair.first);
+        const QString out = srcDir.filePath(pair.second);
+        if (QFileInfo::exists(in) && QFileInfo::exists(out)) {
+            cases.append({in, out});
+            break;
+        }
+    }
     return cases;
 }
 

@@ -121,8 +121,14 @@ OlerMistakesPage::OlerMistakesPage(QWidget *parent)
         chips->addWidget(btn);
     }
     chips->addStretch();
-    auto *archive = new QLabel(tr("显示已归档"), this);
-    archive->setObjectName(QStringLiteral("sectionAction"));
+    auto *archive = new QPushButton(tr("显示已掌握"), this);
+    archive->setProperty("mchipBtn", true);
+    archive->setCheckable(true);
+    archive->setCursor(Qt::PointingHandCursor);
+    connect(archive, &QPushButton::toggled, this, [this](bool checked) {
+        m_showArchived = checked;
+        rebuild();
+    });
     chips->addWidget(archive);
     mainCol->addLayout(chips);
 
@@ -197,29 +203,33 @@ QWidget *OlerMistakesPage::buildRow(const OlerMistake &m) {
     });
     lay->addWidget(redo);
 
-    auto *done = new QPushButton(tr("掌握"), row);
-    done->setObjectName(QStringLiteral("redoBtn"));
-    done->setCursor(Qt::PointingHandCursor);
-    connect(done, &QPushButton::clicked, row, [this, m] {
-        if (m_store->markReviewed(m.id))
-            m_store->save();
-    });
-    lay->addWidget(done);
+    if (!m.reviewed) {
+        auto *done = new QPushButton(tr("掌握"), row);
+        done->setObjectName(QStringLiteral("redoBtn"));
+        done->setCursor(Qt::PointingHandCursor);
+        connect(done, &QPushButton::clicked, row, [this, m] {
+            if (m_store->markReviewed(m.id))
+                m_store->save();
+        });
+        lay->addWidget(done);
+    } else {
+        auto *tag = new QLabel(tr("已掌握"), row);
+        tag->setStyleSheet(QStringLiteral("color:#34c759;font-size:11px;"));
+        lay->addWidget(tag);
+    }
     return row;
 }
 
 void OlerMistakesPage::rebuild() {
     // Clear rows.
-    const auto olds = m_listHost->findChildren<QWidget *>();
-    for (QWidget *w : olds)
-        if (w != m_listHost) w->deleteLater();
-    // Remove leftover layout items (spacers added below).
     while (m_listLayout->count() > 0) {
         QLayoutItem *it = m_listLayout->takeAt(0);
+        if (QWidget *w = it->widget())
+            w->deleteLater();
         delete it;
     }
 
-    const auto items = m_store->entries(false);
+    const auto items = m_store->entries(m_showArchived);
     int shown = 0;
     for (const OlerMistake &m : items) {
         if (!m_verdictFilter.isEmpty() && m.verdict != m_verdictFilter)

@@ -1,4 +1,4 @@
-﻿#include "OlerSettingsPage.h"
+#include "OlerSettingsPage.h"
 #include "core/settings/OlerSettings.h"
 #include "core/theme/CThemeManager.h"
 #include "ui/common/OlerIcons.h"
@@ -403,7 +403,11 @@ void OlerSettingsPage::detectCompiler() {
             OlerSettings *st = OlerSettings::instance();
             st->setValue(QStringLiteral("compiler/gxxPath"), c);
             st->save();
+            QMessageBox::information(this, tr("检测编译器"),
+                                     tr("已找到可用 C++ 编译器：\n%1").arg(c));
             return;
         }
     }
+    QMessageBox::warning(this, tr("检测编译器"),
+                         tr("未在默认路径中找到 g++.exe，请手动指定编译器完整路径。"));
 }

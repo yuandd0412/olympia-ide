@@ -25,6 +25,7 @@ private:
 
     OlerMistakes *m_store;
     QString m_verdictFilter; // empty = all
+    bool m_showArchived = false;
     QVBoxLayout *m_listLayout = nullptr;
     QWidget *m_listHost = nullptr;
 };

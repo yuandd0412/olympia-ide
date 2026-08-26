@@ -314,10 +314,6 @@ void OlerProblemsPage::rebuild() {
             widget->deleteLater();
         delete item;
     }
-    delete m_grid;
-    m_grid = new QGridLayout(m_gridHost);
-    m_grid->setContentsMargins(0, 0, 0, 0);
-    m_grid->setSpacing(10);
 
     constexpr int kCols = 4;
     int col = 0, row = 0;
@@ -329,6 +325,13 @@ void OlerProblemsPage::rebuild() {
     for (int i = 0; i < kCols; ++i)
         m_grid->setColumnStretch(i, 1);
     refreshStats();
+}
+
+void OlerProblemsPage::focusSearch() {
+    if (m_search) {
+        m_search->setFocus();
+        m_search->selectAll();
+    }
 }
 
 void OlerProblemsPage::refreshStats() {
@@ -418,4 +421,3 @@ void OlerProblemsPage::addProblem() {
     m_store->upsert(p);
     m_store->save();
 }
-// __PART3__

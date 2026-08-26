@@ -16,6 +16,7 @@ CMakeFiles/
 CMakeUserPresets.json
 cmake_install.cmake
 CTestTestfile.cmake
+Testing/
 _deps/
 
 # Vendored third-party (re-cloneable)

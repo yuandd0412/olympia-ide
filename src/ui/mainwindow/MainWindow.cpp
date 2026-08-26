@@ -1,4 +1,4 @@
-﻿#include "MainWindow.h"
+#include "MainWindow.h"
 #include "ui/common/OlerIcons.h"
 #include "ui/common/OlerTheme.h"
 #include "core/theme/CThemeManager.h"
@@ -91,6 +91,24 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     runAct->setShortcut(QKeySequence("Ctrl+R"));
     connect(runAct, &QAction::triggered, this, &MainWindow::runCurrentFile);
     addAction(runAct);
+
+    auto *searchAct = new QAction(this);
+    searchAct->setShortcut(QKeySequence("Ctrl+K"));
+    connect(searchAct, &QAction::triggered, this, [this] {
+        switchToPage(1);
+        if (m_problemsPage)
+            m_problemsPage->focusSearch();
+    });
+    addAction(searchAct);
+
+    for (int i = 0; i < 6; ++i) {
+        auto *pageAct = new QAction(this);
+        pageAct->setShortcut(QKeySequence(QStringLiteral("Ctrl+%1").arg(i + 1)));
+        connect(pageAct, &QAction::triggered, this, [this, i] {
+            switchToPage(i);
+        });
+        addAction(pageAct);
+    }
 
     statusBar()->showMessage(tr("就绪 · Ctrl+O 打开 · Ctrl+R 编译运行"));
 
@@ -731,8 +749,7 @@ void MainWindow::openFile() {
         return;
     if (!openEditorFile(path))
         return;
-    m_runPanel->showMessage(tr("<span style='color:#6e6d68'>opened %1 鈥?"
-                               "Ctrl+R to compile &amp; run</span>")
+    m_runPanel->showMessage(tr("<span style='color:#6e6d68'>已打开 %1 · Ctrl+R 编译运行</span>")
                                 .arg(QFileInfo(path).fileName().toHtmlEscaped()));
 }
 
@@ -769,7 +786,7 @@ void MainWindow::openProblem(const OlerProblem &problem) {
     // input.txt/output.txt placeholders on first open.
     QDir ws(QDir::homePath() + QStringLiteral("/.oleride/workspace/") + problem.id);
     if (!ws.exists() && !QDir().mkpath(ws.absolutePath())) {
-        m_runPanel->showMessage(tr("<span style='color:#ff453a'>Cannot create %1</span>")
+        m_runPanel->showMessage(tr("<span style='color:#ff453a'>无法创建工作区目录：%1</span>")
                                     .arg(ws.absolutePath().toHtmlEscaped()));
         return;
     }

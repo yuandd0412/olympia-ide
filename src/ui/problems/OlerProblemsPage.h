@@ -14,6 +14,7 @@ class OlerProblemsPage : public QWidget {
     Q_OBJECT
 public:
     explicit OlerProblemsPage(QWidget *parent = nullptr);
+    void focusSearch();
 
 signals:
     void openRequested(const OlerProblem &problem);

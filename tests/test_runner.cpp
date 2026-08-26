@@ -1,4 +1,4 @@
-﻿// test_runner: regression test for OlerRunner (Phase 4b).
+// test_runner: regression test for OlerRunner (Phase 4b).
 // Exercises the full pipeline with the real MinGW g++: AC, WA, TLE, RE,
 // CE paths. Requires a desktop-less environment is fine (QProcess only,
 // no QApplication).
@@ -154,6 +154,24 @@ int main() {
         const auto cs = OlerRunner::discoverCases(proj + "/sol.cpp");
         check(cs.size() == 2, "discover: only paired cases found");
         check(cs.at(0).inputFile.endsWith("case1.in"), "discover: sorted by name");
+
+        // 6b. tests/*.in paired with .ans.
+        const QString projAns = dir.filePath("projAns");
+        QDir().mkpath(projAns + "/tests");
+        writeText(projAns + "/tests/1.in", "10 20\n");
+        writeText(projAns + "/tests/1.ans", "30\n");
+        const auto csAns = OlerRunner::discoverCases(projAns + "/sol.cpp");
+        check(csAns.size() == 1 && csAns.at(0).expectedFile.endsWith("1.ans"),
+              "discover: .ans files recognized");
+
+        // 6c. Source directory *.in + *.out pairs when no tests/ subdir exists.
+        const QString projDirect = dir.filePath("projDirect");
+        QDir().mkpath(projDirect);
+        writeText(projDirect + "/sample1.in", "2 3\n");
+        writeText(projDirect + "/sample1.out", "5\n");
+        const auto csDirect = OlerRunner::discoverCases(projDirect + "/main.cpp");
+        check(csDirect.size() == 1 && csDirect.at(0).inputFile.endsWith("sample1.in"),
+              "discover: source directory *.in / *.out pairs");
 
         // Legacy input.txt/output.txt fallback.
         const QString projB = dir.filePath("projB");

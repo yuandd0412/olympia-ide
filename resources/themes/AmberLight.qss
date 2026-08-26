@@ -213,3 +213,28 @@ QPushButton[mchipBtn="true"]:checked { background: %OVERLAY%; color: #2c2a26; bo
 #edTabBar { background: %BASE%; border-bottom: 1px solid %BORDER%; }
 #edTab { padding: 0 14px; font-size: 12px; color: %TERTIARY%; border-right: 1px solid %BORDER%; }
 #edTabActive { background: %SURFACE%; color: #2c2a26; border-top: 2px solid %PRIMARY%; }
+
+/* ---- v2: AI coach polish ---- */
+#aiBrand { font-size: 14px; font-weight: 600; letter-spacing: 0.3px; color: %PRIMARY%; }
+#aiModelChip {
+  background: %PRIMARY_MUTED%; color: %PRIMARY%;
+  border: 1px solid %BORDER_ACTIVE%; border-radius: 12px;
+  padding: 0 10px; min-height: 28px; font-size: 12px; font-weight: 500;
+  selection-background-color: %OVERLAY%;
+}
+#aiModelChip:disabled { color: %TERTIARY%; }
+#aiModelChip::drop-down { border: none; width: 16px; }
+#aiClearBtn {
+  background: transparent; color: %TERTIARY%;
+  border: 1px solid %BORDER%; border-radius: 6px;
+  padding: 4px 10px; font-size: 11px;
+}
+#aiClearBtn:hover { color: %SECONDARY%; border-color: %BORDER_HOVER%; }
+#aiSend:disabled { background: %BORDER%; }
+#aiBubbleAi { background: transparent; border: 1px solid %BORDER%; }
+#aiCodeBlock { background: %SURFACE%; border: 1px solid %BORDER%; border-radius: 6px; }
+#aiCodeHeader { background: %ELEVATED%; border-bottom: 1px solid %BORDER%; }
+#aiCodeLang { color: %SECONDARY%; font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 11px; }
+#aiCopyBtn { background: transparent; color: %TERTIARY%; border: none; padding: 4px 10px; font-size: 11px; border-radius: 4px; }
+#aiCopyBtn:hover { background: %OVERLAY%; color: %SECONDARY%; }
+#aiCodeBody { font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 12px; padding: 8px 12px; color: %TEXT_PRIMARY%; background: transparent; border: none; }

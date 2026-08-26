@@ -21,6 +21,7 @@ struct Palette {
     QString overlay;
     QString secondary;
     QString tertiary;
+    QString textPrimary;     // body text (per theme; usually text-primary)
     QString border;
     QString borderHover;
     QString borderActive;
@@ -36,7 +37,7 @@ const QHash<QString, Palette> &paletteTable() {
         // AmberDark: warm dark, brand-default
         {"AmberDark", {
             "#131311", "#1a1915", "#252524", "#2c2c2b",
-            "#a0a0a3", "#6e6d68",
+            "#a0a0a3", "#6e6d68", "#f1f1ef",
             "rgba(255,255,255,0.06)", "rgba(255,255,255,0.12)",
             "rgba(217,119,87,0.40)",
             "#d97757", "#e08a6c",
@@ -46,7 +47,7 @@ const QHash<QString, Palette> &paletteTable() {
         // MistBlue: cool dark, slate-blue accent
         {"MistBlue", {
             "#131311", "#1a1915", "#252524", "#2c2c2b",
-            "#a0a0a3", "#6e6d68",
+            "#a0a0a3", "#6e6d68", "#f1f1ef",
             "rgba(255,255,255,0.06)", "rgba(255,255,255,0.12)",
             "rgba(125,174,212,0.40)",
             "#7daed4", "#8fbcdc",
@@ -56,7 +57,7 @@ const QHash<QString, Palette> &paletteTable() {
         // OneDarkPro: Atom One Dark, distinct base palette
         {"OneDarkPro", {
             "#282c34", "#21252b", "#2c313a", "#2c313a",
-            "#abb2bf", "#5c6370",
+            "#abb2bf", "#5c6370", "#abb2bf",
             "rgba(255,255,255,0.10)", "rgba(255,255,255,0.20)",
             "rgba(97,175,239,0.40)",
             "#61afef", "#61afef",
@@ -66,7 +67,7 @@ const QHash<QString, Palette> &paletteTable() {
         // AmberLight: warm light, brand accent preserved
         {"AmberLight", {
             "#fafaf7", "#f0eee8", "#e8e6df", "#e0ded6",
-            "#5c5a55", "#7c7a75",
+            "#5c5a55", "#7c7a75", "#2c2a26",
             "rgba(0,0,0,0.10)", "rgba(0,0,0,0.18)",
             "rgba(217,119,87,0.40)",
             "#d97757", "#e08a6c",
@@ -76,7 +77,7 @@ const QHash<QString, Palette> &paletteTable() {
         // OneLight: Atom One Light
         {"OneLight", {
             "#fafafa", "#ffffff", "#f0f0f0", "#e8e8e8",
-            "#383a42", "#a0a1a7",
+            "#383a42", "#a0a1a7", "#383a42",
             "#d0d0d0", "#b0b0b0",
             "rgba(64,120,242,0.40)",
             "#4078f2", "#4078f2",
@@ -96,6 +97,7 @@ QHash<QString, QString> tokenTable(const QString &theme) {
         {"OVERLAY",        p.overlay},
         {"SECONDARY",      p.secondary},
         {"TERTIARY",       p.tertiary},
+        {"TEXT_PRIMARY",   p.textPrimary},
         {"BORDER",         p.border},
         {"BORDER_HOVER",   p.borderHover},
         {"BORDER_ACTIVE",  p.borderActive},

@@ -73,10 +73,10 @@ export const SettingsPage: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-[var(--text-primary)]">
-            鍋忓ソ璁剧疆
+            偏好设置
           </h1>
           <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
-            閰嶇疆 IDE 鐣岄潰涓婚�銆佹湰鍦?C++ 缂栬瘧鍣ㄨ矾寰勪笌 AI 绠楁硶鏁欑粌
+            配置 IDE 界面主题、本地 C++ 编译器路径与 AI 算法教练
           </p>
         </div>
 
@@ -93,7 +93,7 @@ export const SettingsPage: React.FC = () => {
           ) : (
             <>
               <Save className="w-3.5 h-3.5" />
-              <span>淇濆瓨閰嶇疆</span>
+              <span>保存配置</span>
             </>
           )}
         </button>
@@ -161,7 +161,7 @@ export const SettingsPage: React.FC = () => {
         <div className="flex items-center gap-2">
           <Palette className="w-4 h-4 text-[var(--accent)]" />
           <span className="text-xs font-bold text-[var(--text-primary)]">
-            IDE 鐣岄潰涓婚� (Theme Palette)
+            IDE 界面主题 (Theme Palette)
           </span>
         </div>
 
@@ -172,11 +172,7 @@ export const SettingsPage: React.FC = () => {
               <div
                 key={th.id}
                 onClick={() => handleSelectTheme(th.id)}
-                className={`p-4 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
-                  isSelected
-                    ? 'border-[var(--accent)] bg-[var(--accent-subtle)] ring-2 ring-[var(--accent)] shadow-xs'
-                    : 'border-[var(--border)] bg-[var(--bg-elevated)] hover:border-[var(--text-tertiary)]'
-                }`}
+                className={'p-4 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ' + (isSelected ? 'border-[var(--accent)] bg-[var(--accent-subtle)] ring-2 ring-[var(--accent)] shadow-xs' : 'border-[var(--border)] bg-[var(--bg-elevated)] hover:border-[var(--text-tertiary)]')}
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2.5">
@@ -195,7 +191,7 @@ export const SettingsPage: React.FC = () => {
                         {th.name}
                       </span>
                       <span className="text-[10px] text-[var(--text-tertiary)] block">
-                        {th.isLight ? '娴呰壊鏃ュ厜妯″紡' : '娣辫壊鏆楅粦妯″紡'}
+                        {th.isLight ? '浅色日光模式' : '深色暗黑模式'}
                       </span>
                     </div>
                   </div>
@@ -233,7 +229,7 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Custom Boilerplate (缂虹渷婧愰厤缃? */}
+      {/* Custom Boilerplate (缺省源配置) */}
       <div
         className="p-5 rounded-2xl border space-y-4"
         style={{
@@ -245,7 +241,7 @@ export const SettingsPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <Code2 className="w-4 h-4 text-[var(--accent)]" />
             <span className="text-xs font-bold text-[var(--text-primary)]">
-              鏂板缓鏂囦欢缂虹渷婧?(Custom Code Boilerplate)
+              新建文件缺省源 (Custom Code Boilerplate)
             </span>
           </div>
 
@@ -306,14 +302,14 @@ export const SettingsPage: React.FC = () => {
         <div className="flex items-center gap-2">
           <Terminal className="w-4 h-4 text-[var(--accent)]" />
           <span className="text-xs font-bold text-[var(--text-primary)]">
-            C++ 缂栬瘧鍣ㄧ幆澧?(MinGW / GCC)
+            C++ 编译器环境 (MinGW / GCC)
           </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
-              缂栬瘧鍣ㄥ彲鎵ц�璺�緞 (g++)
+              编译器可执行路径 (g++)
             </label>
             <input
               type="text"
@@ -321,14 +317,14 @@ export const SettingsPage: React.FC = () => {
               onChange={(e) =>
                 setForm({ ...form, compilerPath: e.target.value })
               }
-              placeholder="g++ 鎴?C:\Qt\Tools\mingw1310_64\bin\g++.exe"
+              placeholder="g++ 或 C:QtToolsmingw1310_64ing++.exe"
               className="w-full p-2.5 rounded-xl border text-xs font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
             />
           </div>
 
           <div>
             <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
-              缂栬瘧鍙傛暟鏍囧織 (绌烘牸鍒嗛殧)
+              编译参数标志 (空格分隔)
             </label>
             <input
               type="text"
@@ -362,7 +358,7 @@ export const SettingsPage: React.FC = () => {
         </div>
 
         <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-          Oler IDE 通过调用洛谷公开内容接口（<code className="font-mono text-[var(--accent)]">https://www.luogu.com.cn/problem/{'{id}'}?_contentOnly=1</code>）自动解析题面 LaTeX 源码、时空限制与输入输出样例，并缓存于本地（<code className="font-mono text-[var(--accent)]">~/.oleride/problems.json</code>），支持无网络离线练习。
+          Olympia IDE 通过调用洛谷公开内容接口（<code className="font-mono text-[var(--accent)]">https://www.luogu.com.cn/problem/{'{id}'}?_contentOnly=1</code>）自动解析题面 LaTeX 源码、时空限制与输入输出样例，并缓存于本地（<code className="font-mono text-[var(--accent)]">~/.oleride/problems.json</code>），支持无网络离线练习。
         </p>
       </div>
 
@@ -377,7 +373,7 @@ export const SettingsPage: React.FC = () => {
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-[var(--accent)]" />
           <span className="text-xs font-bold text-[var(--text-primary)]">
-            AI 绔炶禌鏁欑粌妯″瀷鎺ュ彛 (OpenAI / DeepSeek 鍏煎�)
+            AI 竞赛教练模型接口 (OpenAI / DeepSeek 兼容)
           </span>
         </div>
 
@@ -410,13 +406,13 @@ export const SettingsPage: React.FC = () => {
 
           <div>
             <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
-              妯″瀷鍚嶇О (Model)
+              模型名称 (Model)
             </label>
             <input
               type="text"
               value={form.aiModel}
               onChange={(e) => setForm({ ...form, aiModel: e.target.value })}
-              placeholder="deepseek-chat 鎴?gpt-4o-mini"
+              placeholder="deepseek-chat 或 gpt-4o-mini"
               className="w-full p-2.5 rounded-xl border text-xs font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
             />
           </div>
@@ -434,14 +430,14 @@ export const SettingsPage: React.FC = () => {
         <div className="flex items-center gap-2">
           <Sliders className="w-4 h-4 text-[var(--accent)]" />
           <span className="text-xs font-bold text-[var(--text-primary)]">
-            甯歌�鍋忓ソ
+            常规偏好
           </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
-              姣忔棩鍋氶�鐩�爣 (棰?
+              每日做题目标 (题)
             </label>
             <input
               type="number"
@@ -457,7 +453,7 @@ export const SettingsPage: React.FC = () => {
 
           <div>
             <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
-              缂栬緫鍣ㄥ瓧鍙?(px)
+              编辑器字号 (px)
             </label>
             <input
               type="number"
@@ -475,5 +471,3 @@ export const SettingsPage: React.FC = () => {
     </div>
   );
 };
-
-

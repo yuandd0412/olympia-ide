@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import Editor from '@monaco-editor/react';
 import {
   Swords,
@@ -11,7 +11,7 @@ import {
   AlertTriangle,
   Copy,
   Check,
-  } from 'lucide-react';
+} from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
 
 export const StressTesterPage: React.FC = () => {
@@ -57,27 +57,28 @@ export const StressTesterPage: React.FC = () => {
             <Swords className="w-4 h-4" />
           </div>
           <span className="text-xs font-bold text-[var(--text-primary)]">
-            瀵规媿鍣?(Stress Tester)
+            对拍器 (Stress Tester)
           </span>
           <span className="text-[11px] text-[var(--text-tertiary)]">
-            閫氳繃闅忔満鐢熸垚娴嬭瘯鏁版嵁锛岃嚜鍔ㄥ寲瀵规瘮寰呮祴瑙ｆ硶涓庢毚鍔涙瑙?          </span>
+            通过随机生成测试数据，自动化对比待测解法与暴力正确程序
+          </span>
         </div>
 
         {/* Action Controls */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
-            <span>瀵规媿缁勬暟:</span>
+            <span>对拍组数:</span>
             <select
               value={stressMaxRounds}
               onChange={(e) => setStressMaxRounds(Number(e.target.value))}
               disabled={isStressRunning}
               className="bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] px-2 py-0.5 rounded text-xs outline-none cursor-pointer"
             >
-              <option value={10}>10 缁组</option>
-              <option value={30}>30 缁组</option>
-              <option value={50}>50 缁组</option>
-              <option value={100}>100 缁组</option>
-              <option value={500}>500 缁组</option>
+              <option value={10}>10 组</option>
+              <option value={30}>30 组</option>
+              <option value={50}>50 组</option>
+              <option value={100}>100 组</option>
+              <option value={500}>500 组</option>
             </select>
           </div>
 
@@ -90,7 +91,7 @@ export const StressTesterPage: React.FC = () => {
             {isStressRunning ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>姝ｅ湪鑷姩鍖栧鎷?..</span>
+                <span>正在自动化对拍...</span>
               </>
             ) : (
               <>
@@ -102,7 +103,7 @@ export const StressTesterPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Split Layout: Top Code Switcher (55%) + Bottom Result Viewer (45%) */}
+      {/* Main Split Layout */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top 3 Code Editors */}
         <div className="flex-[5.5] min-h-0 flex flex-col border-b border-[var(--border)]">
@@ -117,45 +118,33 @@ export const StressTesterPage: React.FC = () => {
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setActiveCodeTab('sol')}
-                className={`px-3 py-1 rounded-md font-mono text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activeCodeTab === 'sol'
-                    ? 'bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border)] font-semibold'
-                    : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
-                }`}
+                className={'px-3 py-1 rounded-md font-mono text-xs transition-all cursor-pointer flex items-center gap-1.5 ' + (activeCodeTab === 'sol' ? 'bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border)] font-semibold' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]')}
               >
                 <FileCode2 className="w-3 h-3 text-[var(--accent)]" />
-                <span>1. 寰呮祴绋嬪簭 (Solution.cpp)</span>
+                <span>1. 待测程序 (Solution.cpp)</span>
               </button>
 
               <button
                 onClick={() => setActiveCodeTab('brute')}
-                className={`px-3 py-1 rounded-md font-mono text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activeCodeTab === 'brute'
-                    ? 'bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border)] font-semibold'
-                    : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
-                }`}
+                className={'px-3 py-1 rounded-md font-mono text-xs transition-all cursor-pointer flex items-center gap-1.5 ' + (activeCodeTab === 'brute' ? 'bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border)] font-semibold' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]')}
               >
                 <FileCode2 className="w-3 h-3 text-[#34c759]" />
-                <span>2. 鏆村姏/鍩哄噯 (Standard.cpp)</span>
+                <span>2. 暴力/基准 (Standard.cpp)</span>
               </button>
 
               <button
                 onClick={() => setActiveCodeTab('gen')}
-                className={`px-3 py-1 rounded-md font-mono text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activeCodeTab === 'gen'
-                    ? 'bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border)] font-semibold'
-                    : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
-                }`}
+                className={'px-3 py-1 rounded-md font-mono text-xs transition-all cursor-pointer flex items-center gap-1.5 ' + (activeCodeTab === 'gen' ? 'bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border)] font-semibold' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]')}
               >
                 <FileCode2 className="w-3 h-3 text-[#ff9f0a]" />
-                <span>3. 鏁版嵁鐢熸垚鍣?(Generator.cpp)</span>
+                <span>3. 数据生成器 (Generator.cpp)</span>
               </button>
             </div>
 
             <span className="text-[11px] text-[var(--text-tertiary)] font-mono">
               {activeCodeTab === 'sol' && '优化解法 / 待验证代码'}
-              {activeCodeTab === 'brute' && '淇濊瘉姝ｇ‘鎬х殑鏆村姏绠楁硶 / 棰樿В鏍囩▼'}
-              {activeCodeTab === 'gen' && '闅忔満鐢熸垚 stdin 杈撳叆鏁版嵁'}
+              {activeCodeTab === 'brute' && '保证正确性的暴力算法 / 题解标程'}
+              {activeCodeTab === 'gen' && '随机生成 stdin 输入数据'}
             </span>
           </div>
 
@@ -246,7 +235,7 @@ export const StressTesterPage: React.FC = () => {
                     <div className="flex items-center gap-2 text-[#ff453a] font-semibold">
                       <XCircle className="w-4 h-4" />
                       <span>
-                        鍦ㄧ {stressResult.failedRound?.round} 缁勬暟鎹彂鐜板樊寮傦紒({stressResult.failedRound?.errorMsg})
+                        在第 {stressResult.failedRound?.round} 组数据发现差异！({stressResult.failedRound?.errorMsg})
                       </span>
                     </div>
 
@@ -255,7 +244,7 @@ export const StressTesterPage: React.FC = () => {
                       className="flex items-center gap-1 px-3 py-1 rounded-md text-xs font-semibold text-white shadow-xs transition-all hover:brightness-110 cursor-pointer"
                       style={{ backgroundColor: 'var(--accent)' }}
                     >
-                      <span>涓€閿鍏ヨ娴嬭瘯鐐硅嚦涓荤紪杈戝櫒</span>
+                      <span>一键导入该测试点至主编辑器</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -276,7 +265,7 @@ export const StressTesterPage: React.FC = () => {
                   <div className="flex flex-col gap-1.5">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-[var(--text-secondary)]">
-                        闅忔満杈撳叆鏁版嵁 (Input)
+                        随机输入数据 (Input)
                       </span>
                       <button
                         onClick={() => handleCopy(stressResult.failedRound?.input || '', 'input')}
@@ -284,10 +273,11 @@ export const StressTesterPage: React.FC = () => {
                       >
                         {copiedField === 'input' ? (
                           <>
-                            <Check className="w-3 h-3 text-[#34c759]" /> 宸插鍒?                          </>
+                            <Check className="w-3 h-3 text-[#34c759]" /> 已复制
+                          </>
                         ) : (
                           <>
-                            <Copy className="w-3 h-3" /> 澶嶅埗
+                            <Copy className="w-3 h-3" /> 复制
                           </>
                         )}
                       </button>
@@ -300,20 +290,20 @@ export const StressTesterPage: React.FC = () => {
                   {/* Solution Output (Wrong) */}
                   <div className="flex flex-col gap-1.5">
                     <span className="font-semibold text-[#ff453a]">
-                      寰呮祴绋嬪簭杈撳嚭 (Solution Output)
+                      待测程序输出 (Solution Output)
                     </span>
                     <pre className="p-2.5 rounded-lg border font-mono text-xs overflow-auto h-32 bg-[#ff453a]/5 border-[#ff453a]/30 text-[var(--text-primary)]">
-                      {stressResult.failedRound.solOutput || '(鏃犺緭鍑烘垨杩愯宕╂簝)'}
+                      {stressResult.failedRound.solOutput || '(无输出或运行崩溃)'}
                     </pre>
                   </div>
 
                   {/* Standard Output (Expected) */}
                   <div className="flex flex-col gap-1.5">
                     <span className="font-semibold text-[#34c759]">
-                      鏆村姏鏍囧噯杈撳嚭 (Expected Output)
+                      暴力标准输出 (Expected Output)
                     </span>
                     <pre className="p-2.5 rounded-lg border font-mono text-xs overflow-auto h-32 bg-[#34c759]/5 border-[#34c759]/30 text-[var(--text-primary)]">
-                      {stressResult.failedRound.bruteOutput || '(鏃犺緭鍑?'}
+                      {stressResult.failedRound.bruteOutput || '(无输出)'}
                     </pre>
                   </div>
                 </div>
@@ -323,9 +313,10 @@ export const StressTesterPage: React.FC = () => {
             <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-[var(--text-tertiary)]">
               <Swords className="w-8 h-8 mb-2 opacity-40 text-[var(--accent)]" />
               <p className="text-xs font-medium text-[var(--text-secondary)]">
-                鍑嗗灏辩华锛岀偣鍑诲彸涓婅銆屽紑濮嬪鎷嶃€?              </p>
+                准备就绪，点击右上角「开始对拍」
+              </p>
               <p className="text-[11px] mt-1">
-                鐢熸垚鍣ㄥ皢浜х敓闅忔満鐢ㄤ緥锛屽悓鏃惰繍琛屽緟娴嬩唬鐮佷笌鏆村姏鍩哄噯锛岀洿鑷冲彂鐜拌緭鍑轰笉涓€鑷寸殑娴嬭瘯鏁版嵁
+                生成器将产生随机用例，同时运行待测代码与暴力基准，直至发现输出不一致的测试数据
               </p>
             </div>
           )}
@@ -334,5 +325,3 @@ export const StressTesterPage: React.FC = () => {
     </div>
   );
 };
-
-

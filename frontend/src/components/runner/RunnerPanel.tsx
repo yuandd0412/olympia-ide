@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Plus,
@@ -106,26 +106,18 @@ export const RunnerPanel: React.FC = () => {
         <div className="flex items-center gap-1">
           <button
             onClick={() => setActivePanelTab('cases')}
-            className={`px-3 py-1 rounded-md font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-              activePanelTab === 'cases'
-                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-xs'
-                : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
-            }`}
+            className={'px-3 py-1 rounded-md font-medium transition-all cursor-pointer flex items-center gap-1.5 ' + (activePanelTab === 'cases' ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-xs' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]')}
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>娴嬭瘯鐢ㄤ緥 ({testcases.length})</span>
+            <span>测试用例 ({testcases.length})</span>
           </button>
 
           <button
             onClick={() => setActivePanelTab('output')}
-            className={`px-3 py-1 rounded-md font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-              activePanelTab === 'output'
-                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-xs'
-                : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
-            }`}
+            className={'px-3 py-1 rounded-md font-medium transition-all cursor-pointer flex items-center gap-1.5 ' + (activePanelTab === 'output' ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-xs' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]')}
           >
             <FileCode className="w-3.5 h-3.5" />
-            <span>缂栬瘧杈撳嚭</span>
+            <span>编译输出</span>
             {runResult?.isCompilationError && (
               <span className="w-2 h-2 rounded-full bg-[#ff453a]" />
             )}
@@ -133,14 +125,10 @@ export const RunnerPanel: React.FC = () => {
 
           <button
             onClick={() => setActivePanelTab('terminal')}
-            className={`px-3 py-1 rounded-md font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-              activePanelTab === 'terminal'
-                ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-xs'
-                : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
-            }`}
+            className={'px-3 py-1 rounded-md font-medium transition-all cursor-pointer flex items-center gap-1.5 ' + (activePanelTab === 'terminal' ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-xs' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]')}
           >
             <TerminalIcon className="w-3.5 h-3.5 text-[var(--accent)]" />
-            <span>闆嗘垚缁堢 (Terminal)</span>
+            <span>集成终端 (Terminal)</span>
           </button>
         </div>
 
@@ -165,11 +153,11 @@ export const RunnerPanel: React.FC = () => {
 
       {/* Main Body */}
       <div className="flex-1 overflow-hidden flex relative">
-        <div className={`absolute inset-0 z-10 bg-[var(--bg-base)] ${activePanelTab === 'terminal' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+        <div className={'absolute inset-0 z-10 bg-[var(--bg-base)] ' + (activePanelTab === 'terminal' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none')}>
           <TerminalPanel />
         </div>
 
-        <div className={`absolute inset-0 bg-[var(--bg-surface)] ${activePanelTab !== 'terminal' ? 'opacity-100 pointer-events-auto z-0' : 'opacity-0 pointer-events-none -z-10'} flex`}>
+        <div className={'absolute inset-0 bg-[var(--bg-surface)] ' + (activePanelTab !== 'terminal' ? 'opacity-100 pointer-events-auto z-0' : 'opacity-0 pointer-events-none -z-10') + ' flex'}>
           {activePanelTab === 'cases' ? (
             <div className="flex-1 p-3 overflow-hidden flex gap-3">
             {/* Case List Selector (Left) */}
@@ -194,11 +182,7 @@ export const RunnerPanel: React.FC = () => {
                   <div
                     key={tc.id}
                     onClick={() => setSelectedCaseId(tc.id)}
-                    className={`px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer transition-all ${
-                      isSel
-                        ? 'bg-[var(--accent-subtle)] border border-[var(--accent)] text-[var(--text-primary)]'
-                        : 'bg-[var(--bg-elevated)] border border-transparent hover:border-[var(--border)] text-[var(--text-secondary)]'
-                    }`}
+                    className={'px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer transition-all ' + (isSel ? 'bg-[var(--accent-subtle)] border border-[var(--accent)] text-[var(--text-primary)]' : 'bg-[var(--bg-elevated)] border border-transparent hover:border-[var(--border)] text-[var(--text-secondary)]')}
                   >
                     <div className="flex items-center gap-1.5 font-mono">
                       <span className="font-bold text-[11px]">#{idx + 1}</span>
@@ -225,7 +209,7 @@ export const RunnerPanel: React.FC = () => {
               {/* Input Column */}
               <div className="flex-1 flex flex-col gap-1.5">
                 <span className="text-[11px] font-medium text-[var(--text-tertiary)]">
-                  杈撳叆 (stdin)
+                  输入 (stdin)
                 </span>
                 <textarea
                   value={activeInput?.input || ''}
@@ -236,7 +220,7 @@ export const RunnerPanel: React.FC = () => {
                       activeInput?.expectedOutput || ''
                     )
                   }
-                  placeholder="杈撳叆娴嬭瘯鏁版嵁..."
+                  placeholder="输入测试数据..."
                   className="flex-1 w-full p-2.5 rounded-lg border font-mono text-xs resize-none outline-none focus:border-[var(--accent)] transition-all bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
                 />
               </div>
@@ -245,11 +229,11 @@ export const RunnerPanel: React.FC = () => {
               <div className="flex-1 flex flex-col gap-1.5 min-w-0">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-medium text-[var(--text-tertiary)]">
-                    鏈熸湜杈撳嚭 (stdout)
+                    期望输出 (stdout)
                   </span>
                   {activeInput?.expectedOutput && (
                     <span className="font-mono text-[10px] text-[var(--text-tertiary)]">
-                      {activeInput.expectedOutput.length} 瀛楃
+                      {activeInput.expectedOutput.length} 字符
                     </span>
                   )}
                 </div>
@@ -262,7 +246,7 @@ export const RunnerPanel: React.FC = () => {
                       e.target.value
                     )
                   }
-                  placeholder="鏈熸湜杈撳嚭鍐呭..."
+                  placeholder="期望输出内容..."
                   className="flex-1 w-full p-2.5 rounded-lg border font-mono text-xs resize-none outline-none focus:border-[var(--accent)] transition-all bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
                 />
               </div>
@@ -272,13 +256,13 @@ export const RunnerPanel: React.FC = () => {
                 <div className="flex-1 flex flex-col gap-1.5 min-w-0">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-medium text-[var(--text-tertiary)] flex items-center gap-1.5">
-                      <span>瀹為檯杈撳嚭</span>
+                      <span>实际输出</span>
                       {activeResult.verdict === 'AC' ? (
                         <span className="text-[#34c759] text-[10px] font-semibold">100% 匹配一致</span>
                       ) : activeResult.actualOutput.trim() === activeInput?.expectedOutput.trim() ? (
-                        <span className="text-[#ff9f0a] text-[10px] font-semibold">鏈熬绌烘牸/鎹㈣宸紓</span>
+                        <span className="text-[#ff9f0a] text-[10px] font-semibold">末尾空格/换行差异</span>
                       ) : (
-                        <span className="text-[#ff453a] text-[10px] font-semibold">鍐呭涓嶇 (Diff)</span>
+                        <span className="text-[#ff453a] text-[10px] font-semibold">内容不符 (Diff)</span>
                       )}
                     </span>
                     <span className="font-mono text-[10px] text-[var(--text-tertiary)]">
@@ -286,13 +270,9 @@ export const RunnerPanel: React.FC = () => {
                     </span>
                   </div>
                   <pre
-                    className={`flex-1 w-full p-2.5 rounded-lg border font-mono text-xs overflow-auto leading-relaxed ${
-                      activeResult.verdict === 'AC'
-                        ? 'border-[#34c759]/40 bg-[#34c759]/5 text-[var(--text-primary)]'
-                        : 'border-[#ff453a]/40 bg-[#ff453a]/5 text-[var(--text-primary)]'
-                    }`}
+                    className={'flex-1 w-full p-2.5 rounded-lg border font-mono text-xs overflow-auto leading-relaxed ' + (activeResult.verdict === 'AC' ? 'border-[#34c759]/40 bg-[#34c759]/5 text-[var(--text-primary)]' : 'border-[#ff453a]/40 bg-[#ff453a]/5 text-[var(--text-primary)]')}
                   >
-                    {activeResult.actualOutput || (activeResult.errorMessage && `[Error]: ${activeResult.errorMessage}`) || '(绌鸿緭鍑?'}
+                    {activeResult.actualOutput || (activeResult.errorMessage && ('[Error]: ' + activeResult.errorMessage)) || '(空输出)'}
                   </pre>
                 </div>
               )}
@@ -302,7 +282,7 @@ export const RunnerPanel: React.FC = () => {
           /* Compilation Stderr / Output Tab */
           <div className="flex-1 p-3 flex flex-col gap-1.5 overflow-hidden">
             <span className="text-[11px] font-medium text-[var(--text-tertiary)]">
-              缂栬瘧鍣ㄦ帶鍒跺彴鏃ュ織 ({settings?.compilerPath || 'g++'} -O2 -std=c++17)
+              编译器控制台日志 ({settings?.compilerPath || 'g++'} -O2 -std=c++17)
             </span>
             <pre className="flex-1 w-full p-3 rounded-lg border font-mono text-xs overflow-auto bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)] leading-relaxed whitespace-pre-wrap">
               {runResult?.compilerOutput || '暂无编译日志。点击上方「运行」开始编译。'}
@@ -314,4 +294,3 @@ export const RunnerPanel: React.FC = () => {
     </div>
   );
 };
-

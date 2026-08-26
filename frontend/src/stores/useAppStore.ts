@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import { tauriApi } from '../services/tauriApi';
 import type {
   AppSettings,
@@ -10,11 +10,10 @@ import type {
   TestCaseInput,
 } from '../types';
 
-
 const DEFAULT_BRUTE_CPP = `#include <iostream>
 using namespace std;
 
-// 鏆村姏 / 淇濊瘉姝ｇ‘鐨勫熀鍑嗕唬锟?(Standard / Brute-force)
+// 暴力 / 保证正确的基准代码 (Standard / Brute-force)
 int main() {
     long long a, b;
     if (cin >> a >> b) {
@@ -30,14 +29,14 @@ const DEFAULT_GEN_CPP = `#include <iostream>
 
 using namespace std;
 
-// 闅忔満娴嬭瘯鏁版嵁鐢熸垚锟?(Testcase Generator)
+// 随机测试数据生成器 (Testcase Generator)
 int main() {
     mt19937_64 rng(chrono::steady_clock::now().time_since_epoch().count());
     uniform_int_distribution<long long> dist(1, 1000000000);
     
     long long a = dist(rng);
     long long b = dist(rng);
-    cout << a << " " << b << "\\n";
+    cout << a << " " << b << "\n";
     return 0;
 }
 `;
@@ -58,7 +57,7 @@ interface AppState {
   
   solves: SolveRecord[];
   
-  // Stress Tester (瀵规媿锟? State
+  // Stress Tester (对拍器) State
   stressSolCode: string;
   stressBruteCode: string;
   stressGenCode: string;
@@ -122,19 +121,16 @@ interface AppState {
   setViewerPdfUrl: (url: string | null) => void;
   setViewerProblem: (problem: Problem | null) => void;
 
-  // Filters & Mistakes
+  // Filters
   setSearchQuery: (q: string) => void;
   setSelectedDifficulty: (d: string) => void;
   setSelectedVerdict: (v: string) => void;
-  
-  
-  
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
   contestEndTime: null,
-    setContestEndTime: (timeMs) => set({ contestEndTime: timeMs }),
-    activeNav: 'editor',
+  setContestEndTime: (timeMs) => set({ contestEndTime: timeMs }),
+  activeNav: 'editor',
   settings: {
     isFirstRun: true,
     theme: 'OneDarkPro',
@@ -145,7 +141,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     aiBaseUrl: 'https://api.openai.com/v1',
     aiApiKey: '',
     aiModel: 'gpt-4o-mini',
-      preferTerminalRun: false,
+    preferTerminalRun: false,
     dailyGoal: 5,
     autoSave: true,
     fontSize: 14,
@@ -168,7 +164,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeTabId: 'tab-1',
 
   isRunning: false,
-  
   solves: [],
 
   // Stress testing initial state
@@ -200,17 +195,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   isDetailModalOpen: false,
   modalProblem: null,
   searchQuery: '',
-  selectedDifficulty: '鍏ㄩ儴',
-  selectedVerdict: '鍏ㄩ儴',
+  selectedDifficulty: '全部',
+  selectedVerdict: '全部',
 
   setActiveNav: (nav) => set({ activeNav: nav }),
 
   loadInitialData: async () => {
     try {
-      const [settings, problems,  solves] = await Promise.all([
+      const [settings, problems, solves] = await Promise.all([
         tauriApi.getSettings(),
         tauriApi.getProblems(),
-        
         tauriApi.getSolves(),
       ]);
 
@@ -233,7 +227,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         tabs: [
           {
             id: 'tab-1',
-            title: activeP ? `${activeP.id}.cpp` : 'solution.cpp',
+            title: activeP ? (activeP.id + '.cpp') : 'solution.cpp',
             code: initialCode,
             isModified: false,
             problemId: activeP ? activeP.id : undefined,
@@ -243,7 +237,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         ],
         activeTabId: 'tab-1',
         viewerProblem: activeP,
-        
         solves,
       });
 
@@ -263,12 +256,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   openNewTab: (title, code, problemId, testcases) => {
     const currentTabs = get().tabs;
     const nextNum = currentTabs.length + 1;
-    const tabId = `tab-${crypto.randomUUID()}`;
+    const tabId = 'tab-' + crypto.randomUUID();
     const defaultContent = get().settings.enableCodeTemplate ? (get().settings.codeTemplate || '') : '';
 
     const newTab: CodeTab = {
       id: tabId,
-      title: title || `solution_${nextNum}.cpp`,
+      title: title || ('solution_' + nextNum + '.cpp'),
       code: code !== undefined ? code : defaultContent,
       isModified: false,
       problemId,
@@ -278,9 +271,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       tabs: [...currentTabs, newTab],
       activeTabId: tabId,
-      contestEndTime: null,
-    setContestEndTime: (timeMs) => set({ contestEndTime: timeMs }),
-    activeNav: 'editor',
+      activeNav: 'editor',
     });
     return tabId;
   },
@@ -372,7 +363,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
       set({ tabs: updatedTabs, isRunning: false });
 
-      // Automatically log solve or mistake record
       if (activeProblem) {
         if (res.overallVerdict === 'AC') {
           const solve: SolveRecord = {
@@ -390,7 +380,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           set({ solves: updatedSolves });
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       const updatedTabs = tabs.map((t) =>
         t.id === activeTabId
           ? {
@@ -438,7 +428,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         settings.compilerFlags
       );
       set({ stressResult: res, isStressRunning: false });
-    } catch (err: any) {
+    } catch (err) {
       set({
         isStressRunning: false,
         stressResult: {
@@ -448,7 +438,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           isCompilationError: true,
           compilerOutput: String(err),
           failedRound: null,
-        } as any,
+        },
       });
     }
   },
@@ -479,7 +469,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   terminalRunSignal: 0,
   triggerTerminalRun: () => set((state) => ({ terminalRunSignal: state.terminalRunSignal + 1 })),
-  executeTerminalCommand: async (command: string) => {
+  executeTerminalCommand: async (command) => {
     if (!command.trim()) return;
     const { terminalLogs, terminalHistory } = get();
 
@@ -492,7 +482,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       const res = await tauriApi.runTerminalCommand(command);
-      const newLog: import('../types').TerminalLog = {
+      const newLog = {
         id: crypto.randomUUID(),
         command,
         stdout: res.stdout,
@@ -509,8 +499,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         terminalHistory: updatedHistory,
         isTerminalRunning: false,
       });
-    } catch (err: any) {
-      const newLog: import('../types').TerminalLog = {
+    } catch (err) {
+      const newLog = {
         id: crypto.randomUUID(),
         command,
         stdout: '',
@@ -529,7 +519,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearTerminal: () => set({ terminalLogs: [] }),
 
   setActiveProblem: (problem) => {
-    const testcases: TestCaseInput[] = problem.samples.map((s, idx) => ({
+    const testcases = problem.samples.map((s, idx) => ({
       id: idx + 1,
       input: s.input,
       expectedOutput: s.output,
@@ -544,15 +534,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       setActiveTabId(existing.id);
     } else {
       const template = get().settings.enableCodeTemplate ? (get().settings.codeTemplate || '') : '';
-      openNewTab(`${problem.id}.cpp`, template, problem.id, testcases);
+      openNewTab(problem.id + '.cpp', template, problem.id, testcases);
     }
 
     set({
       activeProblem: problem,
       viewerProblem: problem,
-      contestEndTime: null,
-    setContestEndTime: (timeMs) => set({ contestEndTime: timeMs }),
-    activeNav: 'editor',
+      activeNav: 'editor',
     });
   },
 
@@ -579,12 +567,4 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSearchQuery: (q) => set({ searchQuery: q }),
   setSelectedDifficulty: (d) => set({ selectedDifficulty: d }),
   setSelectedVerdict: (v) => set({ selectedVerdict: v }),
-
-
-
-
-
-
 }));
-
-

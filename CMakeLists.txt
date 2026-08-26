@@ -138,12 +138,26 @@ if(MINGW)
 endif()
 target_link_libraries(test_ingest PRIVATE Qt6::Core Qt6::Network)
 
+# UI Theme verification test: checks QSS resolution and theme tokens across all 5 themes.
+add_executable(test_ui_themes
+    tests/test_ui_themes.cpp
+    src/core/theme/CThemeManager.cpp
+    src/ui/common/OlerTheme.cpp
+    resources/themes/themes.qrc
+)
+target_include_directories(test_ui_themes PRIVATE src)
+if(MINGW)
+    set_target_properties(test_ui_themes PROPERTIES WIN32_EXECUTABLE FALSE)
+endif()
+target_link_libraries(test_ui_themes PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
+
 add_test(NAME test_highlight COMMAND test_highlight)
 add_test(NAME test_settings COMMAND test_settings)
 add_test(NAME test_runner COMMAND test_runner)
 add_test(NAME test_models COMMAND test_models)
 add_test(NAME test_solves COMMAND test_solves)
 add_test(NAME test_ingest COMMAND test_ingest)
+add_test(NAME test_ui_themes COMMAND test_ui_themes)
 
 # KSyntax DLL lives in build/bin/ (KSyntax's install target), but oler-ide.exe
 # is in build/. Without this copy, `oler-ide.exe` 启动时找不到 libKF6SyntaxHighlighting.dll → 0xC0000135 STATUS_DLL_NOT_FOUND.

@@ -284,6 +284,9 @@ OlerAiPage::OlerAiPage(QWidget *parent) : QWidget(parent) {
     connect(m_input, &QPlainTextEdit::textChanged, this, [this] {
         updateSendEnabled();
         adjustComposerHeight();
+        // Qt's built-in placeholder does not always repaint on textChanged;
+        // nudging it makes the hint disappear as soon as the user types.
+        m_input->viewport()->update();
     });
     updateSendEnabled(); // initial state (disabled, empty composer)
 

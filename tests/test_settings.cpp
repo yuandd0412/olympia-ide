@@ -63,7 +63,24 @@ int main() {
         check(s2.value("limits/timeMs").toInt() == 2000, "persisted limit reloads");
     }
 
-    // 3. Corrupt file: load must not crash; defaults still apply.
+    // 3. Export/import keeps scalar and list values and writes the target file.
+    {
+        const QString backupPath = dir.filePath("settings-backup.json");
+        const QString importedPath = dir.filePath("imported.json");
+        OlerSettings source(path);
+        source.setValue("training/sessions",
+                        QStringList{QStringLiteral("2026-08-25\tGraphs")});
+        check(source.exportTo(backupPath), "exportTo() ok");
+        OlerSettings imported(importedPath);
+        check(imported.importFrom(backupPath), "importFrom() ok");
+        check(imported.value("theme").toString() == "OneDarkPro",
+              "imported scalar value");
+        check(imported.value("training/sessions").toStringList().size() == 1,
+              "imported list value");
+        check(QFile::exists(importedPath), "import writes target file");
+    }
+
+    // 4. Corrupt file: load must not crash; defaults still apply.
     {
         QFile f(path);
         f.open(QIODevice::WriteOnly | QIODevice::Truncate);
@@ -74,7 +91,7 @@ int main() {
               "corrupt file falls back to defaults");
     }
 
-    // 4. Unknown key returns the caller's default.
+    // 5. Unknown key returns the caller's default.
     {
         OlerSettings s(path);
         check(s.value("no/such/key", 42).toInt() == 42, "unknown key -> caller default");

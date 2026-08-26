@@ -121,8 +121,9 @@ which never collapse.
   (Codeforces has different language IDs than Luogu).
 - Settings search. The flat list works at v1 size; once we add
   20+ options, a search box at the top is needed.
-- Settings export / import. v1 stores in
-  `~/.oleride/settings.json`; export is a TODO.
+- Settings export / import is available from the top of the Settings page;
+  imported JSON is validated, defaults are restored for missing keys, and
+  the active settings file is updated.
 
 ## Cross-Tab Navigation
 

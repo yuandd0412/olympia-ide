@@ -2,6 +2,8 @@
 #include <KSyntaxHighlighting/Repository>
 #include <KSyntaxHighlighting/SyntaxHighlighter>
 #include <KSyntaxHighlighting/Theme>
+#include <QCoreApplication>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QFont>
@@ -24,7 +26,15 @@ OlerEditor::OlerEditor(QWidget *parent)
     // definitionForName("C++") returns invalid and visual highlighting is a no-op.
     // TODO: derive from a CMake-passed define once the project root path is
     // parameterized (v2 acceptable to hard-code).
-    m_repo->addCustomSearchPath(QStringLiteral("D:/oler-ide-v2/third_party/syntax-highlighting/data"));
+    const QDir appDir(QCoreApplication::applicationDirPath());
+    m_repo->addCustomSearchPath(QDir::cleanPath(
+        appDir.absoluteFilePath(QStringLiteral("syntax-highlighting/data"))));
+    const QString relativeData = appDir.absoluteFilePath(
+        QStringLiteral("../third_party/syntax-highlighting/data"));
+    m_repo->addCustomSearchPath(QDir::cleanPath(relativeData));
+#ifdef OLER_SYNTAX_DATA_DIR
+    m_repo->addCustomSearchPath(QString::fromUtf8(OLER_SYNTAX_DATA_DIR));
+#endif
     m_highlighter->setDefinition(m_repo->definitionForName(QStringLiteral("C++")));
 
     // Editor font follows the settings key editor/fontSize.
@@ -98,8 +108,8 @@ void OlerEditor::highlightCurrentLine() {
 
 void OlerEditor::lineNumberAreaPaintEvent(QPaintEvent *ev) {
     QPainter p(m_lineNumberArea);
-    p.fillRect(ev->rect(), QColor(0x1a, 0x19, 0x15));
-    p.setPen(QColor(0x46, 0x44, 0x3b));
+    p.fillRect(ev->rect(), palette().base());
+    p.setPen(palette().placeholderText().color());
     p.setFont(font());
 
     QTextBlock block = firstVisibleBlock();
@@ -107,11 +117,11 @@ void OlerEditor::lineNumberAreaPaintEvent(QPaintEvent *ev) {
     int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
     int bottom = top + qRound(blockBoundingRect(block).height());
 
-    const QColor currentFg(0xf1, 0xf1, 0xef);
+    const QColor currentFg = palette().text().color();
     while (block.isValid() && top <= ev->rect().bottom()) {
         if (block.isVisible() && bottom >= ev->rect().top()) {
             const bool isCurrent = blockNumber == textCursor().blockNumber();
-            p.setPen(isCurrent ? currentFg : QColor(0x46, 0x44, 0x3b));
+            p.setPen(isCurrent ? currentFg : palette().placeholderText().color());
             p.drawText(0, top, m_lineNumberArea->width() - 16,
                        fontMetrics().height(), Qt::AlignRight,
                        QString::number(blockNumber + 1));
@@ -237,7 +247,14 @@ void OlerEditor::updateBracketMatch() {
 void OlerEditor::onCursorPositionChanged() { updateBracketMatch(); }
 
 void OlerEditor::applyFontSize() {
-    QFont f(QStringLiteral("Consolas"));
+    // Style guide §1.4: code font stack is Cascadia Mono (primary) ->
+    // Consolas (fallback) -> monospace. PreferAntialias for crisp rendering
+    // on hi-DPI displays where integer-pixel hinting causes jagged stems.
+    QFont f;
+    f.setFamilies({QStringLiteral("Cascadia Mono"),
+                   QStringLiteral("Consolas"),
+                   QStringLiteral("monospace")});
+    f.setStyleStrategy(QFont::PreferAntialias);
     f.setPointSize(OlerSettings::instance()->value("editor/fontSize").toInt());
     setFont(f);
 }

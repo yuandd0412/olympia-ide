@@ -5,7 +5,9 @@
 #include "ui/common/OlerTheme.h"
 #include <QButtonGroup>
 #include <QComboBox>
+#include <QDir>
 #include <QFile>
+#include <QFileDialog>
 #include <QFont>
 #include <QFrame>
 #include <functional>
@@ -13,6 +15,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QMessageBox>
 #include <QScrollArea>
 #include <QSpinBox>
 #include <QVBoxLayout>
@@ -54,11 +57,31 @@ OlerSettingsPage::OlerSettingsPage(QWidget *parent) : QWidget(parent) {
     auto *rootLayout = new QVBoxLayout(this);
     rootLayout->setContentsMargins(0, 0, 0, 0);
 
-    auto *scroll = new QScrollArea(this);
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setWidget(buildPage());
-    rootLayout->addWidget(scroll);
+    m_scroll = new QScrollArea(this);
+    m_scroll->setWidgetResizable(true);
+    m_scroll->setFrameShape(QFrame::NoFrame);
+    m_scroll->setWidget(buildPage());
+    rootLayout->addWidget(m_scroll);
+    connect(CThemeManager::instance(), &CThemeManager::themeChanged,
+            this, [this](const QString &) {
+                if (m_aboutMark)
+                    m_aboutMark->setPixmap(
+                        OlerIcons::make(
+                            OlerIcons::Name::Logo,
+                            OlerTheme::accentForTheme(
+                                CThemeManager::instance()->currentTheme()),
+                            56)
+                            .pixmap(56, 56));
+            });
+}
+
+void OlerSettingsPage::reload() {
+    if (!m_scroll)
+        return;
+    QWidget *oldPage = m_scroll->takeWidget();
+    if (oldPage)
+        oldPage->deleteLater();
+    m_scroll->setWidget(buildPage());
 }
 
 QWidget *OlerSettingsPage::buildPage() {
@@ -84,6 +107,49 @@ QWidget *OlerSettingsPage::buildPage() {
     headerSub->setObjectName(QStringLiteral("settingsSub"));
     col->addWidget(headerTitle);
     col->addWidget(headerSub);
+    auto *configActions = new QHBoxLayout;
+    configActions->setContentsMargins(0, 10, 0, 0);
+    configActions->setSpacing(8);
+    auto *importConfig = new QPushButton(tr("导入配置"), colHost);
+    importConfig->setProperty("psSecondary", true);
+    auto *exportConfig = new QPushButton(tr("导出配置"), colHost);
+    exportConfig->setProperty("psSecondary", true);
+    configActions->addWidget(importConfig);
+    configActions->addWidget(exportConfig);
+    configActions->addStretch();
+    col->addLayout(configActions);
+    connect(exportConfig, &QPushButton::clicked, this, [this, st] {
+        const QString path = QFileDialog::getSaveFileName(
+            this, tr("导出设置"), QDir::homePath() + QStringLiteral("/oleride-settings.json"),
+            tr("JSON 配置 (*.json)"));
+        if (path.isEmpty())
+            return;
+        QString error;
+        if (!st->exportTo(path, &error)) {
+            QMessageBox::warning(this, tr("导出设置"),
+                                 tr("导出失败：%1").arg(error));
+            return;
+        }
+        QMessageBox::information(this, tr("导出设置"),
+                                 tr("配置已导出到：%1").arg(path));
+    });
+    connect(importConfig, &QPushButton::clicked, this, [this, st] {
+        const QString path = QFileDialog::getOpenFileName(
+            this, tr("导入设置"), QDir::homePath(), tr("JSON 配置 (*.json);;所有文件 (*)"));
+        if (path.isEmpty())
+            return;
+        QString error;
+        if (!st->importFrom(path, &error)) {
+            QMessageBox::warning(this, tr("导入设置"),
+                                 tr("导入失败：%1").arg(error));
+            return;
+        }
+        CThemeManager::instance()->applyTheme(
+            st->value(QStringLiteral("theme")).toString());
+        reload();
+        QMessageBox::information(this, tr("导入设置"),
+                                 tr("配置已导入，设置页已刷新。"));
+    });
     col->addSpacing(16);
 
     // ---- 外观 ----
@@ -219,13 +285,13 @@ QWidget *OlerSettingsPage::buildPage() {
     auto *aboutLay = new QHBoxLayout(aboutBody);
     aboutLay->setContentsMargins(0, 4, 0, 4);
     aboutLay->setSpacing(18);
-    auto *mark = new QLabel(aboutBody);
-    mark->setPixmap(OlerIcons::make(
+    m_aboutMark = new QLabel(aboutBody);
+    m_aboutMark->setPixmap(OlerIcons::make(
         OlerIcons::Name::Logo,
         OlerTheme::accentForTheme(CThemeManager::instance()->currentTheme()),
         56).pixmap(56, 56));
-    mark->setFixedSize(56, 56);
-    aboutLay->addWidget(mark, /*stretch*/ 0, Qt::AlignTop);
+    m_aboutMark->setFixedSize(56, 56);
+    aboutLay->addWidget(m_aboutMark, /*stretch*/ 0, Qt::AlignTop);
 
     auto *info = new QLabel(
         QStringLiteral(

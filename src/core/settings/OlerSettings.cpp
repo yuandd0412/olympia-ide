@@ -2,8 +2,10 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QSet>
 
 namespace {
 
@@ -26,6 +28,12 @@ QVariant jsonToVariant(const QJsonValue &v) {
     if (v.isBool()) return v.toBool();
     if (v.isDouble()) return v.toDouble();
     if (v.isString()) return v.toString();
+    if (v.isArray()) {
+        QVariantList values;
+        for (const QJsonValue &item : v.toArray())
+            values.append(jsonToVariant(item));
+        return values;
+    }
     return {};
 }
 
@@ -35,6 +43,18 @@ QJsonValue variantToJson(const QVariant &v) {
     case QMetaType::Int:
     case QMetaType::LongLong:
     case QMetaType::Double: return v.toDouble();
+    case QMetaType::QStringList: {
+        QJsonArray values;
+        for (const QString &item : v.toStringList())
+            values.append(item);
+        return values;
+    }
+    case QMetaType::QVariantList: {
+        QJsonArray values;
+        for (const QVariant &item : v.toList())
+            values.append(variantToJson(item));
+        return values;
+    }
     default: return v.toString();
     }
 }
@@ -118,6 +138,58 @@ bool OlerSettings::save(QString *errorOut) {
     if (f.write(payload) != payload.size()) {
         if (errorOut) *errorOut = f.errorString();
         return false;
+    }
+    return true;
+}
+
+bool OlerSettings::exportTo(const QString &path, QString *errorOut) const {
+    const QFileInfo fi(path);
+    if (!fi.dir().exists() && !QDir().mkpath(fi.absolutePath())) {
+        if (errorOut) *errorOut = QStringLiteral("cannot create %1").arg(fi.absolutePath());
+        return false;
+    }
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        if (errorOut) *errorOut = f.errorString();
+        return false;
+    }
+    const QByteArray payload = QJsonDocument(m_data).toJson(QJsonDocument::Indented);
+    if (f.write(payload) != payload.size()) {
+        if (errorOut) *errorOut = f.errorString();
+        return false;
+    }
+    return true;
+}
+
+bool OlerSettings::importFrom(const QString &path, QString *errorOut) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) {
+        if (errorOut) *errorOut = f.errorString();
+        return false;
+    }
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        if (errorOut) *errorOut = parseError.errorString();
+        return false;
+    }
+
+    const QJsonObject previous = m_data;
+    m_data = doc.object();
+    applyDefaults();
+    if (!save(errorOut)) {
+        m_data = previous;
+        return false;
+    }
+
+    QSet<QString> keys;
+    for (auto it = previous.constBegin(); it != previous.constEnd(); ++it)
+        keys.insert(it.key());
+    for (auto it = m_data.constBegin(); it != m_data.constEnd(); ++it)
+        keys.insert(it.key());
+    for (const QString &key : keys) {
+        if (previous.value(key) != m_data.value(key))
+            emit settingChanged(key, jsonToVariant(m_data.value(key)));
     }
     return true;
 }

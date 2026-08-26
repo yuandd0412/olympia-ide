@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(OlerIDE VERSION 0.1.0 LANGUAGES CXX)
 
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -47,6 +49,9 @@ add_executable(oler-ide
     resources/themes/themes.qrc
 )
 target_include_directories(oler-ide PRIVATE src)
+target_compile_definitions(oler-ide PRIVATE
+    OLER_SYNTAX_DATA_DIR="${CMAKE_SOURCE_DIR}/third_party/syntax-highlighting/data"
+)
 
 # v1 教训: MinGW 13.1.0 下 libQt6EntryPoint.a 引用 MSVC __imp___argc, 必须 FALSE
 if(MINGW)
@@ -123,6 +128,12 @@ if(MINGW)
 endif()
 target_link_libraries(test_solves PRIVATE Qt6::Core)
 
+add_test(NAME test_highlight COMMAND test_highlight)
+add_test(NAME test_settings COMMAND test_settings)
+add_test(NAME test_runner COMMAND test_runner)
+add_test(NAME test_models COMMAND test_models)
+add_test(NAME test_solves COMMAND test_solves)
+
 # KSyntax DLL lives in build/bin/ (KSyntax's install target), but oler-ide.exe
 # is in build/. Without this copy, `oler-ide.exe` 启动时找不到 libKF6SyntaxHighlighting.dll → 0xC0000135 STATUS_DLL_NOT_FOUND.
 # Task 9 will run full windeployqt to also pull Qt DLLs; this just covers the KSyntax one for now.
@@ -130,6 +141,19 @@ add_custom_command(TARGET oler-ide POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE_DIR:oler-ide>/bin/libKF6SyntaxHighlighting.dll"
         "$<TARGET_FILE_DIR:oler-ide>/libKF6SyntaxHighlighting.dll"
+)
+
+# Keep syntax data beside the executable so the editor remains usable when
+# the build directory is moved without the source tree.
+add_custom_command(TARGET oler-ide POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:oler-ide>/syntax-highlighting/data"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/resources/ksyntax/index.katesyntax"
+        "$<TARGET_FILE_DIR:oler-ide>/syntax-highlighting/data/index.katesyntax"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/third_party/syntax-highlighting/data/syntax"
+        "$<TARGET_FILE_DIR:oler-ide>/syntax-highlighting/data/syntax"
 )
 
 # Deploy Qt runtime DLLs alongside oler-ide.exe so it can launch without

@@ -171,6 +171,10 @@ OlerProblemsPage::OlerProblemsPage(QWidget *parent)
     connect(m_search, &QLineEdit::textChanged, this,
             &OlerProblemsPage::rebuild);
     connect(m_store, &OlerProblems::changed, this, &OlerProblemsPage::rebuild);
+    connect(OlerSolves::instance(), &OlerSolves::changed,
+            this, &OlerProblemsPage::refreshStats);
+    connect(CThemeManager::instance(), &CThemeManager::themeChanged,
+            this, &OlerProblemsPage::rebuild);
     rebuild();
 }
 
@@ -266,13 +270,16 @@ QWidget *OlerProblemsPage::makeCard(const OlerProblem &p) {
 
 void OlerProblemsPage::rebuildRecent() {
     // Drop old mini-cards.
-    const auto olds = m_recentRowHost->findChildren<QWidget *>();
-    for (QWidget *w : olds)
-        if (w != m_recentRowHost) w->deleteLater();
-
-    const auto recents = m_store->recent();
     auto *rl =
         qobject_cast<QHBoxLayout *>(m_recentRowHost->layout());
+    while (rl->count() > 0) {
+        QLayoutItem *item = rl->takeAt(0);
+        if (QWidget *widget = item->widget())
+            widget->deleteLater();
+        delete item;
+    }
+
+    const auto recents = m_store->recent();
     if (recents.isEmpty()) {
         rl->insertWidget(0, new QLabel(tr("从题库选一道题，开始今天的训练"),
                                        m_recentRowHost), 0, Qt::AlignVCenter);
@@ -284,6 +291,7 @@ void OlerProblemsPage::rebuildRecent() {
         c->setParent(m_recentRowHost);
         rl->insertWidget(idx++, c);
     }
+    rl->addStretch();
 }
 
 void OlerProblemsPage::rebuild() {
@@ -300,9 +308,12 @@ void OlerProblemsPage::rebuild() {
     rebuildRecent();
 
     // Clear the grid (cards parented to gridHost).
-    const auto olds = m_gridHost->findChildren<QWidget *>();
-    for (QWidget *w : olds)
-        if (w != m_gridHost) w->deleteLater();
+    while (m_grid->count() > 0) {
+        QLayoutItem *item = m_grid->takeAt(0);
+        if (QWidget *widget = item->widget())
+            widget->deleteLater();
+        delete item;
+    }
     delete m_grid;
     m_grid = new QGridLayout(m_gridHost);
     m_grid->setContentsMargins(0, 0, 0, 0);
@@ -315,7 +326,20 @@ void OlerProblemsPage::rebuild() {
         if (++col >= kCols) { col = 0; ++row; }
     }
     m_grid->setRowStretch(row + 1, 1);
-    m_grid->setColumnStretch(kCols, 1);
+    for (int i = 0; i < kCols; ++i)
+        m_grid->setColumnStretch(i, 1);
+    refreshStats();
+}
+
+void OlerProblemsPage::refreshStats() {
+    if (m_totalValue)
+        m_totalValue->setText(QString::number(m_store->all().size()));
+    if (m_solvedValue)
+        m_solvedValue->setText(
+            QString::number(OlerSolves::instance()->totalCount()));
+    if (m_streakValue)
+        m_streakValue->setText(
+            QString::number(OlerSolves::instance()->streak()));
 }
 
 QWidget *OlerProblemsPage::buildStatsStrip() {
@@ -326,7 +350,8 @@ QWidget *OlerProblemsPage::buildStatsStrip() {
     lay->setSpacing(24);
 
     auto addItem = [&](OlerIcons::Name icon, const QColor &tint,
-                       const QString &label, const QString &value) {
+                       const QString &label, const QString &value,
+                       QLabel **valueOut) {
         auto *ico = new QLabel(strip);
         ico->setPixmap(OlerIcons::make(icon, tint, 14).pixmap(14, 14));
         ico->setFixedSize(28, 28);
@@ -340,25 +365,27 @@ QWidget *OlerProblemsPage::buildStatsStrip() {
         auto *v = new QLabel(value, strip);
         v->setObjectName(QStringLiteral("statValue"));
         col->addWidget(v);
+        if (valueOut)
+            *valueOut = v;
         lay->addLayout(col);
     };
 
     const int total = m_store->all().size();
     const int solvedTotal = OlerSolves::instance()->totalCount();
     addItem(OlerIcons::Name::CheckSquare, QColor("#7daed4"), tr("总题数"),
-            QString::number(total));
+            QString::number(total), &m_totalValue);
     auto *div = new QFrame(strip);
     div->setFrameShape(QFrame::VLine);
     div->setObjectName(QStringLiteral("statsDiv"));
     lay->addWidget(div);
     addItem(OlerIcons::Name::CheckSquare, QColor("#34c759"), tr("累计解决"),
-            QString::number(solvedTotal));
+            QString::number(solvedTotal), &m_solvedValue);
     auto *div2 = new QFrame(strip);
     div2->setFrameShape(QFrame::VLine);
     div2->setObjectName(QStringLiteral("statsDiv"));
     lay->addWidget(div2);
     addItem(OlerIcons::Name::TrendUp, accent(), tr("连续打卡"),
-            QString::number(OlerSolves::instance()->streak()));
+            QString::number(OlerSolves::instance()->streak()), &m_streakValue);
     lay->addStretch();
     auto *link = new QLabel(tr("详细统计 →"), strip);
     link->setObjectName(QStringLiteral("sectionAction"));

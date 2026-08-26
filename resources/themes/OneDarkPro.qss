@@ -61,7 +61,7 @@ QTableView::corner { background-color: #21252b; border: none; }
   background: transparent; color: #5c6370;
   border: none; border-left: 3px solid transparent;
   border-radius: 6px; padding: 10px 2px;
-  font-size: 11px; font-weight: bold;
+  font-size: 12px; font-weight: 500;
 }
 #activityRail QToolButton:hover { background-color: #2c313a; color: #abb2bf; }
 #activityRail QToolButton:checked {
@@ -71,7 +71,7 @@ QTableView::corner { background-color: #21252b; border: none; }
 
 #editorTitle { color: #5c6370; padding-left: 12px; background: transparent; }
 #recentStrip { color: #5c6370; }
-#settingsGroupHeader { font-size: 16px; font-weight: bold; color: #abb2bf; padding-bottom: 2px; }
+#settingsGroupHeader { font-size: 16px; font-weight: 600; color: #abb2bf; padding-bottom: 2px; }
 #shortcutRef { color: #5c6370; }
 #goalBar { border-radius: 2px; min-width: 240px; max-width: 360px; }
 
@@ -82,7 +82,7 @@ QTableView::corner { background-color: #21252b; border: none; }
   border-radius: 8px;
 }
 #problemCard:hover { background-color: #2c313a; border-color: rgba(97,175,239,0.50); }
-#cardId { color: #61afef; font-family: Consolas, monospace; font-weight: bold; }
+#cardId { color: #61afef; font-family: Consolas, monospace; font-weight: 500; }
 #cardTitle { color: #abb2bf; }
 #chipBadge { background-color: rgba(255,255,255,0.05); border-radius: 2px; padding: 1px 6px; }
 #recentChip {

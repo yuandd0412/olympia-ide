@@ -70,16 +70,19 @@ Same shell frame as every other page:
 | Chart bars           | `--oler-primary`     | Default                            |
 | Empty chart          | `--oler-text-muted`  | No data placeholder                |
 
-## Phase 5+ 待实装 (Pending)
+## Current implementation
 
-- Streak data source. Today this is a static `0`; Phase 5+ will derive
-  it from the user's actual solve history (Mistakes + Problems joined).
-- "Plan a session" flow. The "+ New session" button is currently a stub
-  with no dialog.
-- Chart interactivity. Hovering a bar should show a tooltip with the
-  exact count and date; not implemented yet.
-- Goal customization. Hard-coded to 5/day; will become a setting in
-  Phase 5+ (Settings → Training goal).
+- Streak, daily progress, total solves, and the 30-day chart are driven by
+  the persisted solve history in `~/.oleride/solves.json`.
+- Training plans can be created, completed, and deleted from the Training
+  page. Plans are persisted in the `training/sessions` settings key.
+- The daily goal is configurable from Settings and updates the progress bar
+  immediately.
+
+Follow-up work:
+
+- Add hover tooltips to chart bars with the exact date and solve count.
+- Link a planned session to a selected problem and its local workspace.
 
 ## Cross-Tab Navigation
 

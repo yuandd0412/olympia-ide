@@ -60,7 +60,7 @@ int main() {
     const QString in2 = dir.filePath("case2.in");
     const QString exp2 = dir.filePath("case2.exp");
     writeText(in1, "1 2\n");
-    writeText(exp1, "3\n");
+    writeText(exp1, "3   \n");
     writeText(in2, "1000000000 2000000000\n");
     writeText(exp2, "3000000000\n");
 
@@ -83,6 +83,25 @@ int main() {
         checkVerdict(r.cases.at(1), "AC", "AC: case 2 AC (long long)");
         check(r.cases.at(0).timeMs >= 0, "AC: time measured");
         check(r.cases.at(0).memoryKb > 0, "AC: memory measured");
+    }
+
+    // 1b. The child process runs from the source directory, so relative file
+    // access behaves the same as it does when launched from the IDE workspace.
+    {
+        const QString relative = dir.filePath("relative.txt");
+        const QString relativeExp = dir.filePath("relative.exp");
+        writeText(relative, "workspace-ok\n");
+        writeText(relativeExp, "workspace-ok\n");
+        writeText(src, "#include <fstream>\n"
+                      "#include <iostream>\n"
+                      "#include <string>\n"
+                      "int main() { std::ifstream f(\"relative.txt\");"
+                      " std::string s; std::getline(f, s);"
+                      " std::cout << s << '\\n'; return 0; }\n");
+        const auto r = runner.run(cfg, src,
+                                  {{in1, relativeExp}});
+        check(r.compileOk, "working directory: compile ok");
+        checkVerdict(r.cases.at(0), "AC", "working directory: relative file AC");
     }
 
     // 2. WA path (int overflow on case 2).

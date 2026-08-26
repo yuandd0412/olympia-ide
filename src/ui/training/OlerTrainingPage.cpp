@@ -5,8 +5,12 @@
 #include "ui/common/OlerTheme.h"
 #include <QDate>
 #include <QFrame>
+#include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPainter>
+#include <QPushButton>
 #include <QVBoxLayout>
 
 namespace {
@@ -18,6 +22,8 @@ public:
         setFixedHeight(200);
         // Re-render with the new accent when the theme changes.
         connect(CThemeManager::instance(), &CThemeManager::themeChanged,
+                this, QOverload<>::of(&QWidget::update));
+        connect(OlerSolves::instance(), &OlerSolves::changed,
                 this, QOverload<>::of(&QWidget::update));
     }
 protected:
@@ -92,12 +98,38 @@ OlerTrainingPage::OlerTrainingPage(QWidget *parent) : QWidget(parent) {
     m_goalBar->setFixedHeight(4);
     layout->addWidget(m_goalBar);
 
-    // Planned sessions: empty state until a session model lands.
-    auto *sessions = new QLabel(tr("Planned sessions - coming soon "
-                                   "(use Problems to pick your next task)"),
-                                this);
-    sessions->setObjectName(QStringLiteral("recentEmpty"));
-    layout->addWidget(sessions);
+    auto *sessionHeader = new QHBoxLayout;
+    auto *sessionTitle = new QLabel(tr("训练计划"), this);
+    sessionTitle->setObjectName(QStringLiteral("sectionTitle"));
+    sessionHeader->addWidget(sessionTitle);
+    sessionHeader->addStretch();
+    auto *addSession = new QPushButton(tr("新建计划"), this);
+    addSession->setProperty("psSecondary", true);
+    sessionHeader->addWidget(addSession);
+    layout->addLayout(sessionHeader);
+
+    m_sessionsHost = new QWidget(this);
+    m_sessionsLayout = new QVBoxLayout(m_sessionsHost);
+    m_sessionsLayout->setContentsMargins(0, 0, 0, 0);
+    m_sessionsLayout->setSpacing(6);
+    layout->addWidget(m_sessionsHost);
+
+    connect(addSession, &QPushButton::clicked, this, [this] {
+        bool ok = false;
+        const QString title = QInputDialog::getText(
+            this, tr("新建训练计划"), tr("计划名称："), QLineEdit::Normal,
+            tr("今日训练"), &ok).trimmed();
+        if (!ok || title.isEmpty())
+            return;
+        QStringList sessions = OlerSettings::instance()
+                                   ->value(QStringLiteral("training/sessions"))
+                                   .toStringList();
+        sessions.append(QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd")) +
+                        QStringLiteral("\t") + title);
+        OlerSettings::instance()->setValue(QStringLiteral("training/sessions"), sessions);
+        OlerSettings::instance()->save();
+        rebuildSessions();
+    });
 
     layout->addWidget(new Chart(this));
     layout->addStretch();
@@ -106,10 +138,75 @@ OlerTrainingPage::OlerTrainingPage(QWidget *parent) : QWidget(parent) {
             this, &OlerTrainingPage::rebuild);
     connect(OlerSettings::instance(), &OlerSettings::settingChanged,
             this, [this](const QString &k) {
-                if (k == QLatin1String("training/dailyGoal"))
+                 if (k == QLatin1String("training/dailyGoal"))
                     rebuild();
-            });
+                 if (k == QLatin1String("training/sessions"))
+                    rebuildSessions();
+             });
     rebuild();
+    rebuildSessions();
+}
+
+void OlerTrainingPage::rebuildSessions() {
+    if (!m_sessionsLayout)
+        return;
+    while (m_sessionsLayout->count() > 0) {
+        QLayoutItem *item = m_sessionsLayout->takeAt(0);
+        if (QWidget *widget = item->widget())
+            widget->deleteLater();
+        delete item;
+    }
+
+    const QStringList sessions = OlerSettings::instance()
+                                     ->value(QStringLiteral("training/sessions"))
+                                     .toStringList();
+    if (sessions.isEmpty()) {
+        auto *empty = new QLabel(tr("还没有计划，先安排一次训练吧。"), m_sessionsHost);
+        empty->setObjectName(QStringLiteral("recentEmpty"));
+        m_sessionsLayout->addWidget(empty);
+        return;
+    }
+
+    for (const QString &entry : sessions) {
+        const QStringList parts = entry.split(QStringLiteral("\t"));
+        const QString date = parts.value(0);
+        const QString title = parts.value(1, tr("未命名训练"));
+        auto *row = new QFrame(m_sessionsHost);
+        row->setObjectName(QStringLiteral("sessionRow"));
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(12, 8, 12, 8);
+        auto *label = new QLabel(
+            QStringLiteral("<b>%1</b><br><span style='color:#6e6d68'>%2</span>")
+                .arg(title.toHtmlEscaped(), date.toHtmlEscaped()), row);
+        label->setTextFormat(Qt::RichText);
+        rowLayout->addWidget(label, 1);
+        auto *done = new QPushButton(tr("完成"), row);
+        done->setProperty("psSecondary", true);
+        auto *remove = new QPushButton(tr("删除"), row);
+        remove->setProperty("psSecondary", true);
+        rowLayout->addWidget(done);
+        rowLayout->addWidget(remove);
+
+        connect(done, &QPushButton::clicked, this, [this, entry] {
+            QStringList values = OlerSettings::instance()
+                                      ->value(QStringLiteral("training/sessions"))
+                                      .toStringList();
+            values.removeOne(entry);
+            OlerSettings::instance()->setValue(QStringLiteral("training/sessions"), values);
+            OlerSettings::instance()->save();
+            rebuildSessions();
+        });
+        connect(remove, &QPushButton::clicked, this, [this, entry] {
+            QStringList values = OlerSettings::instance()
+                                      ->value(QStringLiteral("training/sessions"))
+                                      .toStringList();
+            values.removeOne(entry);
+            OlerSettings::instance()->setValue(QStringLiteral("training/sessions"), values);
+            OlerSettings::instance()->save();
+            rebuildSessions();
+        });
+        m_sessionsLayout->addWidget(row);
+    }
 }
 
 void OlerTrainingPage::rebuild() {
@@ -142,13 +239,17 @@ void OlerTrainingPage::rebuild() {
         : OlerTheme::accentForTheme(
               CThemeManager::instance()->currentTheme()).name();
     const int pct = goal > 0 ? qBound(0, done * 100 / goal, 100) : 0;
+    // Goal-bar track uses the active theme's elevated surface so the unfilled
+    // portion of the bar reads correctly on light themes too.
+    const QString track =
+        OlerTheme::token(OlerTheme::Token::BgElevated).name(QColor::HexRgb);
     m_goalBar->setStyleSheet(
         QStringLiteral("border-radius:2px; min-width:240px; max-width:360px;"
-                       " background-color:#252524;"
+                       " background-color:%1;"
                        " background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
-                       " stop:0 %1, stop:%2 %1, stop:%3 #252524,"
-                       " stop:1 #252524);")
-            .arg(fill)
+                       " stop:0 %2, stop:%3 %2, stop:%4 %1,"
+                       " stop:1 %1);")
+            .arg(track, fill)
             .arg(pct / 100.0 - 0.001)
             .arg(pct / 100.0));
 }

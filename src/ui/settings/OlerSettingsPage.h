@@ -6,6 +6,7 @@ class QComboBox;
 class QSpinBox;
 class QLineEdit;
 class QLabel;
+class QScrollArea;
 
 // Settings page — single-column (max 660px) stacked sections, per the
 // v0 HTML prototype: form rows = [140px right-aligned label][control][hint],
@@ -15,6 +16,8 @@ class OlerSettingsPage : public QWidget {
     Q_OBJECT
 public:
     explicit OlerSettingsPage(QWidget *parent = nullptr);
+
+    void reload();
 
 private slots:
     void detectCompiler();
@@ -28,4 +31,6 @@ private:
                        const std::function<void(const QString &)> &onPick);
 
     QLineEdit *m_gxxPath = nullptr;
+    QLabel *m_aboutMark = nullptr;
+    QScrollArea *m_scroll = nullptr;
 };

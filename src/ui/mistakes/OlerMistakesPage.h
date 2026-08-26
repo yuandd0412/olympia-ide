@@ -14,7 +14,7 @@ public:
 
 signals:
     // "重做" clicked: user wants the problem re-opened in the editor.
-    void redoRequested(const QString &problemId);
+    void redoRequested(const OlerMistake &mistake);
 
 private slots:
     void rebuild();

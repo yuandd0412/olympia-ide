@@ -3,6 +3,7 @@
 #include "core/problems/OlerProblems.h"
 
 class QLineEdit;
+class QLabel;
 class QScrollArea;
 class QGridLayout;
 class QVBoxLayout;
@@ -26,10 +27,14 @@ private:
     QWidget *makeRecentCard(const OlerProblem &p);
     QWidget *makeCard(const OlerProblem &p);
     QWidget *buildStatsStrip();
+    void refreshStats();
 
     OlerProblems *m_store;
     QLineEdit *m_search = nullptr;
     QWidget *m_recentRowHost = nullptr;
     QGridLayout *m_grid = nullptr;
     QWidget *m_gridHost = nullptr;
+    QLabel *m_totalValue = nullptr;
+    QLabel *m_solvedValue = nullptr;
+    QLabel *m_streakValue = nullptr;
 };

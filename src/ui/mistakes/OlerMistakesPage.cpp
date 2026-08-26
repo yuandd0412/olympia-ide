@@ -41,6 +41,8 @@ public:
         setFixedSize(7 * 21 + 3, 4 * 21 + 3);
         connect(CThemeManager::instance(), &CThemeManager::themeChanged,
                 this, QOverload<>::of(&QWidget::update));
+        connect(m_store, &OlerMistakes::changed,
+                this, QOverload<>::of(&QWidget::update));
     }
 protected:
     void paintEvent(QPaintEvent *) override {
@@ -129,9 +131,6 @@ OlerMistakesPage::OlerMistakesPage(QWidget *parent)
     m_listLayout = new QVBoxLayout(m_listHost);
     m_listLayout->setContentsMargins(0, 0, 0, 0);
     m_listLayout->setSpacing(6);
-    mainCol->addWidget(m_listHost);
-    mainCol->addStretch();
-
     auto *scroll = new QScrollArea(this);
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
@@ -194,7 +193,7 @@ QWidget *OlerMistakesPage::buildRow(const OlerMistake &m) {
     redo->setObjectName(QStringLiteral("redoBtn"));
     redo->setCursor(Qt::PointingHandCursor);
     connect(redo, &QPushButton::clicked, row, [this, m] {
-        emit redoRequested(m.problemId);
+        emit redoRequested(m);
     });
     lay->addWidget(redo);
 

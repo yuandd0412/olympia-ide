@@ -25,6 +25,9 @@ struct OlerCaseResult {
     QString verdict;       // one of Verdict::*
     qint64 timeMs = 0;
     qint64 memoryKb = -1;  // -1 = not measured
+    QString expectedOutput;
+    QString actualOutput;
+    QString stderrOutput;
 };
 
 struct OlerRunResult {
@@ -67,6 +70,7 @@ private:
                  OlerRunResult &result);
 
     void evaluateCase(const QString &exePath,
+                      const QString &workingDirectory,
                       const OlerTestCase &tc,
                       int index,
                       const OlerRunnerConfig &config,

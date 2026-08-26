@@ -15,6 +15,13 @@ namespace {
 
 constexpr int kCompileTimeoutMs = 30000;
 
+QString readUtf8File(const QString &path) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return {};
+    return QString::fromUtf8(file.readAll());
+}
+
 // OI-style comparison: per-line right-trim, ignore trailing blank lines.
 bool outputsMatch(const QString &expectedPath, const QString &actualPath) {
     QFile ef(expectedPath), af(actualPath);
@@ -22,8 +29,13 @@ bool outputsMatch(const QString &expectedPath, const QString &actualPath) {
     if (!af.open(QIODevice::ReadOnly | QIODevice::Text)) return false;
     auto readLines = [](QFile &f) {
         QStringList lines;
-        for (const QString &raw : QString::fromUtf8(f.readAll()).split(QLatin1Char('\n')))
-            lines << QString(raw).remove(QLatin1Char('\r'));
+        for (const QString &raw : QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'))) {
+            QString line = raw;
+            line.remove(QLatin1Char('\r'));
+            while (!line.isEmpty() && line.back().isSpace())
+                line.chop(1);
+            lines << line;
+        }
         while (!lines.isEmpty() && lines.last().trimmed().isEmpty())
             lines.removeLast();
         return lines;
@@ -123,6 +135,7 @@ bool OlerRunner::compile(const OlerRunnerConfig &config,
 }
 
 void OlerRunner::evaluateCase(const QString &exePath,
+                              const QString &workingDirectory,
                               const OlerTestCase &tc,
                               int index,
                               const OlerRunnerConfig &config,
@@ -134,11 +147,14 @@ void OlerRunner::evaluateCase(const QString &exePath,
     if (!scratch.isValid())
         return;
     const QString actualPath = scratch.filePath(QStringLiteral("out.txt"));
+    const QString stderrPath = scratch.filePath(QStringLiteral("err.txt"));
 
     QProcess proc;
     proc.setProgram(exePath);
+    proc.setWorkingDirectory(workingDirectory);
     proc.setStandardInputFile(tc.inputFile);
     proc.setStandardOutputFile(actualPath);
+    proc.setStandardErrorFile(stderrPath);
 
 #ifdef Q_OS_WIN
     // Crash fast-fail: without SEM_NOGPFAULTERRORBOX, WER intercepts the
@@ -162,10 +178,18 @@ void OlerRunner::evaluateCase(const QString &exePath,
     // Poll loop: sample peak memory and enforce the time budget.
     qint64 peakKb = -1;
     bool killedForTime = false;
+    bool killedForMemory = false;
     forever {
 #ifdef Q_OS_WIN
         const qint64 sample = peakWorkingSetKb(proc.processId());
         if (sample > peakKb) peakKb = sample;
+        if (config.memoryLimitMb > 0 &&
+            sample > static_cast<qint64>(config.memoryLimitMb) * 1024) {
+            proc.kill();
+            proc.waitForFinished(2000);
+            killedForMemory = true;
+            break;
+        }
 #endif
         if (proc.waitForFinished(20)) {
             break;
@@ -184,8 +208,12 @@ void OlerRunner::evaluateCase(const QString &exePath,
 
     out.timeMs = timer.elapsed();
     out.memoryKb = peakKb;
+    out.expectedOutput = readUtf8File(tc.expectedFile);
+    out.actualOutput = readUtf8File(actualPath);
+    out.stderrOutput = readUtf8File(stderrPath);
 
-    if (killedForTime || timer.elapsed() > config.timeLimitMs) {
+    if (killedForTime || timer.elapsed() > config.timeLimitMs ||
+        killedForMemory) {
         out.verdict = Verdict::TLE;
         return;
     }
@@ -227,7 +255,8 @@ OlerRunResult OlerRunner::run(const OlerRunnerConfig &config,
 
     for (int i = 0; i < cases.size(); ++i) {
         OlerCaseResult r;
-        evaluateCase(exePath, cases.at(i), i, config, r);
+        evaluateCase(exePath, QFileInfo(sourcePath).absolutePath(),
+                     cases.at(i), i, config, r);
         result.cases.append(r);
     }
     return result;

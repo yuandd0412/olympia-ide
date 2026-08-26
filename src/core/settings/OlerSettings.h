@@ -20,6 +20,8 @@ public:
     void remove(const QString &key);
 
     bool save(QString *errorOut = nullptr);
+    bool exportTo(const QString &path, QString *errorOut = nullptr) const;
+    bool importFrom(const QString &path, QString *errorOut = nullptr);
 
 signals:
     void settingChanged(const QString &key, const QVariant &value);

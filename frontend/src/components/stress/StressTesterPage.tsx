@@ -13,6 +13,7 @@ import {
   Check,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
 
 export const StressTesterPage: React.FC = () => {
   const {
@@ -103,10 +104,10 @@ export const StressTesterPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Split Layout */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Main Split Layout with react-resizable-panels */}
+      <PanelGroup id="olympia-stress-panels" orientation="vertical" className="flex-1 min-h-0">
         {/* Top 3 Code Editors */}
-        <div className="flex-[5.5] min-h-0 flex flex-col border-b border-[var(--border)]">
+        <Panel defaultSize={55} minSize={25} maxSize={80} className="min-h-0 flex flex-col border-b border-[var(--border)]">
           {/* Sub-tab switcher */}
           <div
             className="h-8 px-3 border-b flex items-center justify-between text-xs shrink-0"
@@ -207,15 +208,14 @@ export const StressTesterPage: React.FC = () => {
               />
             )}
           </div>
-        </div>
+        </Panel>
+
+        <PanelResizeHandle className="h-1 bg-[var(--border)] hover:bg-[var(--accent)] transition-all cursor-row-resize z-50 relative group flex items-center justify-center">
+          <div className="h-0.5 w-8 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover:opacity-100 group-hover:bg-[var(--accent)]" />
+        </PanelResizeHandle>
 
         {/* Bottom Results Pane */}
-        <div
-          className="flex-[4.5] min-h-0 flex flex-col p-4 overflow-y-auto text-xs"
-          style={{
-            backgroundColor: 'var(--bg-surface)',
-          }}
-        >
+        <Panel defaultSize={45} minSize={20} maxSize={75} className="min-h-0 flex flex-col p-4 overflow-y-auto text-xs" style={{ backgroundColor: 'var(--bg-surface)' }}>
           {stressResult ? (
             <div className="space-y-3">
               {/* Status Banner */}
@@ -320,8 +320,8 @@ export const StressTesterPage: React.FC = () => {
               </p>
             </div>
           )}
-        </div>
-      </div>
+        </Panel>
+      </PanelGroup>
     </div>
   );
 };

@@ -101,53 +101,67 @@ export const SettingsPage: React.FC = () => {
 
       {/* Contest Mode (比赛模式) */}
       <div
-        className="p-5 rounded-2xl border space-y-4"
+        className="p-5 rounded-2xl border space-y-4 relative overflow-hidden"
         style={{
           backgroundColor: 'rgba(255, 69, 58, 0.05)',
           borderColor: 'rgba(255, 69, 58, 0.3)',
         }}
       >
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-[#ff453a] animate-pulse" />
-          <span className="text-xs font-bold text-[#ff453a]">
-            比赛模式 (Contest Mode)
-          </span>
-        </div>
         <div className="flex items-center justify-between">
-          <p className="text-[11px] text-[var(--text-secondary)]">
-            开启后将强制禁用 AI 助手功能，模拟真实比赛环境。设置的时间结束后将自动恢复。
-          </p>
           <div className="flex items-center gap-2">
-            <select
-              className="bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-primary)] outline-none"
-              onChange={(e) => {
-                const hours = parseInt(e.target.value);
-                if (hours > 0) {
-                  useAppStore.getState().setContestEndTime(Date.now() + hours * 3600 * 1000);
-                }
-              }}
-            >
-              <option value="0">开启比赛模式</option>
-              <option value="2">开启 2 小时</option>
-              <option value="3.5">开启 3.5 小时</option>
-              <option value="4">开启 4 小时</option>
-              <option value="5">开启 5 小时</option>
-            </select>
-            {useAppStore.getState().contestEndTime !== null && Date.now() < useAppStore.getState().contestEndTime! && (
-              <button
-                onClick={() => useAppStore.getState().setContestEndTime(null)}
-                className="px-2 py-1 bg-[#ff453a] text-white rounded text-xs font-bold hover:brightness-110"
-              >
-                结束比赛
-              </button>
-            )}
+            <div className="w-2.5 h-2.5 rounded-full bg-[#ff453a] animate-pulse" />
+            <span className="text-xs font-bold text-[#ff453a]">
+              比赛实战模拟模式 (Contest Simulation)
+            </span>
           </div>
+
+          {useAppStore.getState().contestEndTime !== null && Date.now() < useAppStore.getState().contestEndTime! && (
+            <span className="px-2.5 py-0.5 rounded-full bg-[#ff453a] text-white text-[11px] font-bold shadow-xs">
+              进行中 · 结束时间: {new Date(useAppStore.getState().contestEndTime!).toLocaleTimeString()}
+            </span>
+          )}
         </div>
-        {useAppStore.getState().contestEndTime !== null && Date.now() < useAppStore.getState().contestEndTime! && (
-          <p className="text-[#ff453a] text-xs font-bold mt-2">
-            当前处于比赛模式，结束时间: {new Date(useAppStore.getState().contestEndTime!).toLocaleTimeString()}
-          </p>
-        )}
+
+        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+          开启后将强制禁用 AI 算法教练与思路解答功能，模拟 NOIP / CSP / NOI / ICPC 真实赛场环境。设置时长结束后将自动恢复。
+        </p>
+
+        {/* Quick presets */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => useAppStore.getState().setContestEndTime(Date.now() + 1.5 * 3600 * 1000)}
+            className="px-3 py-1.5 rounded-xl border border-[#ff453a]/30 hover:bg-[#ff453a]/15 text-xs font-medium text-[var(--text-primary)] transition-all cursor-pointer"
+          >
+            1.5 小时 (普及组模拟)
+          </button>
+          <button
+            onClick={() => useAppStore.getState().setContestEndTime(Date.now() + 3.5 * 3600 * 1000)}
+            className="px-3 py-1.5 rounded-xl border border-[#ff453a]/30 hover:bg-[#ff453a]/15 text-xs font-medium text-[var(--text-primary)] transition-all cursor-pointer"
+          >
+            3.5 小时 (CSP-S 提高组模拟)
+          </button>
+          <button
+            onClick={() => useAppStore.getState().setContestEndTime(Date.now() + 4.0 * 3600 * 1000)}
+            className="px-3 py-1.5 rounded-xl border border-[#ff453a]/30 hover:bg-[#ff453a]/15 text-xs font-medium text-[var(--text-primary)] transition-all cursor-pointer"
+          >
+            4.0 小时 (NOIP 模拟)
+          </button>
+          <button
+            onClick={() => useAppStore.getState().setContestEndTime(Date.now() + 5.0 * 3600 * 1000)}
+            className="px-3 py-1.5 rounded-xl border border-[#ff453a]/30 hover:bg-[#ff453a]/15 text-xs font-medium text-[var(--text-primary)] transition-all cursor-pointer"
+          >
+            5.0 小时 (NOI / ICPC 模拟)
+          </button>
+
+          {useAppStore.getState().contestEndTime !== null && Date.now() < useAppStore.getState().contestEndTime! && (
+            <button
+              onClick={() => useAppStore.getState().setContestEndTime(null)}
+              className="px-3.5 py-1.5 rounded-xl bg-[#ff453a] hover:brightness-110 text-white text-xs font-bold transition-all cursor-pointer shadow-xs ml-auto"
+            >
+              提前结束比赛
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Theme Section */}

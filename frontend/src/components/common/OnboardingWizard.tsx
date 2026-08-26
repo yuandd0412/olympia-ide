@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '../../stores/useAppStore';
-import { Check, ChevronRight, Moon, Sun, Key, Code2, Sparkles, Loader2, TerminalSquare } from 'lucide-react';
+import { Check, ChevronRight, Moon, Sun, Key, Code2, Sparkles, Loader2, TerminalSquare, Swords, Flame } from 'lucide-react';
 import type { ThemeType } from '../../types';
 
 export const OnboardingWizard: React.FC = () => {
@@ -11,7 +11,7 @@ export const OnboardingWizard: React.FC = () => {
   // Local state for the wizard
   const [theme, setTheme] = useState<ThemeType>(settings.theme || 'OneDarkPro');
   const [enableTemplate, setEnableTemplate] = useState(settings.enableCodeTemplate || false);
-  const [template, setTemplate] = useState(settings.codeTemplate || '#include <iostream>\nusing namespace std;\n\nint main() {\n    // Write your code here\n    return 0;\n}');
+  const [template, setTemplate] = useState(settings.codeTemplate || "#include <iostream>\nusing namespace std;\n\nint main() {\n    // Write your code here\n    return 0;\n}");
   const [apiKey, setApiKey] = useState(settings.aiApiKey || '');
   const [preferTerminal, setPreferTerminal] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -19,12 +19,23 @@ export const OnboardingWizard: React.FC = () => {
   const steps = [
     {
       title: '欢迎来到 Olympia IDE',
-      subtitle: '一款专为 OIer 打造的纯净、高效的竞赛级编程环境。',
-      icon: <Sparkles className="w-12 h-12 text-[var(--accent)] mb-4" />
+      subtitle: '一款专为 OI / ACM 竞赛选手打造的纯净、高效的竞赛级编程环境。',
+      icon: (
+        <motion.div
+          animate={{ y: [0, -6, 0], rotate: [0, 2, -2, 0] }}
+          transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
+          className="relative mb-4"
+        >
+          <div className="absolute inset-0 bg-[var(--accent)] opacity-20 blur-xl rounded-full" />
+          <div className="p-4 rounded-3xl bg-[var(--accent-subtle)] text-[var(--accent)] border border-[var(--accent)]/30 relative">
+            <Sparkles className="w-10 h-10" />
+          </div>
+        </motion.div>
+      )
     },
     {
       title: '选择主题风格',
-      subtitle: '深色沉浸，或是浅色清新？'
+      subtitle: '深色沉浸专注，或是浅色清爽明快？'
     },
     {
       title: '配置缺省源',
@@ -32,11 +43,11 @@ export const OnboardingWizard: React.FC = () => {
     },
     {
       title: '首选运行模式',
-      subtitle: '你更喜欢经典的终端编译运行，还是内置的测例一键评测？'
+      subtitle: '你更喜欢内置的样例评测机，还是交互式内置终端？'
     },
     {
-      title: '配置 AI 教练',
-      subtitle: '接入大模型 API，让 AI 随时为你答疑解惑、分析错题。'
+      title: '配置 AI 竞赛教练',
+      subtitle: '接入大模型 API，让 AI 随时为你答疑解惑、分析时空复杂度与排查 Bug。'
     }
   ];
 
@@ -61,101 +72,121 @@ export const OnboardingWizard: React.FC = () => {
     <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-md flex items-center justify-center p-6" style={{ WebkitAppRegion: 'no-drag' } as any}>
       <motion.div
         layout
-        className="w-full max-w-2xl bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col relative"
+        className="w-full max-w-2xl bg-[var(--bg-surface)] border border-[var(--border)] rounded-3xl shadow-2xl overflow-hidden flex flex-col relative"
         initial={{ opacity: 0, y: 30, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.4, type: 'spring', bounce: 0.2 }}
+        transition={{ type: 'spring', stiffness: 380, damping: 28 }}
       >
         {/* Progress Bar */}
         <div className="w-full h-1 bg-[var(--bg-elevated)]">
           <motion.div 
-            className="h-full bg-[var(--accent)]"
+            className="h-full bg-[var(--accent)] shadow-sm"
             initial={{ width: '0%' }}
-            animate={{ width: `${((step + 1) / steps.length) * 100}%` }}
-            transition={{ duration: 0.3 }}
+            animate={{ width: (((step + 1) / steps.length) * 100) + '%' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
           />
         </div>
 
-        <div className="flex-1 p-10 min-h-[400px] flex flex-col">
+        <div className="flex-1 p-10 min-h-[420px] flex flex-col">
           <AnimatePresence mode="wait">
             <motion.div
               key={step}
-              initial={{ opacity: 0, x: 20 }}
+              initial={{ opacity: 0, x: 25 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.2 }}
+              exit={{ opacity: 0, x: -25 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
               className="flex-1 flex flex-col"
             >
               {/* Header */}
               <div className="text-center mb-8 flex flex-col items-center">
                 {step === 0 && steps[0].icon}
-                <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">
+                <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)] mb-2">
                   {steps[step].title}
                 </h1>
-                <p className="text-sm text-[var(--text-secondary)]">
+                <p className="text-xs text-[var(--text-secondary)] max-w-md leading-relaxed">
                   {steps[step].subtitle}
                 </p>
               </div>
 
-              {/* Step 0: Welcome */}
+              {/* Step 0: Welcome Feature Highlights */}
               {step === 0 && (
                 <div className="flex-1 flex items-center justify-center">
-                  <div className="grid grid-cols-2 gap-4 w-full">
-                    <div className="p-4 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border)] flex flex-col items-center text-center gap-2">
-                      <Code2 className="w-6 h-6 text-[var(--accent)]" />
-                      <h3 className="font-semibold text-sm">内置评测机</h3>
-                      <p className="text-xs text-[var(--text-tertiary)]">毫秒级测试样例运行，抛弃繁琐的终端命令。</p>
-                    </div>
-                    <div className="p-4 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border)] flex flex-col items-center text-center gap-2">
-                      <Sparkles className="w-6 h-6 text-[#ff9f0a]" />
-                      <h3 className="font-semibold text-sm">智能纠错</h3>
-                      <p className="text-xs text-[var(--text-tertiary)]">大模型一键分析 WA/TLE 原因。</p>
-                    </div>
+                  <div className="grid grid-cols-3 gap-3.5 w-full">
+                    <motion.div whileHover={{ y: -3 }} className="p-4 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] flex flex-col items-center text-center gap-2 transition-all">
+                      <div className="p-2 rounded-xl bg-[var(--accent-subtle)] text-[var(--accent)]">
+                        <Code2 className="w-5 h-5" />
+                      </div>
+                      <h3 className="font-semibold text-xs text-[var(--text-primary)]">内置极速评测</h3>
+                      <p className="text-[11px] text-[var(--text-tertiary)] leading-normal">多样例毫秒级比对，自动输出差异 Diff。</p>
+                    </motion.div>
+
+                    <motion.div whileHover={{ y: -3 }} className="p-4 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] flex flex-col items-center text-center gap-2 transition-all">
+                      <div className="p-2 rounded-xl bg-[#ff9f0a]/15 text-[#ff9f0a]">
+                        <Swords className="w-5 h-5" />
+                      </div>
+                      <h3 className="font-semibold text-xs text-[var(--text-primary)]">自动化对拍器</h3>
+                      <p className="text-[11px] text-[var(--text-tertiary)] leading-normal">随机数据生成，极速比对暴力与正解。</p>
+                    </motion.div>
+
+                    <motion.div whileHover={{ y: -3 }} className="p-4 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] flex flex-col items-center text-center gap-2 transition-all">
+                      <div className="p-2 rounded-xl bg-[#34c759]/15 text-[#34c759]">
+                        <Flame className="w-5 h-5" />
+                      </div>
+                      <h3 className="font-semibold text-xs text-[var(--text-primary)]">真实比赛模式</h3>
+                      <p className="text-[11px] text-[var(--text-tertiary)] leading-normal">倒计时锁定 AI，沉浸式实战模拟。</p>
+                    </motion.div>
                   </div>
                 </div>
               )}
 
-              {/* Step 1: Theme */}
+              {/* Step 1: Theme Selector */}
               {step === 1 && (
                 <div className="flex-1 flex items-center justify-center gap-6">
-                  <button
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={() => setTheme('OneDarkPro')}
-                    className={`flex-1 p-6 rounded-xl border-2 transition-all flex flex-col items-center gap-4 ${
-                      theme === 'OneDarkPro' 
-                        ? 'border-[var(--accent)] bg-[var(--accent-subtle)]' 
-                        : 'border-[var(--border)] bg-[var(--bg-elevated)] opacity-70 hover:opacity-100'
-                    }`}
+                    className={'flex-1 p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3.5 cursor-pointer ' + (theme === 'OneDarkPro' ? 'border-[var(--accent)] bg-[var(--accent-subtle)] shadow-md ring-2 ring-[var(--accent)]/30' : 'border-[var(--border)] bg-[var(--bg-elevated)] opacity-70 hover:opacity-100')}
                   >
-                    <Moon className="w-10 h-10" />
-                    <span className="font-semibold">One Dark Pro</span>
-                  </button>
-                  <button
+                    <div className="w-12 h-12 rounded-2xl bg-[#1e1e1e] border border-[#333] flex items-center justify-center text-[#7aa2f7]">
+                      <Moon className="w-6 h-6" />
+                    </div>
+                    <div className="text-center">
+                      <span className="font-bold text-xs text-[var(--text-primary)] block">One Dark Pro</span>
+                      <span className="text-[11px] text-[var(--text-tertiary)] block mt-0.5">深色护眼，高对比代码高亮</span>
+                    </div>
+                  </motion.button>
+
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={() => setTheme('GitHubLight')}
-                    className={`flex-1 p-6 rounded-xl border-2 transition-all flex flex-col items-center gap-4 ${
-                      theme === 'GitHubLight' 
-                        ? 'border-[var(--accent)] bg-[var(--accent-subtle)]' 
-                        : 'border-[var(--border)] bg-[var(--bg-elevated)] opacity-70 hover:opacity-100'
-                    }`}
+                    className={'flex-1 p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3.5 cursor-pointer ' + (theme === 'GitHubLight' ? 'border-[var(--accent)] bg-[var(--accent-subtle)] shadow-md ring-2 ring-[var(--accent)]/30' : 'border-[var(--border)] bg-[var(--bg-elevated)] opacity-70 hover:opacity-100')}
                   >
-                    <Sun className="w-10 h-10" />
-                    <span className="font-semibold">GitHub Light</span>
-                  </button>
+                    <div className="w-12 h-12 rounded-2xl bg-white border border-[#e1e4e8] flex items-center justify-center text-[#e5a43b]">
+                      <Sun className="w-6 h-6" />
+                    </div>
+                    <div className="text-center">
+                      <span className="font-bold text-xs text-[var(--text-primary)] block">GitHub Light</span>
+                      <span className="text-[11px] text-[var(--text-tertiary)] block mt-0.5">清爽浅色，极简纯净排版</span>
+                    </div>
+                  </motion.button>
                 </div>
               )}
 
-              {/* Step 2: Template */}
+              {/* Step 2: Code Template */}
               {step === 2 && (
                 <div className="flex-1 flex flex-col gap-4">
-                  <label className="flex items-center gap-3 p-4 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] cursor-pointer">
+                  <label className="flex items-center gap-3 p-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] cursor-pointer select-none">
                     <input 
                       type="checkbox" 
-                      className="w-4 h-4 accent-[var(--accent)]"
+                      className="w-4 h-4 accent-[var(--accent)] rounded cursor-pointer"
                       checked={enableTemplate}
                       onChange={(e) => setEnableTemplate(e.target.checked)}
                     />
                     <div className="flex flex-col">
-                      <span className="text-sm font-semibold text-[var(--text-primary)]">启用代码缺省源 (Template)</span>
-                      <span className="text-xs text-[var(--text-tertiary)]">开启后，每次新建文件自动填入下方代码。</span>
+                      <span className="text-xs font-semibold text-[var(--text-primary)]">启用代码缺省源 (Template)</span>
+                      <span className="text-[11px] text-[var(--text-tertiary)]">开启后，每次新建文件自动填入下方代码。</span>
                     </div>
                   </label>
 
@@ -165,12 +196,12 @@ export const OnboardingWizard: React.FC = () => {
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
                         exit={{ opacity: 0, height: 0 }}
-                        className="flex-1 min-h-0 flex flex-col overflow-hidden mt-4"
+                        className="flex-1 min-h-0 flex flex-col overflow-hidden"
                       >
                         <textarea
                           value={template}
                           onChange={(e) => setTemplate(e.target.value)}
-                          className="flex-1 w-full bg-[#1e1e1e] text-[#d4d4d4] font-mono text-xs p-4 rounded-xl border border-[var(--border)] resize-none focus:border-[var(--accent)] outline-none"
+                          className="w-full h-40 bg-[var(--bg-base)] text-[var(--text-primary)] font-mono text-xs p-4 rounded-2xl border border-[var(--border)] resize-none focus:border-[var(--accent)] outline-none"
                           spellCheck={false}
                         />
                       </motion.div>
@@ -182,54 +213,55 @@ export const OnboardingWizard: React.FC = () => {
               {/* Step 3: Run Mode */}
               {step === 3 && (
                 <div className="flex-1 flex items-center justify-center gap-6">
-                  <button
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={() => setPreferTerminal(false)}
-                    className={`flex-1 p-6 rounded-xl border-2 transition-all flex flex-col items-center gap-4 ${
-                      !preferTerminal 
-                        ? 'border-[var(--accent)] bg-[var(--accent-subtle)]' 
-                        : 'border-[var(--border)] bg-[var(--bg-elevated)] opacity-70 hover:opacity-100'
-                    }`}
+                    className={'flex-1 p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3.5 cursor-pointer ' + (!preferTerminal ? 'border-[var(--accent)] bg-[var(--accent-subtle)] shadow-md ring-2 ring-[var(--accent)]/30' : 'border-[var(--border)] bg-[var(--bg-elevated)] opacity-70 hover:opacity-100')}
                   >
-                    <Code2 className="w-10 h-10 text-[var(--text-primary)]" />
-                    <div className="flex flex-col items-center gap-1">
-                      <span className="font-semibold text-[var(--text-primary)]">样例优先 (默认)</span>
-                      <span className="text-xs text-[var(--text-tertiary)] text-center">使用内置多测例评测机<br/>一键运行全部样例</span>
+                    <div className="p-3 rounded-2xl bg-[var(--accent-subtle)] text-[var(--accent)]">
+                      <Code2 className="w-8 h-8" />
                     </div>
-                  </button>
-                  <button
+                    <div className="flex flex-col items-center text-center gap-1">
+                      <span className="font-bold text-xs text-[var(--text-primary)]">样例优先 (推荐)</span>
+                      <span className="text-[11px] text-[var(--text-tertiary)]">使用内置多测例评测机<br/>一键运行与比对全部样例</span>
+                    </div>
+                  </motion.button>
+
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={() => setPreferTerminal(true)}
-                    className={`flex-1 p-6 rounded-xl border-2 transition-all flex flex-col items-center gap-4 ${
-                      preferTerminal 
-                        ? 'border-[var(--accent)] bg-[var(--accent-subtle)]' 
-                        : 'border-[var(--border)] bg-[var(--bg-elevated)] opacity-70 hover:opacity-100'
-                    }`}
+                    className={'flex-1 p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3.5 cursor-pointer ' + (preferTerminal ? 'border-[var(--accent)] bg-[var(--accent-subtle)] shadow-md ring-2 ring-[var(--accent)]/30' : 'border-[var(--border)] bg-[var(--bg-elevated)] opacity-70 hover:opacity-100')}
                   >
-                    <TerminalSquare className="w-10 h-10 text-[var(--text-primary)]" />
-                    <div className="flex flex-col items-center gap-1">
-                      <span className="font-semibold text-[var(--text-primary)]">终端优先</span>
-                      <span className="text-xs text-[var(--text-tertiary)] text-center">使用内置交互式终端<br/>手动编译和输入数据</span>
+                    <div className="p-3 rounded-2xl bg-[#ff9f0a]/15 text-[#ff9f0a]">
+                      <TerminalSquare className="w-8 h-8" />
                     </div>
-                  </button>
+                    <div className="flex flex-col items-center text-center gap-1">
+                      <span className="font-bold text-xs text-[var(--text-primary)]">终端优先</span>
+                      <span className="text-[11px] text-[var(--text-tertiary)]">使用内置交互式控制台<br/>手动输入与调试测试点</span>
+                    </div>
+                  </motion.button>
                 </div>
               )}
 
               {/* Step 4: API Key */}
               {step === 4 && (
                 <div className="flex-1 flex flex-col gap-4 justify-center">
-                  <div className="p-6 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] flex flex-col gap-4">
-                    <div className="flex items-center gap-3 text-[var(--text-primary)] font-semibold">
-                      <Key className="w-5 h-5 text-[var(--accent)]" />
-                      <span>配置 API 密钥 (可选)</span>
+                  <div className="p-6 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] flex flex-col gap-3.5">
+                    <div className="flex items-center gap-2.5 text-[var(--text-primary)] font-semibold text-xs">
+                      <Key className="w-4 h-4 text-[var(--accent)]" />
+                      <span>配置 AI API 密钥 (可选)</span>
                     </div>
-                    <p className="text-xs text-[var(--text-tertiary)]">
-                      默认配置为兼容 OpenAI 格式的 API 接口。如果暂无 Key，可以跳过，后续在“设置”中配置。
+                    <p className="text-[11px] text-[var(--text-tertiary)] leading-relaxed">
+                      支持 DeepSeek / OpenAI 等兼容接口。若暂无密钥可直接跳过，稍后在「偏好设置」中配置。
                     </p>
                     <input
                       type="password"
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                       placeholder="sk-..."
-                      className="w-full bg-[var(--bg-base)] border border-[var(--border)] rounded-lg px-4 py-2.5 text-sm focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] outline-none transition-all"
+                      className="w-full bg-[var(--bg-base)] border border-[var(--border)] rounded-xl px-4 py-2.5 text-xs font-mono focus:border-[var(--accent)] outline-none transition-all text-[var(--text-primary)]"
                     />
                   </div>
                 </div>
@@ -242,26 +274,29 @@ export const OnboardingWizard: React.FC = () => {
         <div className="p-6 pt-0 flex items-center justify-between mt-auto">
           <div className="flex items-center gap-1.5">
             {steps.map((_, i) => (
-              <div 
+              <motion.div 
                 key={i} 
-                className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? 'w-6 bg-[var(--accent)]' : 'w-2 bg-[var(--border)]'}`}
+                layout
+                className={'h-1.5 rounded-full transition-all duration-300 ' + (i === step ? 'w-6 bg-[var(--accent)] shadow-xs' : 'w-2 bg-[var(--border)]')}
               />
             ))}
           </div>
 
-          <button
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
             onClick={handleNext}
             disabled={saving}
-            className="flex items-center gap-2 bg-[var(--accent)] hover:brightness-110 active:scale-95 text-white px-6 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-lg shadow-[var(--accent)]/20 disabled:opacity-50 cursor-pointer"
+            className="flex items-center gap-2 bg-[var(--accent)] hover:brightness-110 text-white px-6 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg shadow-[var(--accent)]/20 disabled:opacity-50 cursor-pointer"
           >
             {saving ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> 保存中...</>
             ) : step === steps.length - 1 ? (
-              <><Check className="w-4 h-4" /> 完成配置</>
+              <><Check className="w-4 h-4" /> 开启体验</>
             ) : (
               <>下一步 <ChevronRight className="w-4 h-4" /></>
             )}
-          </button>
+          </motion.button>
         </div>
       </motion.div>
     </div>

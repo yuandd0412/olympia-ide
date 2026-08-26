@@ -11,8 +11,10 @@ import { AiCoachPage } from './components/ai/AiCoachPage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { useAppStore } from './stores/useAppStore';
 import { PanelLeftOpen } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 import { CustomTitleBar } from './components/common/CustomTitleBar';
+import { ContestBar } from './components/common/ContestBar';
 import { OnboardingWizard } from './components/common/OnboardingWizard';
 
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
@@ -88,6 +90,7 @@ export const App: React.FC = () => {
       className="w-screen h-screen flex flex-col overflow-hidden bg-[var(--bg-base)] text-[var(--text-primary)] select-none"
     >
       <CustomTitleBar />
+      <ContestBar />
       
       {settings.isFirstRun && <OnboardingWizard />}
 
@@ -97,53 +100,115 @@ export const App: React.FC = () => {
         <ActivityBar />
 
         {/* Main Content Region */}
-        <main className="flex-1 flex flex-col overflow-hidden min-h-0">
-          {activeNav === 'editor' && (
-            <PanelGroup orientation="horizontal" className="w-full h-full">
-              {showViewer && (
-                <>
-                  <Panel defaultSize={35} minSize={20} className="h-full">
-                    <ProblemViewerPanel onClose={() => setShowViewer(false)} />
-                  </Panel>
-                  <PanelResizeHandle className="w-[1px] bg-[var(--border)] hover:bg-[var(--accent)] hover:w-1 transition-all cursor-col-resize z-50" />
-                </>
-              )}
-
-              <Panel minSize={30} className="h-full flex flex-col min-w-0">
-                {/* Editor Top Bar */}
-                <div className="flex items-center w-full relative">
-                  {!showViewer && (
-                    <button 
-                      onClick={() => setShowViewer(true)} 
-                      className="absolute left-1 top-1/2 -translate-y-1/2 z-10 p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] cursor-pointer"
-                      title="打开题面阅读器"
-                    >
-                      <PanelLeftOpen className="w-4 h-4" />
-                    </button>
+        <main className="flex-1 flex flex-col overflow-hidden min-h-0 relative">
+          <AnimatePresence mode="wait">
+            {activeNav === 'editor' && (
+              <motion.div
+                key="editor"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="w-full h-full"
+              >
+                <PanelGroup id="olympia-main-horizontal" orientation="horizontal" className="w-full h-full">
+                  {showViewer && (
+                    <>
+                      <Panel id="problem-viewer" defaultSize={35} minSize={20} maxSize={60} className="h-full">
+                        <ProblemViewerPanel onClose={() => setShowViewer(false)} />
+                      </Panel>
+                      <PanelResizeHandle className="w-1 bg-[var(--border)] hover:bg-[var(--accent)] transition-all cursor-col-resize z-50 relative group flex items-center justify-center">
+                        <div className="w-0.5 h-8 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover:opacity-100 group-hover:bg-[var(--accent)]" />
+                      </PanelResizeHandle>
+                    </>
                   )}
-                  <div className={`flex-1 transition-all ${!showViewer ? 'pl-8' : ''}`}>
-                    <EditorTabBar />
-                  </div>
-                </div>
 
-                {/* Vertical Split for Editor and Runner */}
-                <PanelGroup orientation="vertical" className="flex-1 min-h-0">
-                  <Panel defaultSize={60} minSize={20} className="relative">
-                    <MonacoCodeEditor />
-                  </Panel>
-                  <PanelResizeHandle className="h-[1px] bg-[var(--border)] hover:bg-[var(--accent)] hover:h-1 transition-all cursor-row-resize z-50" />
-                  <Panel defaultSize={40} minSize={20} className="relative">
-                    <RunnerPanel />
+                  <Panel id="editor-main" minSize={30} className="h-full flex flex-col min-w-0">
+                    {/* Editor Top Bar */}
+                    <div className="flex items-center w-full relative">
+                      {!showViewer && (
+                        <button 
+                          onClick={() => setShowViewer(true)} 
+                          className="absolute left-1 top-1/2 -translate-y-1/2 z-10 p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] cursor-pointer"
+                          title="打开题面阅读器"
+                        >
+                          <PanelLeftOpen className="w-4 h-4" />
+                        </button>
+                      )}
+                      <div className={'flex-1 transition-all ' + (!showViewer ? 'pl-8' : '')}>
+                        <EditorTabBar />
+                      </div>
+                    </div>
+
+                    {/* Vertical Split for Editor and Runner */}
+                    <PanelGroup id="olympia-main-vertical" orientation="vertical" className="flex-1 min-h-0">
+                      <Panel id="code-editor" defaultSize={60} minSize={25} maxSize={85} className="relative">
+                        <MonacoCodeEditor />
+                      </Panel>
+                      <PanelResizeHandle className="h-1 bg-[var(--border)] hover:bg-[var(--accent)] transition-all cursor-row-resize z-50 relative group flex items-center justify-center">
+                        <div className="h-0.5 w-8 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover:opacity-100 group-hover:bg-[var(--accent)]" />
+                      </PanelResizeHandle>
+                      <Panel id="code-runner" defaultSize={40} minSize={15} maxSize={75} className="relative">
+                        <RunnerPanel />
+                      </Panel>
+                    </PanelGroup>
                   </Panel>
                 </PanelGroup>
-              </Panel>
-            </PanelGroup>
-          )}
+              </motion.div>
+            )}
 
-          {activeNav === 'stress' && <StressTesterPage />}
-          {activeNav === 'problems' && <ProblemsPage />}
-          {activeNav === 'ai' && <AiCoachPage />}
-          {activeNav === 'settings' && <SettingsPage />}
+            {activeNav === 'stress' && (
+              <motion.div
+                key="stress"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.15 }}
+                className="w-full h-full"
+              >
+                <StressTesterPage />
+              </motion.div>
+            )}
+
+            {activeNav === 'problems' && (
+              <motion.div
+                key="problems"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.15 }}
+                className="w-full h-full"
+              >
+                <ProblemsPage />
+              </motion.div>
+            )}
+
+            {activeNav === 'ai' && (
+              <motion.div
+                key="ai"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.15 }}
+                className="w-full h-full"
+              >
+                <AiCoachPage />
+              </motion.div>
+            )}
+
+            {activeNav === 'settings' && (
+              <motion.div
+                key="settings"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.15 }}
+                className="w-full h-full"
+              >
+                <SettingsPage />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </main>
       </div>
 
@@ -154,5 +219,3 @@ export const App: React.FC = () => {
 };
 
 export default App;
-
-

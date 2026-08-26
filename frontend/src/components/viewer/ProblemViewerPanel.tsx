@@ -44,7 +44,7 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
   };
 
   return (
-    <div className="w-96 h-full flex flex-col overflow-hidden border-r shrink-0 bg-[var(--bg-surface)]" style={{ borderColor: 'var(--border)' }}>
+    <div className="w-full h-full flex flex-col overflow-hidden bg-[var(--bg-surface)]" style={{ borderColor: 'var(--border)' }}>
       {/* Top Header Controls */}
       <div className="h-9 px-3 border-b flex items-center justify-between shrink-0" style={{ borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-2 max-w-[50%]">

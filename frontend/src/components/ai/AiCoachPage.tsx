@@ -19,6 +19,30 @@ import { tauriApi } from '../../services/tauriApi';
 import type { ChatMessage } from '../../types';
 
 export const AiCoachPage: React.FC = () => {
+  const contestEndTime = useAppStore((s) => s.contestEndTime);
+    const isContestActive = contestEndTime !== null && Date.now() < contestEndTime;
+
+  if (isContestActive) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center bg-[var(--bg-base)] select-none">
+        <div className="max-w-md w-full p-8 rounded-3xl border border-[#ff453a]/30 bg-[var(--bg-surface)] shadow-2xl flex flex-col items-center gap-4 relative overflow-hidden">
+          <div className="p-4 rounded-2xl bg-[#ff453a]/15 text-[#ff453a] ring-8 ring-[#ff453a]/5">
+            <span className="text-3xl">🔒</span>
+          </div>
+          <h2 className="text-base font-bold text-[var(--text-primary)]">
+            比赛模式进行中 · AI 教练已锁定
+          </h2>
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+            为了保证竞赛模拟的纯粹性与真实赛场环境，比赛期间将严格禁用 AI 算法辅导与思路提示。
+          </p>
+          <div className="p-3 w-full rounded-xl bg-[var(--bg-elevated)] border border-[var(--border)] flex items-center justify-center gap-2 text-xs font-mono font-bold text-[#ff453a]">
+            <span>比赛进行中，倒计时结束后将自动解除锁定</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const { settings, activeProblem, tabs, activeTabId } = useAppStore();
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const currentCode = activeTab?.code || '';

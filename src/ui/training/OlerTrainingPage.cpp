@@ -222,15 +222,15 @@ void OlerTrainingPage::rebuild() {
     const QString streakColor = streak > 0 ? QStringLiteral("#34c759")
                                            : QStringLiteral("#6e6d68");
     m_streakValue->setText(
-        QStringLiteral("<span style='color:%1;font-size:28px;font-weight:bold;"
+        QStringLiteral("<span style='color:%1;font-size:28px;font-weight:600;"
                        "font-family:Consolas,monospace'>%2</span>")
             .arg(streakColor).arg(streak));
     m_todayValue->setText(
-        QStringLiteral("<span style='color:#f1f1ef;font-size:28px;font-weight:bold;"
+        QStringLiteral("<span style='color:#f1f1ef;font-size:28px;font-weight:600;"
                        "font-family:Consolas,monospace'>%1 / %2</span>")
             .arg(done).arg(goal));
     m_totalValue->setText(
-        QStringLiteral("<span style='color:#f1f1ef;font-size:28px;font-weight:bold;"
+        QStringLiteral("<span style='color:#f1f1ef;font-size:28px;font-weight:600;"
                        "font-family:Consolas,monospace'>%1</span>").arg(total));
 
     // Fill: accent; >=100% switches to success green (token spec).

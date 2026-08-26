@@ -130,7 +130,7 @@ QToolTip { background-color: #333842; color: #abb2bf; border: 1px solid #3b4048;
 
 /* Custom titlebar (spec 3.1) */
 #titlebar { background-color: rgba(0,0,0,0.35); border-bottom: 1px solid rgba(255,255,255,0.06); }
-#titlebarTitle { font-size: 12px; font-weight: 600; color: #a0a0a3; letter-spacing: 0.3px; }
+#titlebarTitle { font-size: 12px; font-weight: 500; color: #a0a0a3; letter-spacing: 0.3px; }
 #titlebarClock { font-family: Consolas, monospace; font-size: 11px; color: #6e6d68; letter-spacing: 0.5px; }
 QToolButton#tbBtn { background: transparent; border: none; border-radius: 6px; }
 QToolButton#tbBtn:hover { background-color: rgba(255,255,255,0.08); }
@@ -175,7 +175,7 @@ QPushButton[psSecondary="true"] { background: %ELEVATED%; color: %SECONDARY%; bo
 QPushButton[psSecondary="true"]:hover { background: %OVERLAY%; border-color: %BORDER_HOVER%; color: #abb2bf; }
 QPushButton[psSecondary="true"]:pressed { background: %BORDER%; }
 QPushButton[psSecondary="true"]:disabled { color: #5c6370; }
-#sectionTitle { font-size: 14px; font-weight: 600; letter-spacing: -0.2px; }
+#sectionTitle { font-size: 14px; font-weight: 500; letter-spacing: -0.2px; }
 #sectionAction { font-size: 11px; color: %TERTIARY%; }
 #favCard { background: %SURFACE%; border: 1px solid %BORDER%; border-radius: 8px; }
 #favCard:hover { background: %ELEVATED%; border-color: %BORDER_HOVER%; }
@@ -215,7 +215,7 @@ QPushButton[mchipBtn="true"]:checked { background: %OVERLAY%; color: #abb2bf; bo
 #edTabActive { background: %SURFACE%; color: #abb2bf; border-top: 2px solid %PRIMARY%; }
 
 /* ---- v2: AI coach polish ---- */
-#aiBrand { font-size: 14px; font-weight: 600; letter-spacing: 0.3px; color: %PRIMARY%; }
+#aiBrand { font-size: 14px; font-weight: 500; letter-spacing: 0.3px; color: %PRIMARY%; }
 #aiModelChip {
   background: %PRIMARY_MUTED%; color: %PRIMARY%;
   border: 1px solid %BORDER_ACTIVE%; border-radius: 12px;

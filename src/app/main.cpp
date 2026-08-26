@@ -14,6 +14,7 @@ int main(int argc, char *argv[]) {
                         QStringLiteral("system-ui"),
                         QStringLiteral("sans-serif")});
     uiFont.setPixelSize(13);
+    uiFont.setStyleStrategy(QFont::PreferAntialias);
     app.setFont(uiFont);
     CThemeManager::instance()->applyTheme(
         OlerSettings::instance()->value("theme").toString());

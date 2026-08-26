@@ -17,11 +17,14 @@ import { CustomTitleBar } from './components/common/CustomTitleBar';
 import { ContestBar } from './components/common/ContestBar';
 import { OnboardingWizard } from './components/common/OnboardingWizard';
 
-import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle, useDefaultLayout } from 'react-resizable-panels';
 
 export const App: React.FC = () => {
   const { activeNav, setActiveNav, loadInitialData, runCodeAction, settings } = useAppStore();
   const [showViewer, setShowViewer] = useState(true);
+
+  const horizontalLayout = useDefaultLayout({ id: 'olympia-layout-horizontal', storage: localStorage });
+  const verticalLayout = useDefaultLayout({ id: 'olympia-layout-vertical', storage: localStorage });
 
   useEffect(() => {
     loadInitialData();
@@ -111,10 +114,16 @@ export const App: React.FC = () => {
                 transition={{ duration: 0.15 }}
                 className="w-full h-full"
               >
-                <PanelGroup id="olympia-main-horizontal" orientation="horizontal" className="w-full h-full">
+                <PanelGroup 
+                  id="olympia-layout-horizontal" 
+                  defaultLayout={horizontalLayout.defaultLayout}
+                  onLayoutChanged={horizontalLayout.onLayoutChanged}
+                  orientation="horizontal" 
+                  className="w-full h-full"
+                >
                   {showViewer && (
                     <>
-                      <Panel id="problem-viewer" defaultSize={35} minSize={20} maxSize={60} className="h-full">
+                      <Panel id="problem-viewer" defaultSize="35%" minSize="20%" maxSize="60%" className="h-full">
                         <ProblemViewerPanel onClose={() => setShowViewer(false)} />
                       </Panel>
                       <PanelResizeHandle className="w-1 bg-[var(--border)] hover:bg-[var(--accent)] transition-all cursor-col-resize z-50 relative group flex items-center justify-center">
@@ -123,7 +132,7 @@ export const App: React.FC = () => {
                     </>
                   )}
 
-                  <Panel id="editor-main" minSize={30} className="h-full flex flex-col min-w-0">
+                  <Panel id="editor-main" minSize="30%" className="h-full flex flex-col min-w-0">
                     {/* Editor Top Bar */}
                     <div className="flex items-center w-full relative">
                       {!showViewer && (
@@ -141,14 +150,20 @@ export const App: React.FC = () => {
                     </div>
 
                     {/* Vertical Split for Editor and Runner */}
-                    <PanelGroup id="olympia-main-vertical" orientation="vertical" className="flex-1 min-h-0">
-                      <Panel id="code-editor" defaultSize={60} minSize={25} maxSize={85} className="relative">
+                    <PanelGroup 
+                      id="olympia-layout-vertical" 
+                      defaultLayout={verticalLayout.defaultLayout}
+                      onLayoutChanged={verticalLayout.onLayoutChanged}
+                      orientation="vertical" 
+                      className="flex-1 min-h-0"
+                    >
+                      <Panel id="code-editor" defaultSize="60%" minSize="20%" maxSize="85%" className="relative">
                         <MonacoCodeEditor />
                       </Panel>
                       <PanelResizeHandle className="h-1 bg-[var(--border)] hover:bg-[var(--accent)] transition-all cursor-row-resize z-50 relative group flex items-center justify-center">
                         <div className="h-0.5 w-8 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover:opacity-100 group-hover:bg-[var(--accent)]" />
                       </PanelResizeHandle>
-                      <Panel id="code-runner" defaultSize={40} minSize={15} maxSize={75} className="relative">
+                      <Panel id="code-runner" defaultSize="40%" minSize="15%" maxSize="80%" className="relative">
                         <RunnerPanel />
                       </Panel>
                     </PanelGroup>

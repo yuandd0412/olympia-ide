@@ -13,7 +13,7 @@ import {
   Check,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
-import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle, useDefaultLayout } from 'react-resizable-panels';
 
 export const StressTesterPage: React.FC = () => {
   const {
@@ -41,6 +41,7 @@ export const StressTesterPage: React.FC = () => {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
+  const stressLayout = useDefaultLayout({ id: 'olympia-layout-stress', storage: localStorage });
   const isLight = settings.theme === 'GitHubLight';
 
   return (
@@ -105,9 +106,9 @@ export const StressTesterPage: React.FC = () => {
       </div>
 
       {/* Main Split Layout with react-resizable-panels */}
-      <PanelGroup id="olympia-stress-panels" orientation="vertical" className="flex-1 min-h-0">
+      <PanelGroup id="olympia-layout-stress" defaultLayout={stressLayout.defaultLayout} onLayoutChanged={stressLayout.onLayoutChanged} orientation="vertical" className="flex-1 min-h-0">
         {/* Top 3 Code Editors */}
-        <Panel defaultSize={55} minSize={25} maxSize={80} className="min-h-0 flex flex-col border-b border-[var(--border)]">
+        <Panel id="stress-code-editors" defaultSize="55%" minSize="25%" maxSize="80%" className="min-h-0 flex flex-col border-b border-[var(--border)]">
           {/* Sub-tab switcher */}
           <div
             className="h-8 px-3 border-b flex items-center justify-between text-xs shrink-0"
@@ -215,7 +216,7 @@ export const StressTesterPage: React.FC = () => {
         </PanelResizeHandle>
 
         {/* Bottom Results Pane */}
-        <Panel defaultSize={45} minSize={20} maxSize={75} className="min-h-0 flex flex-col p-4 overflow-y-auto text-xs" style={{ backgroundColor: 'var(--bg-surface)' }}>
+        <Panel id="stress-results" defaultSize="45%" minSize="20%" maxSize="75%" className="min-h-0 flex flex-col p-4 overflow-y-auto text-xs" style={{ backgroundColor: 'var(--bg-surface)' }}>
           {stressResult ? (
             <div className="space-y-3">
               {/* Status Banner */}

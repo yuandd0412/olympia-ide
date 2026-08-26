@@ -2,13 +2,17 @@
 #include "core/theme/CThemeManager.h"
 #include "ui/common/OlerTheme.h"
 #include <QDate>
+#include <QEasingCurve>
+#include <QEnterEvent>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QVariantAnimation>
 #include <QVBoxLayout>
 
 namespace {
@@ -78,7 +82,142 @@ private:
     OlerMistakes *m_store;
 };
 
+class MistakeCardWidget : public QWidget {
+    Q_OBJECT
+public:
+    explicit MistakeCardWidget(const OlerMistake &m, QWidget *parent = nullptr)
+        : QWidget(parent), m_mistake(m), m_hoverProgress(0.0) {
+        setFixedHeight(52);
+        setCursor(Qt::PointingHandCursor);
+        setAttribute(Qt::WA_Hover, true);
+
+        m_anim = new QVariantAnimation(this);
+        m_anim->setDuration(120);
+        m_anim->setEasingCurve(QEasingCurve::OutCubic);
+        connect(m_anim, &QVariantAnimation::valueChanged, this, [this](const QVariant &val) {
+            m_hoverProgress = val.toReal();
+            update();
+        });
+
+        auto *lay = new QHBoxLayout(this);
+        lay->setContentsMargins(18, 0, 16, 0);
+        lay->setSpacing(12);
+
+        auto *id = new QLabel(m.problemId, this);
+        id->setObjectName(QStringLiteral("cardId"));
+        lay->addWidget(id);
+
+        auto *t = new QLabel(elide(m.title, 36), this);
+        t->setStyleSheet(QStringLiteral("color:%1;font-size:13px;font-weight:600;")
+                             .arg(OlerTheme::token(OlerTheme::Token::TextPrimary).name()));
+        lay->addWidget(t, /*stretch*/ 1);
+
+        const QColor vc = verdictColor(m.verdict);
+        auto *badge = new QLabel(m.verdict, this);
+        badge->setAlignment(Qt::AlignCenter);
+        badge->setStyleSheet(QStringLiteral(
+            "background:%1;color:%2;border-radius:4px;"
+            "font-family:'Cascadia Mono','Consolas',monospace;font-size:10px;font-weight:700;"
+            "padding:2px 8px;").arg(rgbaStr(vc, 38), vc.name()));
+        lay->addWidget(badge);
+
+        auto *time = new QLabel(m.when.toLocalTime().toString("yyyy-MM-dd hh:mm"), this);
+        time->setStyleSheet(
+            QStringLiteral("font-family:'Cascadia Mono','Consolas',monospace;font-size:11px;color:%1;")
+                .arg(OlerTheme::token(OlerTheme::Token::TextTertiary).name()));
+        lay->addWidget(time);
+
+        auto *redo = new QPushButton(tr("重做"), this);
+        redo->setObjectName(QStringLiteral("redoBtn"));
+        redo->setCursor(Qt::PointingHandCursor);
+        connect(redo, &QPushButton::clicked, this, [this] {
+            emit redoClicked();
+        });
+        lay->addWidget(redo);
+
+        if (!m.reviewed) {
+            auto *done = new QPushButton(tr("标记掌握"), this);
+            done->setObjectName(QStringLiteral("redoBtn"));
+            done->setCursor(Qt::PointingHandCursor);
+            connect(done, &QPushButton::clicked, this, [this] {
+                emit markReviewedClicked();
+            });
+            lay->addWidget(done);
+        } else {
+            auto *tag = new QLabel(tr("✓ 已掌握"), this);
+            tag->setStyleSheet(QStringLiteral("color:#34c759;font-size:11px;font-weight:600;"));
+            lay->addWidget(tag);
+        }
+    }
+
+signals:
+    void redoClicked();
+    void markReviewedClicked();
+
+protected:
+    void enterEvent(QEnterEvent *) override {
+        m_anim->stop();
+        m_anim->setStartValue(m_hoverProgress);
+        m_anim->setEndValue(1.0);
+        m_anim->start();
+    }
+
+    void leaveEvent(QEvent *) override {
+        m_anim->stop();
+        m_anim->setStartValue(m_hoverProgress);
+        m_anim->setEndValue(0.0);
+        m_anim->start();
+    }
+
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHints(QPainter::Antialiasing);
+
+        const QColor bgSurface = OlerTheme::token(OlerTheme::Token::BgSurface);
+        const QColor bgElevated = OlerTheme::token(OlerTheme::Token::BgElevated);
+        const QColor border = OlerTheme::token(OlerTheme::Token::Border);
+        const QColor borderActive = OlerTheme::token(OlerTheme::Token::BorderActive);
+        const QColor vc = verdictColor(m_mistake.verdict);
+
+        QColor bg = bgSurface;
+        if (m_hoverProgress > 0.001) {
+            int r = bgSurface.red() + int((bgElevated.red() - bgSurface.red()) * m_hoverProgress);
+            int g = bgSurface.green() + int((bgElevated.green() - bgSurface.green()) * m_hoverProgress);
+            int b = bgSurface.blue() + int((bgElevated.blue() - bgSurface.blue()) * m_hoverProgress);
+            bg = QColor(r, g, b);
+        }
+
+        const QRectF cardRect = rect().adjusted(0.5, 0.5, -0.5, -0.5);
+        QPainterPath path;
+        path.addRoundedRect(cardRect, 8.0, 8.0);
+        p.fillPath(path, bg);
+
+        QColor curBorder = border;
+        if (m_hoverProgress > 0.001) {
+            int r = border.red() + int((borderActive.red() - border.red()) * m_hoverProgress);
+            int g = border.green() + int((borderActive.green() - border.green()) * m_hoverProgress);
+            int b = border.blue() + int((borderActive.blue() - border.blue()) * m_hoverProgress);
+            int a = border.alpha() + int((borderActive.alpha() - border.alpha()) * m_hoverProgress);
+            curBorder = QColor(r, g, b, a);
+        }
+        p.setPen(QPen(curBorder, 1.0));
+        p.drawPath(path);
+
+        // Left 4px status pill bar
+        QPainterPath leftBar;
+        leftBar.addRoundedRect(QRectF(0.5, 8.0, 3.5, height() - 16.0), 1.75, 1.75);
+        p.fillPath(leftBar, vc);
+    }
+
+private:
+    OlerMistake m_mistake;
+    qreal m_hoverProgress;
+    QVariantAnimation *m_anim;
+};
+
 } // namespace
+
+#include "OlerMistakesPage.moc"
 
 OlerMistakesPage::OlerMistakesPage(QWidget *parent)
     : QWidget(parent), m_store(OlerMistakes::instance()) {
@@ -183,66 +322,15 @@ OlerMistakesPage::OlerMistakesPage(QWidget *parent)
 }
 
 QWidget *OlerMistakesPage::buildRow(const OlerMistake &m) {
-    const QColor vc = verdictColor(m.verdict);
-    auto *row = new QFrame(m_listHost);
-    row->setProperty("mistakeCard", true);
-    row->setStyleSheet(QStringLiteral(
-        "QWidget[mistakeCard=\"true\"] { background-color:%1; border:1px solid %2; border-left:4px solid %3; border-radius:6px; }")
-        .arg(OlerTheme::token(OlerTheme::Token::BgSurface).name(),
-             OlerTheme::token(OlerTheme::Token::Border).name(),
-             vc.name()));
-    row->setCursor(Qt::PointingHandCursor);
-
-    auto *lay = new QHBoxLayout(row);
-    lay->setContentsMargins(16, 12, 16, 12);
-    lay->setSpacing(12);
-
-    auto *id = new QLabel(m.problemId, row);
-    id->setObjectName(QStringLiteral("cardId"));
-    lay->addWidget(id);
-
-    auto *t = new QLabel(elide(m.title, 36), row);
-    t->setStyleSheet(QStringLiteral("color:%1;font-size:13px;font-weight:500;")
-                         .arg(OlerTheme::token(OlerTheme::Token::TextPrimary).name()));
-    lay->addWidget(t, /*stretch*/ 1);
-
-    auto *badge = new QLabel(m.verdict, row);
-    badge->setAlignment(Qt::AlignCenter);
-    badge->setStyleSheet(QStringLiteral(
-        "background:%1;color:%2;border-radius:4px;"
-        "font-family:'Consolas';font-size:10px;font-weight:600;"
-        "padding:2px 8px;").arg(rgbaStr(vc, 38), vc.name()));
-    lay->addWidget(badge);
-
-    auto *time = new QLabel(m.when.toLocalTime().toString("yyyy-MM-dd hh:mm"), row);
-    time->setStyleSheet(
-        QStringLiteral("font-family:'Consolas';font-size:11px;color:%1;")
-            .arg(OlerTheme::token(OlerTheme::Token::TextTertiary).name()));
-    lay->addWidget(time);
-
-    auto *redo = new QPushButton(tr("重做"), row);
-    redo->setObjectName(QStringLiteral("redoBtn"));
-    redo->setCursor(Qt::PointingHandCursor);
-    connect(redo, &QPushButton::clicked, row, [this, m] {
+    auto *card = new MistakeCardWidget(m, m_listHost);
+    connect(card, &MistakeCardWidget::redoClicked, this, [this, m] {
         emit redoRequested(m);
     });
-    lay->addWidget(redo);
-
-    if (!m.reviewed) {
-        auto *done = new QPushButton(tr("标记掌握"), row);
-        done->setObjectName(QStringLiteral("redoBtn"));
-        done->setCursor(Qt::PointingHandCursor);
-        connect(done, &QPushButton::clicked, row, [this, m] {
-            if (m_store->markReviewed(m.id))
-                m_store->save();
-        });
-        lay->addWidget(done);
-    } else {
-        auto *tag = new QLabel(tr("✓ 已掌握"), row);
-        tag->setStyleSheet(QStringLiteral("color:#34c759;font-size:11px;font-weight:600;"));
-        lay->addWidget(tag);
-    }
-    return row;
+    connect(card, &MistakeCardWidget::markReviewedClicked, this, [this, m] {
+        if (m_store->markReviewed(m.id))
+            m_store->save();
+    });
+    return card;
 }
 
 void OlerMistakesPage::rebuild() {

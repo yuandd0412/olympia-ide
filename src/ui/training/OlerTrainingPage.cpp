@@ -5,6 +5,8 @@
 #include "ui/common/OlerIcons.h"
 #include "ui/common/OlerTheme.h"
 #include <QDate>
+#include <QEasingCurve>
+#include <QEnterEvent>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QInputDialog>
@@ -14,6 +16,7 @@
 #include <QPainterPath>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QVariantAnimation>
 #include <QVBoxLayout>
 
 namespace {
@@ -165,46 +168,125 @@ protected:
     }
 };
 
-QWidget *makeKpiCard(QLabel **valueLabel, QLabel **subLabel,
-                     const QString &title, OlerIcons::Name iconName,
-                     QWidget *parent) {
-    auto *card = new QFrame(parent);
-    card->setObjectName(QStringLiteral("kpiCard"));
-    card->setFixedHeight(88);
-    auto *layout = new QVBoxLayout(card);
-    layout->setContentsMargins(16, 12, 16, 12);
-    layout->setSpacing(4);
-
-    auto *topRow = new QHBoxLayout;
-    topRow->setSpacing(8);
-    auto *icon = new QLabel(card);
-    const QColor accent = OlerTheme::accentForTheme(CThemeManager::instance()->currentTheme());
-    icon->setPixmap(OlerIcons::make(iconName, accent, 14).pixmap(14, 14));
-    icon->setFixedSize(14, 14);
-    topRow->addWidget(icon);
-
-    auto *titleLbl = new QLabel(title, card);
-    titleLbl->setObjectName(QStringLiteral("sectionCaption"));
-    topRow->addWidget(titleLbl);
-    topRow->addStretch();
-    layout->addLayout(topRow);
-
-    auto *val = new QLabel(QStringLiteral("0"), card);
-    val->setObjectName(QStringLiteral("kpiValue"));
-    layout->addWidget(val);
-
-    if (subLabel) {
-        auto *sub = new QLabel(QString(), card);
-        sub->setObjectName(QStringLiteral("sectionCaption"));
-        layout->addWidget(sub);
-        *subLabel = sub;
-    }
-    layout->addStretch();
-    *valueLabel = val;
-    return card;
-}
-
 } // namespace
+
+// High-precision custom-painted KPI Metric Card
+class KpiCardWidget : public QWidget {
+    Q_OBJECT
+public:
+    explicit KpiCardWidget(const QString &title, OlerIcons::Name icon, QWidget *parent = nullptr)
+        : QWidget(parent), m_title(title), m_icon(icon), m_value(0), m_hoverProgress(0.0) {
+        setFixedHeight(88);
+        setAttribute(Qt::WA_Hover, true);
+
+        m_anim = new QVariantAnimation(this);
+        m_anim->setDuration(120);
+        m_anim->setEasingCurve(QEasingCurve::OutCubic);
+        connect(m_anim, &QVariantAnimation::valueChanged, this, [this](const QVariant &val) {
+            m_hoverProgress = val.toReal();
+            update();
+        });
+
+        connect(CThemeManager::instance(), &CThemeManager::themeChanged,
+                this, QOverload<>::of(&QWidget::update));
+    }
+
+    void setValue(int val) {
+        if (m_value != val) {
+            m_value = val;
+            update();
+        }
+    }
+
+protected:
+    void enterEvent(QEnterEvent *) override {
+        m_anim->stop();
+        m_anim->setStartValue(m_hoverProgress);
+        m_anim->setEndValue(1.0);
+        m_anim->start();
+    }
+
+    void leaveEvent(QEvent *) override {
+        m_anim->stop();
+        m_anim->setStartValue(m_hoverProgress);
+        m_anim->setEndValue(0.0);
+        m_anim->start();
+    }
+
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing | QPainter::SmoothPixmapTransform);
+
+        const QColor curAccent = OlerTheme::accentForTheme(CThemeManager::instance()->currentTheme());
+        const QColor bgSurface = OlerTheme::token(OlerTheme::Token::BgSurface);
+        const QColor bgElevated = OlerTheme::token(OlerTheme::Token::BgElevated);
+        const QColor border = OlerTheme::token(OlerTheme::Token::Border);
+        const QColor borderActive = OlerTheme::token(OlerTheme::Token::BorderActive);
+        const QColor textPrim = OlerTheme::token(OlerTheme::Token::TextPrimary);
+        const QColor textTert = OlerTheme::token(OlerTheme::Token::TextTertiary);
+
+        QColor bg = bgSurface;
+        if (m_hoverProgress > 0.001) {
+            int r = bgSurface.red() + int((bgElevated.red() - bgSurface.red()) * m_hoverProgress);
+            int g = bgSurface.green() + int((bgElevated.green() - bgSurface.green()) * m_hoverProgress);
+            int b = bgSurface.blue() + int((bgElevated.blue() - bgSurface.blue()) * m_hoverProgress);
+            bg = QColor(r, g, b);
+        }
+
+        const QRectF cardRect = rect().adjusted(0.5, 0.5, -0.5, -0.5);
+        QPainterPath path;
+        path.addRoundedRect(cardRect, 8.0, 8.0);
+        p.fillPath(path, bg);
+
+        QColor curBorder = border;
+        if (m_hoverProgress > 0.001) {
+            int r = border.red() + int((borderActive.red() - border.red()) * m_hoverProgress);
+            int g = border.green() + int((borderActive.green() - border.green()) * m_hoverProgress);
+            int b = border.blue() + int((borderActive.blue() - border.blue()) * m_hoverProgress);
+            int a = border.alpha() + int((borderActive.alpha() - border.alpha()) * m_hoverProgress);
+            curBorder = QColor(r, g, b, a);
+        }
+        p.setPen(QPen(curBorder, 1.0));
+        p.drawPath(path);
+
+        const qreal padX = 16.0;
+        const qreal padY = 14.0;
+
+        // Top-left icon badge (20x20 container)
+        const QRectF iconBox(padX, padY, 20, 20);
+        QPainterPath iconPath;
+        iconPath.addRoundedRect(iconBox, 4.0, 4.0);
+        p.fillPath(iconPath, QColor(curAccent.red(), curAccent.green(), curAccent.blue(), 30));
+
+        QPixmap px = OlerIcons::make(m_icon, curAccent, 12).pixmap(12, 12);
+        p.drawPixmap(QPointF(iconBox.x() + 4, iconBox.y() + 4), px);
+
+        // Title
+        QFont fTitle = font();
+        fTitle.setPixelSize(11);
+        fTitle.setWeight(QFont::Medium);
+        p.setFont(fTitle);
+        p.setPen(textTert);
+        p.drawText(QRectF(padX + 28, padY, width() - padX * 2 - 28, 20), Qt::AlignLeft | Qt::AlignVCenter, m_title);
+
+        // Hero value (Consolas 24px)
+        QFont fVal(QStringLiteral("Consolas"));
+        fVal.setPixelSize(24);
+        fVal.setWeight(QFont::Bold);
+        p.setFont(fVal);
+        p.setPen(textPrim);
+        p.drawText(QRectF(padX, padY + 28, width() - padX * 2, 34), Qt::AlignLeft | Qt::AlignVCenter, QString::number(m_value));
+    }
+
+private:
+    QString m_title;
+    OlerIcons::Name m_icon;
+    int m_value;
+    qreal m_hoverProgress;
+    QVariantAnimation *m_anim;
+};
+
+#include "OlerTrainingPage.moc"
 
 OlerTrainingPage::OlerTrainingPage(QWidget *parent) : QWidget(parent) {
     auto *scrollArea = new QScrollArea(this);
@@ -219,12 +301,12 @@ OlerTrainingPage::OlerTrainingPage(QWidget *parent) : QWidget(parent) {
     // KPI row: 3 primary metric cards
     auto *kpiRow = new QHBoxLayout;
     kpiRow->setSpacing(14);
-    kpiRow->addWidget(makeKpiCard(&m_streakValue, nullptr, tr("连续打卡天数"),
-                                  OlerIcons::Name::TrendUp, content));
-    kpiRow->addWidget(makeKpiCard(&m_todayValue, nullptr, tr("今日已解决"),
-                                  OlerIcons::Name::CheckSquare, content));
-    kpiRow->addWidget(makeKpiCard(&m_totalValue, nullptr, tr("历史累计解决"),
-                                  OlerIcons::Name::Code, content));
+    m_streakCard = new KpiCardWidget(tr("连续打卡天数"), OlerIcons::Name::TrendUp, content);
+    m_todayCard = new KpiCardWidget(tr("今日已解决"), OlerIcons::Name::CheckSquare, content);
+    m_totalCard = new KpiCardWidget(tr("历史累计解决"), OlerIcons::Name::Code, content);
+    kpiRow->addWidget(m_streakCard);
+    kpiRow->addWidget(m_todayCard);
+    kpiRow->addWidget(m_totalCard);
     layout->addLayout(kpiRow);
 
     // Goal Progress Bar
@@ -354,10 +436,10 @@ void OlerTrainingPage::rebuild() {
     const int today = OlerSolves::instance()->countOn(QDate::currentDate());
     const int total = OlerSolves::instance()->totalCount();
 
-    if (m_streakValue)
-        m_streakValue->setText(QString::number(streak));
-    if (m_todayValue)
-        m_todayValue->setText(QString::number(today));
-    if (m_totalValue)
-        m_totalValue->setText(QString::number(total));
+    if (m_streakCard)
+        m_streakCard->setValue(streak);
+    if (m_todayCard)
+        m_todayCard->setValue(today);
+    if (m_totalCard)
+        m_totalCard->setValue(total);
 }

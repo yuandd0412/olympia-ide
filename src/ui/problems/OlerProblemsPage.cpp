@@ -5,9 +5,12 @@
 #include "core/solves/OlerSolves.h"
 #include "core/theme/CThemeManager.h"
 #include "ui/common/OlerIcons.h"
+#include "ui/common/OlerIcons.h"
 #include "ui/common/OlerTheme.h"
 #include <QDate>
 #include <QDesktopServices>
+#include <QEasingCurve>
+#include <QEnterEvent>
 #include <QFileDialog>
 #include <QGridLayout>
 #include <QHBoxLayout>
@@ -17,9 +20,12 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
+#include <QPainter>
+#include <QPainterPath>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QUrl>
+#include <QVariantAnimation>
 #include <QVBoxLayout>
 
 namespace {
@@ -76,24 +82,301 @@ QWidget *sectionHeader(const QString &title, const QString &action,
     return w;
 }
 
-// Clickable card surface with left/right click signals
-class ClickableFrame : public QFrame {
+// Custom-painted problem card with Squircle path, hairline micro-border, and smooth hover animation
+class ProblemCardWidget : public QWidget {
     Q_OBJECT
 public:
-    explicit ClickableFrame(QWidget *parent = nullptr) : QFrame(parent) {
+    explicit ProblemCardWidget(const OlerProblem &p, QWidget *parent = nullptr)
+        : QWidget(parent), m_problem(p), m_hoverProgress(0.0) {
+        setFixedHeight(116);
         setCursor(Qt::PointingHandCursor);
+        setAttribute(Qt::WA_Hover, true);
+
+        m_anim = new QVariantAnimation(this);
+        m_anim->setDuration(120);
+        m_anim->setEasingCurve(QEasingCurve::OutCubic);
+        connect(m_anim, &QVariantAnimation::valueChanged, this, [this](const QVariant &val) {
+            m_hoverProgress = val.toReal();
+            update();
+        });
     }
+
+    const OlerProblem &problem() const { return m_problem; }
+
 signals:
     void clicked();
     void rightClicked(const QPoint &globalPos);
+
 protected:
-    void mouseReleaseEvent(QMouseEvent *e) override {
-        if (e->button() == Qt::LeftButton)
-            emit clicked();
-        else if (e->button() == Qt::RightButton)
-            emit rightClicked(e->globalPosition().toPoint());
-        QFrame::mouseReleaseEvent(e);
+    void enterEvent(QEnterEvent *) override {
+        m_anim->stop();
+        m_anim->setStartValue(m_hoverProgress);
+        m_anim->setEndValue(1.0);
+        m_anim->start();
     }
+
+    void leaveEvent(QEvent *) override {
+        m_anim->stop();
+        m_anim->setStartValue(m_hoverProgress);
+        m_anim->setEndValue(0.0);
+        m_anim->start();
+    }
+
+    void mouseReleaseEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton && rect().contains(e->pos()))
+            emit clicked();
+        else if (e->button() == Qt::RightButton && rect().contains(e->pos()))
+            emit rightClicked(e->globalPosition().toPoint());
+        QWidget::mouseReleaseEvent(e);
+    }
+
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing | QPainter::SmoothPixmapTransform);
+
+        const QColor curAccent = accent();
+        const QColor bgSurface = OlerTheme::token(OlerTheme::Token::BgSurface);
+        const QColor bgElevated = OlerTheme::token(OlerTheme::Token::BgElevated);
+        const QColor border = OlerTheme::token(OlerTheme::Token::Border);
+        const QColor borderActive = OlerTheme::token(OlerTheme::Token::BorderActive);
+        const QColor textPrim = OlerTheme::token(OlerTheme::Token::TextPrimary);
+        const QColor textTert = OlerTheme::token(OlerTheme::Token::TextTertiary);
+
+        // Interpolate background on hover
+        QColor bg = bgSurface;
+        if (m_hoverProgress > 0.001) {
+            int r = bgSurface.red() + int((bgElevated.red() - bgSurface.red()) * m_hoverProgress);
+            int g = bgSurface.green() + int((bgElevated.green() - bgSurface.green()) * m_hoverProgress);
+            int b = bgSurface.blue() + int((bgElevated.blue() - bgSurface.blue()) * m_hoverProgress);
+            bg = QColor(r, g, b);
+        }
+
+        const QRectF cardRect = rect().adjusted(0.5, 0.5, -0.5, -0.5);
+        QPainterPath path;
+        path.addRoundedRect(cardRect, 8.0, 8.0);
+        p.fillPath(path, bg);
+
+        // Border: 1px hairline with subtle active border on hover
+        QColor curBorder = border;
+        if (m_hoverProgress > 0.001) {
+            int r = border.red() + int((borderActive.red() - border.red()) * m_hoverProgress);
+            int g = border.green() + int((borderActive.green() - border.green()) * m_hoverProgress);
+            int b = border.blue() + int((borderActive.blue() - border.blue()) * m_hoverProgress);
+            int a = border.alpha() + int((borderActive.alpha() - border.alpha()) * m_hoverProgress);
+            curBorder = QColor(r, g, b, a);
+        }
+        p.setPen(QPen(curBorder, 1.0));
+        p.drawPath(path);
+
+        const qreal padX = 14.0;
+        const qreal padY = 12.0;
+
+        // Top row: ID badge (left) + Difficulty Dot & Label (right)
+        QFont fMono(QStringLiteral("Consolas"));
+        fMono.setPixelSize(11);
+        fMono.setWeight(QFont::DemiBold);
+        p.setFont(fMono);
+
+        // ID Pill Container
+        const QString pid = m_problem.id;
+        const QFontMetrics fm(fMono);
+        const int idWidth = fm.horizontalAdvance(pid) + 12;
+        const QRectF idPillRect(padX, padY, idWidth, 20);
+        QPainterPath idPath;
+        idPath.addRoundedRect(idPillRect, 4.0, 4.0);
+        p.fillPath(idPath, QColor(curAccent.red(), curAccent.green(), curAccent.blue(), 25));
+        p.setPen(curAccent);
+        p.drawText(idPillRect, Qt::AlignCenter, pid);
+
+        // Difficulty on top-right
+        const QString diff = m_problem.difficulty.isEmpty() ? QStringLiteral("入门") : m_problem.difficulty;
+        const QColor dCol(diffColor(diff));
+        const qreal diffRight = width() - padX;
+
+        QFont fUi = font();
+        fUi.setPixelSize(11);
+        fUi.setWeight(QFont::Medium);
+        p.setFont(fUi);
+        const QFontMetrics fmUi(fUi);
+        const int diffTextWidth = fmUi.horizontalAdvance(diff);
+
+        // Difficulty Text
+        p.setPen(textTert);
+        p.drawText(QRectF(diffRight - diffTextWidth, padY, diffTextWidth, 20), Qt::AlignRight | Qt::AlignVCenter, diff);
+
+        // Glowing Diff Dot
+        const qreal dotX = diffRight - diffTextWidth - 12;
+        const qreal dotY = padY + 7;
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(dCol.red(), dCol.green(), dCol.blue(), 60));
+        p.drawEllipse(QPointF(dotX + 3.0, dotY + 3.0), 4.5, 4.5);
+        p.setBrush(dCol);
+        p.drawEllipse(QPointF(dotX + 3.0, dotY + 3.0), 3.0, 3.0);
+
+        // Center row: 2-line title
+        fUi.setPixelSize(13);
+        fUi.setWeight(QFont::DemiBold);
+        p.setFont(fUi);
+        p.setPen(textPrim);
+
+        const QString title = m_problem.title.isEmpty() ? m_problem.id : m_problem.title;
+        const QRectF titleRect(padX, padY + 26, width() - padX * 2, 38);
+        p.drawText(titleRect, Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap,
+                   fmUi.elidedText(title, Qt::ElideRight, int(titleRect.width() * 1.9)));
+
+        // Bottom row: OJ Pill (left) + Action Arrow (right)
+        const qreal bottomY = height() - padY - 18;
+        const QString oj = m_problem.oj.isEmpty() ? QStringLiteral("Luogu") : m_problem.oj;
+        QColor ojColor("#73ba4b");
+        if (oj == QLatin1String("Codeforces")) ojColor = QColor("#7daed4");
+        else if (oj == QLatin1String("AtCoder")) ojColor = QColor("#b57850");
+        else if (oj == QLatin1String("LOJ")) ojColor = QColor("#c29e5a");
+        else if (oj == QLatin1String("UOJ")) ojColor = QColor("#a078c8");
+
+        QFont fOj = font();
+        fOj.setPixelSize(10);
+        fOj.setWeight(QFont::Bold);
+        p.setFont(fOj);
+        const QFontMetrics fmOj(fOj);
+        const int ojTextWidth = fmOj.horizontalAdvance(oj);
+        const QRectF ojPillRect(padX, bottomY, ojTextWidth + 12, 18);
+        QPainterPath ojPath;
+        ojPath.addRoundedRect(ojPillRect, 3.5, 3.5);
+        p.fillPath(ojPath, QColor(ojColor.red(), ojColor.green(), ojColor.blue(), 35));
+        p.setPen(ojColor);
+        p.drawText(ojPillRect, Qt::AlignCenter, oj);
+
+        // Hover action arrow on bottom-right
+        if (m_hoverProgress > 0.05) {
+            p.setOpacity(m_hoverProgress);
+            fUi.setPixelSize(12);
+            fUi.setWeight(QFont::Medium);
+            p.setFont(fUi);
+            p.setPen(curAccent);
+            const qreal arrowX = width() - padX - 16 + (1.0 - m_hoverProgress) * 4.0;
+            p.drawText(QRectF(arrowX, bottomY, 16, 18), Qt::AlignCenter, QStringLiteral("→"));
+            p.setOpacity(1.0);
+        }
+    }
+
+private:
+    OlerProblem m_problem;
+    qreal m_hoverProgress;
+    QVariantAnimation *m_anim;
+};
+
+// Custom-painted recent problem card
+class RecentProblemCardWidget : public QWidget {
+    Q_OBJECT
+public:
+    explicit RecentProblemCardWidget(const OlerProblem &p, QWidget *parent = nullptr)
+        : QWidget(parent), m_problem(p), m_hoverProgress(0.0) {
+        setFixedSize(220, 62);
+        setCursor(Qt::PointingHandCursor);
+        setAttribute(Qt::WA_Hover, true);
+
+        m_anim = new QVariantAnimation(this);
+        m_anim->setDuration(120);
+        m_anim->setEasingCurve(QEasingCurve::OutCubic);
+        connect(m_anim, &QVariantAnimation::valueChanged, this, [this](const QVariant &val) {
+            m_hoverProgress = val.toReal();
+            update();
+        });
+    }
+
+signals:
+    void clicked();
+    void rightClicked(const QPoint &globalPos);
+
+protected:
+    void enterEvent(QEnterEvent *) override {
+        m_anim->stop();
+        m_anim->setStartValue(m_hoverProgress);
+        m_anim->setEndValue(1.0);
+        m_anim->start();
+    }
+
+    void leaveEvent(QEvent *) override {
+        m_anim->stop();
+        m_anim->setStartValue(m_hoverProgress);
+        m_anim->setEndValue(0.0);
+        m_anim->start();
+    }
+
+    void mouseReleaseEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton && rect().contains(e->pos()))
+            emit clicked();
+        else if (e->button() == Qt::RightButton && rect().contains(e->pos()))
+            emit rightClicked(e->globalPosition().toPoint());
+        QWidget::mouseReleaseEvent(e);
+    }
+
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing);
+
+        const QColor curAccent = accent();
+        const QColor bgSurface = OlerTheme::token(OlerTheme::Token::BgSurface);
+        const QColor bgElevated = OlerTheme::token(OlerTheme::Token::BgElevated);
+        const QColor border = OlerTheme::token(OlerTheme::Token::Border);
+        const QColor borderActive = OlerTheme::token(OlerTheme::Token::BorderActive);
+        const QColor textPrim = OlerTheme::token(OlerTheme::Token::TextPrimary);
+
+        QColor bg = bgSurface;
+        if (m_hoverProgress > 0.001) {
+            int r = bgSurface.red() + int((bgElevated.red() - bgSurface.red()) * m_hoverProgress);
+            int g = bgSurface.green() + int((bgElevated.green() - bgSurface.green()) * m_hoverProgress);
+            int b = bgSurface.blue() + int((bgElevated.blue() - bgSurface.blue()) * m_hoverProgress);
+            bg = QColor(r, g, b);
+        }
+
+        const QRectF cardRect = rect().adjusted(0.5, 0.5, -0.5, -0.5);
+        QPainterPath path;
+        path.addRoundedRect(cardRect, 8.0, 8.0);
+        p.fillPath(path, bg);
+
+        QColor curBorder = border;
+        if (m_hoverProgress > 0.001) {
+            int r = border.red() + int((borderActive.red() - border.red()) * m_hoverProgress);
+            int g = border.green() + int((borderActive.green() - border.green()) * m_hoverProgress);
+            int b = border.blue() + int((borderActive.blue() - border.blue()) * m_hoverProgress);
+            int a = border.alpha() + int((borderActive.alpha() - border.alpha()) * m_hoverProgress);
+            curBorder = QColor(r, g, b, a);
+        }
+        p.setPen(QPen(curBorder, 1.0));
+        p.drawPath(path);
+
+        // Icon box on left
+        const QRectF iconBox(12, 13, 36, 36);
+        QPainterPath iconPath;
+        iconPath.addRoundedRect(iconBox, 6.0, 6.0);
+        p.fillPath(iconPath, QColor(curAccent.red(), curAccent.green(), curAccent.blue(), 35));
+
+        QPixmap iconPx = OlerIcons::make(OlerIcons::Name::Zap, curAccent, 16).pixmap(16, 16);
+        p.drawPixmap(QPointF(iconBox.x() + 10, iconBox.y() + 10), iconPx);
+
+        // ID + Title
+        QFont fMono(QStringLiteral("Consolas"));
+        fMono.setPixelSize(11);
+        fMono.setWeight(QFont::DemiBold);
+        p.setFont(fMono);
+        p.setPen(curAccent);
+        p.drawText(QRectF(56, 14, 150, 16), Qt::AlignLeft | Qt::AlignVCenter, m_problem.id);
+
+        QFont fUi = font();
+        fUi.setPixelSize(12);
+        fUi.setWeight(QFont::Normal);
+        p.setFont(fUi);
+        p.setPen(textPrim);
+        const QFontMetrics fmUi(fUi);
+        p.drawText(QRectF(56, 32, 150, 16), Qt::AlignLeft | Qt::AlignVCenter,
+                   fmUi.elidedText(m_problem.title, Qt::ElideRight, 145));
+    }
+
+private:
+    OlerProblem m_problem;
+    qreal m_hoverProgress;
+    QVariantAnimation *m_anim;
 };
 
 } // namespace
@@ -348,95 +631,32 @@ void OlerProblemsPage::showCardContextMenu(const OlerProblem &p, const QPoint &g
 }
 
 QWidget *OlerProblemsPage::makeRecentCard(const OlerProblem &p) {
-    auto *card = new ClickableFrame(m_recentRowHost);
-    card->setObjectName(QStringLiteral("favCard"));
-    card->setFixedSize(220, 62);
-    auto *lay = new QHBoxLayout(card);
-    lay->setContentsMargins(12, 12, 12, 12);
-    lay->setSpacing(10);
-    auto *icon = new QLabel(card);
-    icon->setPixmap(OlerIcons::make(OlerIcons::Name::Zap,
-                                    accent(), 16).pixmap(16, 16));
-    icon->setFixedSize(36, 36);
-    icon->setAlignment(Qt::AlignCenter);
-    icon->setStyleSheet(
-        QStringLiteral("border-radius:6px;background:%1;")
-            .arg(rgbaStr(accent(), 38)));
-    lay->addWidget(icon);
-    auto *infoCol = new QVBoxLayout;
-    infoCol->setSpacing(1);
-    auto *fid = new QLabel(p.id, card);
-    fid->setObjectName(QStringLiteral("favId"));
-    auto *ftitle = new QLabel(elide(p.title, 14), card);
-    ftitle->setObjectName(QStringLiteral("favTitle"));
-    infoCol->addWidget(fid);
-    infoCol->addWidget(ftitle);
-    lay->addLayout(infoCol);
-
+    auto *card = new RecentProblemCardWidget(p, m_recentRowHost);
     const QString id = p.id;
-    connect(card, &ClickableFrame::clicked, this, [this, id] {
+    connect(card, &RecentProblemCardWidget::clicked, this, [this, id] {
         OlerProblem pr = m_store->find(id);
         if (pr.isValid()) {
             m_store->touchRecent(id);
             emit openRequested(pr);
         }
     });
-    connect(card, &ClickableFrame::rightClicked, this, [this, p](const QPoint &pos) {
+    connect(card, &RecentProblemCardWidget::rightClicked, this, [this, p](const QPoint &pos) {
         showCardContextMenu(p, pos);
     });
     return card;
 }
 
 QWidget *OlerProblemsPage::makeCard(const OlerProblem &p) {
-    auto *card = new ClickableFrame(m_gridHost);
-    card->setObjectName(QStringLiteral("problemCard"));
-    card->setFixedHeight(120);
-    auto *lay = new QVBoxLayout(card);
-    lay->setContentsMargins(14, 12, 14, 12);
-    lay->setSpacing(8);
-
-    auto *top = new QHBoxLayout;
-    top->setSpacing(8);
-    auto *pid = new QLabel(p.id, card);
-    pid->setObjectName(QStringLiteral("cardId"));
-    top->addWidget(pid);
-    top->addStretch();
-
-    // Difficulty chip on top right
-    QFrame *dot = new QFrame(card);
-    dot->setFixedSize(7, 7);
-    dot->setStyleSheet(QStringLiteral("border-radius:3.5px;background:%1;")
-                           .arg(diffColor(p.difficulty)));
-    top->addWidget(dot);
-    auto *dlabel = new QLabel(p.difficulty, card);
-    dlabel->setObjectName(QStringLiteral("diffLabel"));
-    top->addWidget(dlabel);
-    lay->addLayout(top);
-
-    auto *title = new QLabel(elide(p.title.isEmpty() ? p.id : p.title, 32), card);
-    title->setObjectName(QStringLiteral("cardTitle"));
-    title->setWordWrap(true);
-    title->setMinimumHeight(36);
-    title->setAlignment(Qt::AlignTop | Qt::AlignLeft);
-    lay->addWidget(title);
-
-    auto *meta = new QHBoxLayout;
-    meta->setSpacing(6);
-    auto *oj = new QLabel(p.oj, card);
-    oj->setStyleSheet(ojPillStyle(p.oj));
-    meta->addWidget(oj);
-    meta->addStretch();
-    lay->addLayout(meta);
-
+    auto *card = new ProblemCardWidget(p, m_gridHost);
     const QString id = p.id;
-    connect(card, &ClickableFrame::clicked, this, [this, id] {
+    connect(card, &ProblemCardWidget::clicked, this, [this, id] {
         OlerProblem pr = m_store->find(id);
         if (pr.isValid()) {
             m_store->touchRecent(id);
             emit openRequested(pr);
         }
     });
-    connect(card, &ClickableFrame::rightClicked, this, [this, p](const QPoint &pos) {
+    connect(card, &ProblemCardWidget::rightClicked, this, [this, p](const QPoint &pos) {
         showCardContextMenu(p, pos);
     });
     return card;

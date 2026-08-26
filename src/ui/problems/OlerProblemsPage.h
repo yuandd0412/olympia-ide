@@ -37,6 +37,7 @@ private:
     OlerProblems *m_store = nullptr;
     OlerIngest *m_ingest = nullptr;
     QLineEdit *m_search = nullptr;
+    QString m_difficultyFilter;
     QWidget *m_recentRowHost = nullptr;
     QGridLayout *m_grid = nullptr;
     QWidget *m_gridHost = nullptr;

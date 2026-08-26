@@ -30,15 +30,15 @@ QString rgbaStr(const QColor &c, int a255) {
 }
 
 QString elide(const QString &s, int n) {
-    return s.size() <= n ? s : s.left(n - 1) + QStringLiteral("\u2026");
+    return s.size() <= n ? s : s.left(n - 1) + QStringLiteral("…");
 }
 
-// 7x4 frequency heatmap of the last 28 days (non-interactive hint).
+// 7x4 frequency heatmap of the last 28 days with day indicators.
 class Heatmap : public QWidget {
 public:
     explicit Heatmap(OlerMistakes *store, QWidget *parent = nullptr)
         : QWidget(parent), m_store(store) {
-        setFixedSize(7 * 21 + 3, 4 * 21 + 3);
+        setFixedSize(7 * 22 + 4, 4 * 22 + 4);
         connect(CThemeManager::instance(), &CThemeManager::themeChanged,
                 this, QOverload<>::of(&QWidget::update));
         connect(m_store, &OlerMistakes::changed,
@@ -60,17 +60,18 @@ protected:
 
         const QColor accent = OlerTheme::accentForTheme(
             CThemeManager::instance()->currentTheme());
-        constexpr int kCell = 18, kGap = 3;
+        constexpr int kCell = 18, kGap = 4;
         for (int i = 0; i < 28; ++i) {
             const int r = i / 7, c = i % 7;
             const int level = counts[i] == 0 ? 0 : 1 + counts[i] * 3 / maxV;
-            QColor cell(255, 255, 255, 12);
+            QColor cell = OlerTheme::token(OlerTheme::Token::BgElevated);
             if (level > 0) {
                 cell = accent;
-                cell.setAlpha(level == 4 ? 255 : 60 * level);
+                cell.setAlpha(level == 4 ? 255 : 55 * level + 40);
             }
-            p.fillRect(c * (kCell + kGap), r * (kCell + kGap),
-                       kCell, kCell, cell);
+            p.setPen(Qt::NoPen);
+            p.setBrush(cell);
+            p.drawRoundedRect(QRectF(c * (kCell + kGap), r * (kCell + kGap), kCell, kCell), 3, 3);
         }
     }
 private:
@@ -83,12 +84,12 @@ OlerMistakesPage::OlerMistakesPage(QWidget *parent)
     : QWidget(parent), m_store(OlerMistakes::instance()) {
     auto *layout = new QHBoxLayout(this);
     layout->setContentsMargins(24, 20, 24, 20);
-    layout->setSpacing(20);
+    layout->setSpacing(24);
 
     auto *mainCol = new QVBoxLayout;
     mainCol->setSpacing(16);
 
-    // Verdict filter chips (prototype: mono 11/600, sel = filled verdict).
+    // Verdict filter chips
     auto *chips = new QHBoxLayout;
     chips->setSpacing(8);
     const QList<QPair<QString, QColor>> defs = {
@@ -99,19 +100,15 @@ OlerMistakesPage::OlerMistakesPage(QWidget *parent)
         {QStringLiteral("CE"),  QColor(0xc4, 0x9a, 0x3c)},
     };
     for (const auto &d : defs) {
-        auto *btn = new QPushButton(d.first.isEmpty() ? tr("全部") : d.first,
-                                    this);
+        auto *btn = new QPushButton(d.first.isEmpty() ? tr("全部") : d.first, this);
         btn->setProperty("mchipBtn", true);
         btn->setCheckable(true);
         btn->setCursor(Qt::PointingHandCursor);
         const QColor vc = d.second;
-        const QString selText =
-            vc == QColor(0xff, 0x9f, 0x0a) ? QStringLiteral("#131311")
-                                           : QStringLiteral("#ffffff");
+        const QString selText = (vc == QColor(0xff, 0x9f, 0x0a)) ? QStringLiteral("#131311") : QStringLiteral("#ffffff");
         btn->setStyleSheet(QStringLiteral(
-            "QPushButton[mchipBtn=\"true\"] { color:%1; }"
-            "QPushButton[mchipBtn=\"true\"]:checked { background:%2;"
-            " color:%3; border-color:%2; }")
+            "QPushButton[mchipBtn=\"true\"] { color:%1; font-weight:500; padding:4px 12px; }"
+            "QPushButton[mchipBtn=\"true\"]:checked { background:%2; color:%3; border-color:%2; }")
             .arg(vc.name(), vc.name(), selText));
         const QString v = d.first;
         connect(btn, &QPushButton::clicked, this, [this, v] {
@@ -121,6 +118,7 @@ OlerMistakesPage::OlerMistakesPage(QWidget *parent)
         chips->addWidget(btn);
     }
     chips->addStretch();
+
     auto *archive = new QPushButton(tr("显示已掌握"), this);
     archive->setProperty("mchipBtn", true);
     archive->setCheckable(true);
@@ -136,7 +134,7 @@ OlerMistakesPage::OlerMistakesPage(QWidget *parent)
     m_listHost = new QWidget;
     m_listLayout = new QVBoxLayout(m_listHost);
     m_listLayout->setContentsMargins(0, 0, 0, 0);
-    m_listLayout->setSpacing(6);
+    m_listLayout->setSpacing(8);
     auto *scroll = new QScrollArea(this);
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
@@ -145,15 +143,38 @@ OlerMistakesPage::OlerMistakesPage(QWidget *parent)
 
     layout->addLayout(mainCol, /*stretch*/ 1);
 
-    // Heatmap rail.
+    // Right Rail: Heatmap and Overview Stats
     auto *rail = new QVBoxLayout;
-    auto *cap = new QLabel(tr("近 28 天"), this);
-    cap->setObjectName(QStringLiteral("sectionAction"));
+    rail->setSpacing(12);
+
+    auto *cap = new QLabel(tr("错题热力图（近 28 天）"), this);
+    cap->setObjectName(QStringLiteral("sectionTitle"));
     rail->addWidget(cap);
     rail->addWidget(new Heatmap(m_store, this));
-    auto *hint = new QLabel(tr("错题密度 · 深 = 多"), this);
-    hint->setObjectName(QStringLiteral("sectionAction"));
+
+    auto *hint = new QLabel(tr("色彩越深表示当日错题频次越高"), this);
+    hint->setObjectName(QStringLiteral("sectionCaption"));
     rail->addWidget(hint);
+
+    auto *div = new QFrame(this);
+    div->setFrameShape(QFrame::HLine);
+    div->setObjectName(QStringLiteral("statsDiv"));
+    rail->addWidget(div);
+
+    auto *statBox = new QFrame(this);
+    statBox->setObjectName(QStringLiteral("kpiCard"));
+    auto *sl = new QVBoxLayout(statBox);
+    sl->setContentsMargins(14, 12, 14, 12);
+    sl->setSpacing(6);
+    auto *sTitle = new QLabel(tr("错题归档统计"), statBox);
+    sTitle->setObjectName(QStringLiteral("sectionCaption"));
+    sl->addWidget(sTitle);
+
+    auto *s1 = new QLabel(QStringLiteral("未掌握错题: %1 题").arg(m_store->entries(false).size()), statBox);
+    s1->setStyleSheet(QStringLiteral("font-family:Consolas;font-size:12px;color:%1;")
+                          .arg(OlerTheme::token(OlerTheme::Token::TextPrimary).name()));
+    sl->addWidget(s1);
+    rail->addWidget(statBox);
     rail->addStretch();
     layout->addLayout(rail);
 
@@ -166,33 +187,37 @@ QWidget *OlerMistakesPage::buildRow(const OlerMistake &m) {
     auto *row = new QFrame(m_listHost);
     row->setProperty("mistakeCard", true);
     row->setStyleSheet(QStringLiteral(
-        "QWidget[mistakeCard=\"true\"] { border-left: 3px solid %1; }")
-        .arg(vc.name()));
+        "QWidget[mistakeCard=\"true\"] { background-color:%1; border:1px solid %2; border-left:4px solid %3; border-radius:6px; }")
+        .arg(OlerTheme::token(OlerTheme::Token::BgSurface).name(),
+             OlerTheme::token(OlerTheme::Token::Border).name(),
+             vc.name()));
     row->setCursor(Qt::PointingHandCursor);
 
     auto *lay = new QHBoxLayout(row);
-    lay->setContentsMargins(14, 12, 14, 12);
+    lay->setContentsMargins(16, 12, 16, 12);
     lay->setSpacing(12);
 
     auto *id = new QLabel(m.problemId, row);
     id->setObjectName(QStringLiteral("cardId"));
     lay->addWidget(id);
 
-    auto *t = new QLabel(elide(m.title, 42), row);
-    t->setObjectName(QStringLiteral("favTitle"));
+    auto *t = new QLabel(elide(m.title, 36), row);
+    t->setStyleSheet(QStringLiteral("color:%1;font-size:13px;font-weight:500;")
+                         .arg(OlerTheme::token(OlerTheme::Token::TextPrimary).name()));
     lay->addWidget(t, /*stretch*/ 1);
 
     auto *badge = new QLabel(m.verdict, row);
     badge->setAlignment(Qt::AlignCenter);
     badge->setStyleSheet(QStringLiteral(
-        "background:%1;color:%2;border-radius:9999px;"
+        "background:%1;color:%2;border-radius:4px;"
         "font-family:'Consolas';font-size:10px;font-weight:600;"
         "padding:2px 8px;").arg(rgbaStr(vc, 38), vc.name()));
     lay->addWidget(badge);
 
-    auto *time = new QLabel(m.when.toLocalTime().toString("MM-dd hh:mm"), row);
+    auto *time = new QLabel(m.when.toLocalTime().toString("yyyy-MM-dd hh:mm"), row);
     time->setStyleSheet(
-        QStringLiteral("font-family:'Consolas';font-size:11px;color:#6e6d68;"));
+        QStringLiteral("font-family:'Consolas';font-size:11px;color:%1;")
+            .arg(OlerTheme::token(OlerTheme::Token::TextTertiary).name()));
     lay->addWidget(time);
 
     auto *redo = new QPushButton(tr("重做"), row);
@@ -204,7 +229,7 @@ QWidget *OlerMistakesPage::buildRow(const OlerMistake &m) {
     lay->addWidget(redo);
 
     if (!m.reviewed) {
-        auto *done = new QPushButton(tr("掌握"), row);
+        auto *done = new QPushButton(tr("标记掌握"), row);
         done->setObjectName(QStringLiteral("redoBtn"));
         done->setCursor(Qt::PointingHandCursor);
         connect(done, &QPushButton::clicked, row, [this, m] {
@@ -213,15 +238,14 @@ QWidget *OlerMistakesPage::buildRow(const OlerMistake &m) {
         });
         lay->addWidget(done);
     } else {
-        auto *tag = new QLabel(tr("已掌握"), row);
-        tag->setStyleSheet(QStringLiteral("color:#34c759;font-size:11px;"));
+        auto *tag = new QLabel(tr("✓ 已掌握"), row);
+        tag->setStyleSheet(QStringLiteral("color:#34c759;font-size:11px;font-weight:600;"));
         lay->addWidget(tag);
     }
     return row;
 }
 
 void OlerMistakesPage::rebuild() {
-    // Clear rows.
     while (m_listLayout->count() > 0) {
         QLayoutItem *it = m_listLayout->takeAt(0);
         if (QWidget *w = it->widget())
@@ -240,11 +264,12 @@ void OlerMistakesPage::rebuild() {
     if (shown == 0) {
         auto *empty = new QLabel(
             m_verdictFilter.isEmpty()
-                ? tr("还没有错题记录 —— Ctrl+R 跑一次测试试试")
-                : tr("该判定下暂无错题"),
+                ? tr("还没有错题记录 —— 在编辑器中按 Ctrl+R 跑一次测试试试")
+                : tr("该判定下暂无错题记录"),
             m_listHost);
         empty->setObjectName(QStringLiteral("sectionAction"));
         empty->setAlignment(Qt::AlignCenter);
+        empty->setMinimumHeight(100);
         m_listLayout->addWidget(empty);
     }
 }

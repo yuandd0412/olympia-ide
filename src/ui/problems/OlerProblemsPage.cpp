@@ -42,13 +42,17 @@ QString ojPillStyle(const QString &oj) {
     else if (oj == QLatin1String("AtCoder"))    fg = QColor("#b57850");
     else if (oj == QLatin1String("LOJ"))   fg = QColor("#c29e5a");
     else if (oj == QLatin1String("UOJ"))   fg = QColor("#a078c8");
-    return QStringLiteral("color:%1;background:%2;").arg(fg.name(), rgbaStr(fg, 38));
+    return QStringLiteral("color:%1;background:%2;border-radius:4px;padding:1px 6px;font-weight:500;font-size:11px;")
+        .arg(fg.name(), rgbaStr(fg, 38));
 }
 
 QString diffColor(const QString &d) {
     if (d == QLatin1String("入门")) return QStringLiteral("#34c759");
-    if (d.startsWith(QLatin1String("普及"))) return QStringLiteral("#ff9f0a");
-    return QStringLiteral("#ff453a");
+    if (d.contains(QLatin1String("普及"))) return QStringLiteral("#ff9f0a");
+    if (d.contains(QLatin1String("提高"))) return QStringLiteral("#ff6b22");
+    if (d.contains(QLatin1String("省选"))) return QStringLiteral("#af52de");
+    if (d.contains(QLatin1String("NOI")))  return QStringLiteral("#ff453a");
+    return QStringLiteral("#34c759");
 }
 
 QString elide(const QString &s, int n) {
@@ -59,7 +63,7 @@ QWidget *sectionHeader(const QString &title, const QString &action,
                        QWidget *parent) {
     auto *w = new QWidget(parent);
     auto *lay = new QHBoxLayout(w);
-    lay->setContentsMargins(0, 0, 0, 12);
+    lay->setContentsMargins(0, 0, 0, 8);
     auto *t = new QLabel(title, w);
     t->setObjectName(QStringLiteral("sectionTitle"));
     lay->addWidget(t);
@@ -72,7 +76,7 @@ QWidget *sectionHeader(const QString &title, const QString &action,
     return w;
 }
 
-// Minimal clickable card surface with left/right click signals.
+// Clickable card surface with left/right click signals
 class ClickableFrame : public QFrame {
     Q_OBJECT
 public:
@@ -98,27 +102,36 @@ protected:
 
 OlerProblemsPage::OlerProblemsPage(QWidget *parent)
     : QWidget(parent), m_store(OlerProblems::instance()), m_ingest(new OlerIngest(this)) {
-    auto *layout = new QVBoxLayout(this);
+    auto *scrollArea = new QScrollArea(this);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+
+    auto *content = new QWidget(scrollArea);
+    auto *layout = new QVBoxLayout(content);
     layout->setContentsMargins(24, 20, 24, 20);
     layout->setSpacing(16);
 
-    // Search: 36px elevated field with magnifier + Ctrl K chips.
-    auto *searchWrap = new QWidget(this);
+    // Search bar: 36px elevated field with magnifier + Ctrl K chips
+    auto *searchWrap = new QWidget(content);
     searchWrap->setObjectName(QStringLiteral("searchWrap"));
     auto *sw = new QHBoxLayout(searchWrap);
     sw->setContentsMargins(12, 0, 10, 0);
-    sw->setSpacing(6);
+    sw->setSpacing(8);
+
     auto *mag = new QLabel(searchWrap);
     mag->setPixmap(OlerIcons::make(OlerIcons::Name::Search,
                                    QColor("#6e6d68"), 14).pixmap(14, 14));
     mag->setFixedSize(14, 14);
     sw->addWidget(mag);
+
     m_search = new QLineEdit(searchWrap);
     m_search->setObjectName(QStringLiteral("searchInput"));
-    m_search->setPlaceholderText(tr("搜索题目、OJ、标签..."));
+    m_search->setPlaceholderText(tr("搜索题目 ID、标题、OJ、标签..."));
     m_search->setFixedHeight(36);
     m_search->setFrame(false);
+    m_search->setClearButtonEnabled(true);
     sw->addWidget(m_search, /*stretch*/ 1);
+
     auto *kbdRow = new QHBoxLayout;
     kbdRow->setSpacing(4);
     for (const QString &k : {QStringLiteral("Ctrl"), QStringLiteral("K")}) {
@@ -129,25 +142,52 @@ OlerProblemsPage::OlerProblemsPage(QWidget *parent)
     sw->addLayout(kbdRow);
     layout->addWidget(searchWrap);
 
-    // Quick actions.
+    // Quick actions & Difficulty Filters
     auto *qa = new QHBoxLayout;
     qa->setSpacing(8);
-    auto *pull = new QPushButton(tr("拉取题目"), this);
+
+    auto *pull = new QPushButton(tr("拉取题目"), content);
     pull->setProperty("psPrimary", true);
     pull->setToolTip(tr("从洛谷等在线 OJ 拉取题目元数据与官方样例"));
     connect(pull, &QPushButton::clicked, this, &OlerProblemsPage::pullProblem);
     qa->addWidget(pull);
 
-    auto *addBtn = new QPushButton(tr("新建题目"), this);
+    auto *addBtn = new QPushButton(tr("新建题目"), content);
     addBtn->setProperty("psSecondary", true);
     connect(addBtn, &QPushButton::clicked, this, &OlerProblemsPage::addProblem);
     qa->addWidget(addBtn);
 
-    auto *importBtn = new QPushButton(tr("导入题单"), this);
+    auto *importBtn = new QPushButton(tr("导入题单"), content);
     importBtn->setProperty("psSecondary", true);
     importBtn->setToolTip(tr("从 JSON 或 Markdown 导入题单"));
     connect(importBtn, &QPushButton::clicked, this, &OlerProblemsPage::importSheet);
     qa->addWidget(importBtn);
+
+    qa->addSpacing(16);
+    // Difficulty filters
+    const QStringList diffs = {
+        tr("全部"), tr("入门"), tr("普及"), tr("提高"), tr("NOI")
+    };
+    for (const QString &d : diffs) {
+        auto *fbtn = new QPushButton(d, content);
+        fbtn->setProperty("chipBtn", true);
+        fbtn->setCheckable(true);
+        fbtn->setCursor(Qt::PointingHandCursor);
+        if (d == tr("全部")) fbtn->setChecked(true);
+        connect(fbtn, &QPushButton::clicked, this, [this, d, fbtn, qa] {
+            // Uncheck other filter buttons
+            for (int i = 0; i < qa->count(); ++i) {
+                if (auto *b = qobject_cast<QPushButton *>(qa->itemAt(i)->widget())) {
+                    if (b->property("chipBtn").toBool() && b != fbtn)
+                        b->setChecked(false);
+                }
+            }
+            fbtn->setChecked(true);
+            m_difficultyFilter = (d == tr("全部")) ? QString() : d;
+            rebuild();
+        });
+        qa->addWidget(fbtn);
+    }
     qa->addStretch();
     layout->addLayout(qa);
 
@@ -161,7 +201,7 @@ OlerProblemsPage::OlerProblemsPage(QWidget *parent)
         rebuild();
         emit openRequested(detail.meta);
         QMessageBox::information(this, tr("拉取题目"),
-                                 tr("已成功拉取题目 %1 并生成 %2 组样例测例！")
+                                 tr("已成功拉取题目 %1 并生成 %2 组官方样例测例！")
                                      .arg(detail.meta.id)
                                      .arg(detail.samples.size()));
     });
@@ -170,8 +210,8 @@ OlerProblemsPage::OlerProblemsPage(QWidget *parent)
     });
 
     // Recent strip (horizontal).
-    layout->addWidget(sectionHeader(tr("最近题目"), tr("查看全部"), this));
-    auto *recentScroll = new QScrollArea(this);
+    layout->addWidget(sectionHeader(tr("最近练习"), tr("查看全部"), content));
+    auto *recentScroll = new QScrollArea(content);
     recentScroll->setWidgetResizable(true);
     recentScroll->setFixedHeight(72);
     recentScroll->setFrameShape(QFrame::NoFrame);
@@ -186,16 +226,21 @@ OlerProblemsPage::OlerProblemsPage(QWidget *parent)
     layout->addWidget(recentScroll);
 
     // Grid.
-    layout->addWidget(sectionHeader(tr("全部题目"), tr("右键卡片快捷操作"), this));
-    m_gridHost = new QWidget;
+    layout->addWidget(sectionHeader(tr("全部题目"), tr("右键卡片快捷操作"), content));
+    m_gridHost = new QWidget(content);
     m_grid = new QGridLayout(m_gridHost);
     m_grid->setContentsMargins(0, 0, 0, 0);
-    m_grid->setSpacing(10);
+    m_grid->setSpacing(12);
     layout->addWidget(m_gridHost);
 
     // Stats strip.
     layout->addWidget(buildStatsStrip());
     layout->addStretch();
+
+    scrollArea->setWidget(content);
+    auto *root = new QVBoxLayout(this);
+    root->setContentsMargins(0, 0, 0, 0);
+    root->addWidget(scrollArea);
 
     connect(m_search, &QLineEdit::textChanged, this, &OlerProblemsPage::rebuild);
     connect(m_store, &OlerProblems::changed, this, &OlerProblemsPage::rebuild);
@@ -258,7 +303,7 @@ void OlerProblemsPage::showCardContextMenu(const OlerProblem &p, const QPoint &g
     auto *trainingAct = menu.addAction(tr("加入今日训练计划"));
     auto *mistakeAct = menu.addAction(tr("加入错题本"));
     menu.addSeparator();
-    auto *deleteAct = menu.addAction(tr("删除题目"));
+    auto *deleteAct = menu.addAction(tr("从题库删除"));
 
     connect(openAct, &QAction::triggered, this, [this, p] {
         m_store->touchRecent(p.id);
@@ -345,9 +390,9 @@ QWidget *OlerProblemsPage::makeRecentCard(const OlerProblem &p) {
 QWidget *OlerProblemsPage::makeCard(const OlerProblem &p) {
     auto *card = new ClickableFrame(m_gridHost);
     card->setObjectName(QStringLiteral("problemCard"));
-    card->setFixedHeight(118);
+    card->setFixedHeight(120);
     auto *lay = new QVBoxLayout(card);
-    lay->setContentsMargins(14, 14, 14, 14);
+    lay->setContentsMargins(14, 12, 14, 12);
     lay->setSpacing(8);
 
     auto *top = new QHBoxLayout;
@@ -356,29 +401,30 @@ QWidget *OlerProblemsPage::makeCard(const OlerProblem &p) {
     pid->setObjectName(QStringLiteral("cardId"));
     top->addWidget(pid);
     top->addStretch();
+
+    // Difficulty chip on top right
+    QFrame *dot = new QFrame(card);
+    dot->setFixedSize(7, 7);
+    dot->setStyleSheet(QStringLiteral("border-radius:3.5px;background:%1;")
+                           .arg(diffColor(p.difficulty)));
+    top->addWidget(dot);
+    auto *dlabel = new QLabel(p.difficulty, card);
+    dlabel->setObjectName(QStringLiteral("diffLabel"));
+    top->addWidget(dlabel);
     lay->addLayout(top);
 
-    auto *title = new QLabel(elide(p.title.isEmpty() ? p.id : p.title, 26), card);
+    auto *title = new QLabel(elide(p.title.isEmpty() ? p.id : p.title, 32), card);
     title->setObjectName(QStringLiteral("cardTitle"));
     title->setWordWrap(true);
-    title->setMinimumHeight(35);
+    title->setMinimumHeight(36);
     title->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     lay->addWidget(title);
 
     auto *meta = new QHBoxLayout;
     meta->setSpacing(6);
-    auto *oj = new QLabel(elide(p.oj, 12), card);
-    oj->setObjectName(QStringLiteral("ojPill"));
+    auto *oj = new QLabel(p.oj, card);
     oj->setStyleSheet(ojPillStyle(p.oj));
     meta->addWidget(oj);
-    QFrame *dot = new QFrame(card);
-    dot->setFixedSize(8, 8);
-    dot->setStyleSheet(QStringLiteral("border-radius:4px;background:%1;")
-                           .arg(diffColor(p.difficulty)));
-    meta->addWidget(dot);
-    auto *dlabel = new QLabel(elide(p.difficulty, 10), card);
-    dlabel->setObjectName(QStringLiteral("diffLabel"));
-    meta->addWidget(dlabel);
     meta->addStretch();
     lay->addLayout(meta);
 
@@ -407,7 +453,7 @@ void OlerProblemsPage::rebuildRecent() {
 
     const auto recents = m_store->recent();
     if (recents.isEmpty()) {
-        rl->insertWidget(0, new QLabel(tr("从题库选一道题，开始今天的训练"),
+        rl->insertWidget(0, new QLabel(tr("从题库中挑选一道题目开始今天的训练"),
                                        m_recentRowHost), 0, Qt::AlignVCenter);
         return;
     }
@@ -428,6 +474,8 @@ void OlerProblemsPage::rebuild() {
             !p.id.contains(needle, Qt::CaseInsensitive) &&
             !p.title.contains(needle, Qt::CaseInsensitive) &&
             !p.oj.contains(needle, Qt::CaseInsensitive))
+            continue;
+        if (!m_difficultyFilter.isEmpty() && !p.difficulty.contains(m_difficultyFilter))
             continue;
         items.append(p);
     }
@@ -500,7 +548,7 @@ QWidget *OlerProblemsPage::buildStatsStrip() {
 
     const int total = m_store->all().size();
     const int solvedTotal = OlerSolves::instance()->totalCount();
-    addItem(OlerIcons::Name::CheckSquare, QColor("#7daed4"), tr("总题数"),
+    addItem(OlerIcons::Name::CheckSquare, QColor("#7daed4"), tr("题库总数"),
             QString::number(total), &m_totalValue);
     auto *div = new QFrame(strip);
     div->setFrameShape(QFrame::VLine);
@@ -515,9 +563,6 @@ QWidget *OlerProblemsPage::buildStatsStrip() {
     addItem(OlerIcons::Name::TrendUp, accent(), tr("连续打卡"),
             QString::number(OlerSolves::instance()->streak()), &m_streakValue);
     lay->addStretch();
-    auto *link = new QLabel(tr("详细统计 →"), strip);
-    link->setObjectName(QStringLiteral("sectionAction"));
-    lay->addWidget(link);
     return strip;
 }
 

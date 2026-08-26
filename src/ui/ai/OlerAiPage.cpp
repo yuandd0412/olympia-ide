@@ -245,9 +245,10 @@ OlerAiPage::OlerAiPage(QWidget *parent) : QWidget(parent) {
     auto *chipsOuter = new QHBoxLayout;
     chipsOuter->addStretch();
     for (const QString &chip : {
-            tr("\u89e3\u91ca\u6211\u7684 WA"),
-            tr("\u5982\u4f55\u6392\u67e5 TLE\uff1f"),
-            tr("\u5de5\u4f5c\u533a\u662f\u600e\u4e48\u7ec4\u7ec7\u7684\uff1f")}) {
+            tr("💡 分析时间复杂度"),
+            tr("🔍 找出边界情况 Corner Case"),
+            tr("🐞 诊断为什么会 WA/TLE"),
+            tr("🚀 提供优化思路（不直接给代码）")}) {
         auto *b = new QPushButton(chip, this);
         b->setProperty("chipBtn", true);
         b->setCursor(Qt::PointingHandCursor);
@@ -260,25 +261,40 @@ OlerAiPage::OlerAiPage(QWidget *parent) : QWidget(parent) {
     chipsOuter->addStretch();
     layout->addLayout(chipsOuter);
 
-    // ----- Composer: input + circular send -----
-    auto *composer = new QHBoxLayout;
-    composer->addStretch();
-    m_input = new QPlainTextEdit(this);
+    // ----- Composer: centered rounded wrap with input + circular send -----
+    auto *composerWrap = new QWidget(this);
+    composerWrap->setObjectName(QStringLiteral("aiComposerWrap"));
+    composerWrap->setFixedWidth(680);
+    composerWrap->setStyleSheet(
+        QStringLiteral("#aiComposerWrap { background-color:%1; border:1px solid %2; border-radius:10px; }")
+            .arg(OlerTheme::token(OlerTheme::Token::BgElevated).name(),
+                 OlerTheme::token(OlerTheme::Token::Border).name()));
+    auto *composer = new QHBoxLayout(composerWrap);
+    composer->setContentsMargins(12, 6, 8, 6);
+    composer->setSpacing(8);
+
+    m_input = new QPlainTextEdit(composerWrap);
     m_input->setObjectName(QStringLiteral("aiComposer"));
     m_input->setFixedHeight(44);
-    m_input->setPlaceholderText(tr("\u8f93\u5165\u6d88\u606f\u2026"));
+    m_input->setPlaceholderText(tr("向 AI 竞赛教练提问（Enter 发送，Shift+Enter 换行）…"));
     m_input->installEventFilter(this);
-    m_send = new QPushButton(this);
+    m_input->setFrameShape(QFrame::NoFrame);
+    composer->addWidget(m_input, /*stretch*/ 1);
+
+    m_send = new QPushButton(composerWrap);
     m_send->setObjectName(QStringLiteral("aiSend"));
     m_send->setFixedSize(36, 36);
     m_send->setIcon(OlerIcons::make(OlerIcons::Name::Send,
                                     QColor("#ffffff"), 16));
     m_send->setCursor(Qt::PointingHandCursor);
     connect(m_send, &QPushButton::clicked, this, &OlerAiPage::send);
-    composer->addWidget(m_input);
-    composer->addWidget(m_send);
-    composer->addStretch();
-    layout->addLayout(composer);
+    composer->addWidget(m_send, 0, Qt::AlignBottom);
+
+    auto *outerRow = new QHBoxLayout;
+    outerRow->addStretch();
+    outerRow->addWidget(composerWrap);
+    outerRow->addStretch();
+    layout->addLayout(outerRow);
 
     // ----- Composer state wiring -----
     connect(m_input, &QPlainTextEdit::textChanged, this, [this] {

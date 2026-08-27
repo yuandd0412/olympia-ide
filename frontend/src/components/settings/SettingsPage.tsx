@@ -450,7 +450,7 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* General Settings */}
+      {/* Editor & General Settings */}
       <div
         className="p-5 rounded-2xl border flex flex-col gap-4"
         style={{
@@ -461,25 +461,11 @@ export const SettingsPage: React.FC = () => {
         <div className="flex items-center gap-2">
           <Sliders className="w-4 h-4 text-[var(--accent)]" />
           <span className="text-xs font-bold text-[var(--text-primary)]">
-            常规偏好
+            代码编辑器参数
           </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
-              每日做题目标 (题)
-            </label>
-            <input
-              type="number"
-              value={form.dailyGoal}
-              onChange={(e) =>
-                setForm({ ...form, dailyGoal: Number(e.target.value) })
-              }
-              className="w-full p-2.5 rounded-xl border text-xs outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
-            />
-          </div>
-
           <div>
             <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
               编辑器字号 (px)
@@ -491,6 +477,21 @@ export const SettingsPage: React.FC = () => {
                 setForm({ ...form, fontSize: Number(e.target.value) })
               }
               className="w-full p-2.5 rounded-xl border text-xs outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
+              编辑器字体 (Font Family)
+            </label>
+            <input
+              type="text"
+              value={form.fontFamily || 'Cascadia Mono, Consolas, Courier New, monospace'}
+              onChange={(e) =>
+                setForm({ ...form, fontFamily: e.target.value })
+              }
+              placeholder="Cascadia Mono, Consolas, Courier New, monospace"
+              className="w-full p-2.5 rounded-xl border text-xs font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
             />
           </div>
         </div>

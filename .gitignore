@@ -45,3 +45,6 @@ desktop.ini
 .env
 .env.local
 *.local
+
+# Local curl cookie jar from OJ scrape testing (may hold session credentials)
+/cookies.txt

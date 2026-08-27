@@ -68,29 +68,29 @@ export const StatusBar: React.FC = () => {
       {/* Center Section: Evaluation Live State */}
       <div className="flex items-center gap-2">
         {isRunning ? (
-          <div className="flex items-center gap-1.5 text-[var(--accent)] font-semibold animate-pulse">
+          <div className="soft-fade-in flex items-center gap-1.5 text-[var(--accent)] font-semibold animate-pulse">
             <Loader2 className="w-3 h-3 animate-spin" />
             <span>正在编译与多样例评测...</span>
           </div>
         ) : runResult ? (
           runResult.isCompilationError ? (
-            <div className="flex items-center gap-1 text-[#ff9f0a] font-semibold">
+            <div className="soft-fade-in flex items-center gap-1 text-[#ff9f0a] font-semibold">
               <XCircle className="w-3 h-3" />
               <span>Compilation Error</span>
             </div>
           ) : runResult.overallVerdict === 'AC' ? (
-            <div className="flex items-center gap-1 text-[#34c759] font-semibold">
+            <div className="soft-fade-in flex items-center gap-1 text-[#34c759] font-semibold">
               <CheckCircle2 className="w-3 h-3" />
               <span>AC 全样例通过 ({runResult.totalTimeMs}ms · {runResult.maxMemoryKb}KB)</span>
             </div>
           ) : (
-            <div className="flex items-center gap-1 text-[#ff453a] font-semibold">
+            <div className="soft-fade-in flex items-center gap-1 text-[#ff453a] font-semibold">
               <XCircle className="w-3 h-3" />
               <span>{runResult.overallVerdict} 评测未通过 ({runResult.totalTimeMs}ms)</span>
             </div>
           )
         ) : (
-          <span className="opacity-60 text-[10px] flex items-center gap-1">
+          <span className="soft-fade-in opacity-60 text-[10px] flex items-center gap-1">
             <ShieldCheck className="w-3 h-3 opacity-70" />
             <span>就绪 (Ctrl+R 运行评测)</span>
           </span>

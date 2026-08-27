@@ -71,6 +71,17 @@
   input, textarea, code, pre {
     user-select: text;
   }
+
+  /* Uniform pointer affordance for every interactive control */
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  /* Keyboard focus ring — accent token works on both themes */
+  button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }
 
 /* High-DPI Slim Scrollbars */
@@ -94,6 +105,33 @@
   margin: 0.6em 0 !important;
   overflow-x: auto;
   overflow-y: hidden;
+}
+
+/* Soft entrance for swapped inline indicators (status bar evaluation state, etc.) */
+@keyframes soft-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.soft-fade-in {
+  animation: soft-fade-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Respect OS-level reduced motion preference (CSS-driven motion) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 

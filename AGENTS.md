@@ -1,7 +1,10 @@
 # Oler IDE v2 — Project Agent Guide
 
 ## Project at a Glance
-Desktop OI (Olympiad in Informatics) coding IDE, rewritten in Qt 6.8 + C++17 + MinGW 13.1.0. Dark-mode-first, information-dense, with built-in compiler chain, OJ account manager, and AI assistant.
+Desktop OI (Olympiad in Informatics) coding IDE: dark-mode-first, information-dense, built-in compile/run pipeline, problem ingest, stress tester, and AI coach. The repo carries TWO codebases:
+
+- `frontend/` — Tauri 2 + React 19 + TypeScript desktop app. **Current development mainline** (all recent work lands here).
+- `src/` + `tests/` — Qt 6.8 + C++17 foundation implementation, kept as reference implementation and regression baseline (7 ctest suites).
 
 ## Paths and Directories
 - Project root: `D:\oler-ide-v2` (ASCII only — never use CJK paths; `moc`/`rcc`/`qmake` are broken on CJK paths in Qt 6.8.0)
@@ -9,6 +12,15 @@ Desktop OI (Olympiad in Informatics) coding IDE, rewritten in Qt 6.8 + C++17 + M
 - Vendor: `D:\oler-ide-v2\third_party\` (gitignored, re-clonable)
 - Qt: `C:\Qt\6.8.0\mingw_64\`
 - MinGW: `C:\Qt\Tools\mingw1310_64\bin\` (Qt-bundled, ABI-matched to Qt 6.8.0 prebuilt)
+
+## Frontend (Tauri) Line
+- Location: `frontend/`. Stack: Tauri 2.x · React 19 · TypeScript · Vite · Monaco Editor (`@monaco-editor/react`) · xterm.js · Zustand store · Tailwind CSS 4 · framer-motion.
+- Dev loop: `cd frontend && npm install && npm run tauri dev` (launches Vite dev server + the Tauri window).
+- Frontend-only checks: `npm run build` (tsc typecheck + vite build); `npm run lint` (oxlint).
+- Rust backend crate: `frontend/src-tauri` (package `app`, lib target `app_lib`, smoke bin `test_ingest`). Modules mirror the Qt core layout: `ingest.rs` / `runner.rs` / `stress.rs` / `storage.rs` / `models.rs` / `ai.rs`.
+- Generated dirs are already gitignored — never commit them: `frontend/node_modules`, `frontend/dist`, `frontend/src-tauri/target`.
+- Tests: no Rust unit tests yet; `cargo run --bin test_ingest` (cwd `frontend/src-tauri`) is an ingest smoke test. UI verification is manual for now.
+- Pitfall: files parsed by Tauri's config/capability system (e.g. `src-tauri/capabilities/default.json`) must be plain UTF-8 WITHOUT BOM — a stray BOM broke capability parsing once (fix commit `ff23c92`). Same class of bug caused the UTF-8 mojibake sweep across components (commit `20a2267`); the throwaway repair scripts live archived under `scripts/oneoff/`.
 
 ## ABI Strict Rules
 - Qt 6.8.0 prebuilt is compiled with MinGW 13.1.0; toolchain MUST be 13.1.0.

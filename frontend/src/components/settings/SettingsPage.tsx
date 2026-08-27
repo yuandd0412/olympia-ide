@@ -5,7 +5,6 @@ import {
   Terminal,
   Sparkles,
   Check,
-  Save,
   Info,
   Moon,
   Sun,
@@ -90,7 +89,6 @@ export const SettingsPage: React.FC = () => {
 
   const [form, setForm] = useState<AppSettings>({ ...settings });
   const [fontSizeInput, setFontSizeInput] = useState<string>(String(settings.fontSize || 14));
-  const [saved, setSaved] = useState(false);
 
   // Keep local form in sync with global store changes
   React.useEffect(() => {
@@ -98,19 +96,14 @@ export const SettingsPage: React.FC = () => {
     setFontSizeInput(String(settings.fontSize || 14));
   }, [settings]);
 
-  const handleSave = async () => {
-    const parsedFontSize = parseInt(fontSizeInput, 10);
-    const finalFontSize = isNaN(parsedFontSize) ? 14 : Math.max(10, Math.min(36, parsedFontSize));
-    const toSave = { ...form, fontSize: finalFontSize };
-    await updateSettings(toSave);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  // Real-time instant field updater
+  const updateField = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    updateSettings({ [key]: value });
   };
 
-  const handleSelectTheme = async (theme: ThemeType) => {
-    const updated = { ...form, theme };
-    setForm(updated);
-    await updateSettings({ theme });
+  const handleSelectTheme = (theme: ThemeType) => {
+    updateField('theme', theme);
   };
 
   const handleFontSizeChange = (valStr: string) => {
@@ -120,7 +113,7 @@ export const SettingsPage: React.FC = () => {
     if (cleaned !== '') {
       const parsed = parseInt(cleaned, 10);
       if (!isNaN(parsed) && parsed >= 10 && parsed <= 36) {
-        setForm(prev => ({ ...prev, fontSize: parsed }));
+        updateField('fontSize', parsed);
       }
     }
   };
@@ -129,12 +122,12 @@ export const SettingsPage: React.FC = () => {
     const current = parseInt(fontSizeInput, 10) || form.fontSize || 14;
     const next = Math.max(10, Math.min(36, current + delta));
     setFontSizeInput(String(next));
-    setForm(prev => ({ ...prev, fontSize: next }));
+    updateField('fontSize', next);
   };
 
   const handleSelectFontSizePreset = (size: number) => {
     setFontSizeInput(String(size));
-    setForm(prev => ({ ...prev, fontSize: size }));
+    updateField('fontSize', size);
   };
 
   const isContestActive = contestEndTime !== null && Date.now() < contestEndTime;
@@ -148,27 +141,15 @@ export const SettingsPage: React.FC = () => {
             偏好设置
           </h1>
           <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
-            配置 IDE 界面主题、比赛实战模式、本地 C++ 编译器与 AI 算法教练
+            配置 IDE 界面主题、比赛实战模式、代码字体排版、本地 C++ 编译器与 AI 算法教练
           </p>
         </div>
 
-        <button
-          onClick={handleSave}
-          className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg font-semibold text-xs text-white shadow-xs transition-all hover:brightness-110 active:scale-95 cursor-pointer"
-          style={{ backgroundColor: 'var(--accent)' }}
-        >
-          {saved ? (
-            <>
-              <Check className="w-3.5 h-3.5" />
-              <span>已保存</span>
-            </>
-          ) : (
-            <>
-              <Save className="w-3.5 h-3.5" />
-              <span>保存配置</span>
-            </>
-          )}
-        </button>
+        {/* Real-time sync indicator */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] text-xs shadow-xs select-none">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-[11px] font-medium text-[var(--text-secondary)]">实时自动同步</span>
+        </div>
       </div>
 
       {/* Contest Mode (比赛实战模拟模式) */}
@@ -350,7 +331,7 @@ export const SettingsPage: React.FC = () => {
               type="checkbox"
               checked={form.enableCodeTemplate}
               onChange={(e) =>
-                setForm({ ...form, enableCodeTemplate: e.target.checked })
+                updateField('enableCodeTemplate', e.target.checked)
               }
               className="w-4 h-4 accent-[var(--accent)] cursor-pointer"
             />
@@ -368,10 +349,10 @@ export const SettingsPage: React.FC = () => {
                 language="cpp"
                 value={form.codeTemplate}
                 theme={form.theme === 'GitHubLight' ? 'vs' : 'vs-dark'}
-                onChange={(v) => setForm({ ...form, codeTemplate: v || '' })}
+                onChange={(v) => updateField('codeTemplate', v || '')}
                 options={{
                   fontSize: 13,
-                  fontFamily: 'Cascadia Mono, Consolas, monospace',
+                  fontFamily: (form.fontFamily || 'Cascadia Mono') + ', Consolas, monospace',
                   minimap: { enabled: false },
                   automaticLayout: true,
                   tabSize: 4,
@@ -412,7 +393,7 @@ export const SettingsPage: React.FC = () => {
               type="text"
               value={form.compilerPath}
               onChange={(e) =>
-                setForm({ ...form, compilerPath: e.target.value })
+                updateField('compilerPath', e.target.value)
               }
               placeholder="g++ 或 C:\\Qt\\Tools\\mingw1310_64\\bin\\g++.exe"
               className="w-full p-2.5 rounded-xl border text-xs font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
@@ -427,10 +408,7 @@ export const SettingsPage: React.FC = () => {
               type="text"
               value={form.compilerFlags.join(' ')}
               onChange={(e) =>
-                setForm({
-                  ...form,
-                  compilerFlags: e.target.value.split(' ').filter(Boolean),
-                })
+                updateField('compilerFlags', e.target.value.split(' ').filter(Boolean))
               }
               placeholder="-O2 -std=c++17 -Wall -Wextra"
               className="w-full p-2.5 rounded-xl border text-xs font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
@@ -482,7 +460,7 @@ export const SettingsPage: React.FC = () => {
             <input
               type="text"
               value={form.aiBaseUrl}
-              onChange={(e) => setForm({ ...form, aiBaseUrl: e.target.value })}
+              onChange={(e) => updateField('aiBaseUrl', e.target.value)}
               placeholder="https://api.openai.com/v1 或 https://api.deepseek.com"
               className="w-full p-2.5 rounded-xl border text-xs font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
             />
@@ -495,7 +473,7 @@ export const SettingsPage: React.FC = () => {
             <input
               type="password"
               value={form.aiApiKey}
-              onChange={(e) => setForm({ ...form, aiApiKey: e.target.value })}
+              onChange={(e) => updateField('aiApiKey', e.target.value)}
               placeholder="sk-..."
               className="w-full p-2.5 rounded-xl border text-xs font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
             />
@@ -508,7 +486,7 @@ export const SettingsPage: React.FC = () => {
             <input
               type="text"
               value={form.aiModel}
-              onChange={(e) => setForm({ ...form, aiModel: e.target.value })}
+              onChange={(e) => updateField('aiModel', e.target.value)}
               placeholder="deepseek-chat 或 gpt-4o-mini"
               className="w-full p-2.5 rounded-xl border text-xs font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
             />
@@ -542,7 +520,7 @@ export const SettingsPage: React.FC = () => {
               return (
                 <div
                   key={font.id}
-                  onClick={() => setForm({ ...form, fontFamily: font.id })}
+                  onClick={() => updateField('fontFamily', font.id)}
                   className={
                     'p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ' +
                     (isSelected

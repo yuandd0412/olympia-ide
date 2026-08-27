@@ -4,7 +4,6 @@ import {
   Palette,
   Terminal,
   Sparkles,
-  Sliders,
   Check,
   Save,
   Info,
@@ -15,6 +14,9 @@ import {
   Flame,
   Clock,
   LogOut,
+  Type,
+  Minus,
+  Plus,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
 import type { AppSettings, ThemeType } from '../../types';
@@ -48,19 +50,59 @@ const THEMES: Array<{
   },
 ];
 
+const CODE_FONTS = [
+  {
+    id: 'Cascadia Mono',
+    name: 'Cascadia Mono',
+    desc: '微软现代等宽字体，符号与数字清晰利落',
+  },
+  {
+    id: 'JetBrains Mono',
+    name: 'JetBrains Mono',
+    desc: '专为程序员设计，代码辨识度极佳',
+  },
+  {
+    id: 'Fira Code',
+    name: 'Fira Code',
+    desc: '经典开源等宽字体，连字与排版优美',
+  },
+  {
+    id: 'Consolas',
+    name: 'Consolas',
+    desc: 'Windows / NOIP 赛场经典标准等宽字体',
+  },
+  {
+    id: 'Courier New',
+    name: 'Courier New',
+    desc: '传统等宽打印字体，历史悠久且通用',
+  },
+  {
+    id: 'Source Code Pro',
+    name: 'Source Code Pro',
+    desc: 'Adobe 开源等宽字体，字母结构规整',
+  },
+];
+
+const FONT_SIZE_PRESETS = [12, 13, 14, 15, 16, 18, 20];
+
 export const SettingsPage: React.FC = () => {
   const { settings, updateSettings, contestEndTime, setContestEndTime } = useAppStore();
 
   const [form, setForm] = useState<AppSettings>({ ...settings });
+  const [fontSizeInput, setFontSizeInput] = useState<string>(String(settings.fontSize || 14));
   const [saved, setSaved] = useState(false);
 
   // Keep local form in sync with global store changes
   React.useEffect(() => {
     setForm(settings);
+    setFontSizeInput(String(settings.fontSize || 14));
   }, [settings]);
 
   const handleSave = async () => {
-    await updateSettings(form);
+    const parsedFontSize = parseInt(fontSizeInput, 10);
+    const finalFontSize = isNaN(parsedFontSize) ? 14 : Math.max(10, Math.min(36, parsedFontSize));
+    const toSave = { ...form, fontSize: finalFontSize };
+    await updateSettings(toSave);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -69,6 +111,30 @@ export const SettingsPage: React.FC = () => {
     const updated = { ...form, theme };
     setForm(updated);
     await updateSettings({ theme });
+  };
+
+  const handleFontSizeChange = (valStr: string) => {
+    // Only allow digits
+    const cleaned = valStr.replace(/[^0-9]/g, '');
+    setFontSizeInput(cleaned);
+    if (cleaned !== '') {
+      const parsed = parseInt(cleaned, 10);
+      if (!isNaN(parsed) && parsed >= 10 && parsed <= 36) {
+        setForm(prev => ({ ...prev, fontSize: parsed }));
+      }
+    }
+  };
+
+  const handleFontSizeStep = (delta: number) => {
+    const current = parseInt(fontSizeInput, 10) || form.fontSize || 14;
+    const next = Math.max(10, Math.min(36, current + delta));
+    setFontSizeInput(String(next));
+    setForm(prev => ({ ...prev, fontSize: next }));
+  };
+
+  const handleSelectFontSizePreset = (size: number) => {
+    setFontSizeInput(String(size));
+    setForm(prev => ({ ...prev, fontSize: size }));
   };
 
   const isContestActive = contestEndTime !== null && Date.now() < contestEndTime;
@@ -450,7 +516,7 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Editor & General Settings */}
+      {/* Editor Typography (字体与字号选择) */}
       <div
         className="p-5 rounded-2xl border flex flex-col gap-4"
         style={{
@@ -459,41 +525,145 @@ export const SettingsPage: React.FC = () => {
         }}
       >
         <div className="flex items-center gap-2">
-          <Sliders className="w-4 h-4 text-[var(--accent)]" />
+          <Type className="w-4 h-4 text-[var(--accent)]" />
           <span className="text-xs font-bold text-[var(--text-primary)]">
-            代码编辑器参数
+            代码编辑器字体与字号 (Typography)
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Font Family Selection Cards */}
+        <div>
+          <label className="text-xs font-medium text-[var(--text-secondary)] block mb-2">
+            选择编辑器等宽字体族 (Font Family)
+          </label>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+            {CODE_FONTS.map((font) => {
+              const isSelected = (form.fontFamily || 'Cascadia Mono') === font.id;
+              return (
+                <div
+                  key={font.id}
+                  onClick={() => setForm({ ...form, fontFamily: font.id })}
+                  className={
+                    'p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ' +
+                    (isSelected
+                      ? 'border-[var(--accent)] bg-[var(--accent-subtle)] ring-1 ring-[var(--accent)] shadow-xs'
+                      : 'border-[var(--border)] bg-[var(--bg-elevated)] hover:border-[var(--text-tertiary)]')
+                  }
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span
+                      className="text-xs font-bold text-[var(--text-primary)]"
+                      style={{ fontFamily: font.id + ', monospace' }}
+                    >
+                      {font.name}
+                    </span>
+                    {isSelected && (
+                      <Check className="w-3.5 h-3.5 text-[var(--accent)]" />
+                    )}
+                  </div>
+                  <span
+                    className="text-[11px] text-[var(--text-secondary)] truncate font-mono py-1 px-1.5 rounded bg-black/15 my-1"
+                    style={{ fontFamily: font.id + ', monospace' }}
+                  >
+                    for (int i = 0; i &lt; n; ++i)
+                  </span>
+                  <span className="text-[10px] text-[var(--text-tertiary)] line-clamp-1">
+                    {font.desc}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Font Size Configuration with Stepper & Presets */}
+        <div className="pt-2 border-t border-[var(--border)] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
             <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
-              编辑器字号 (px)
+              编辑器字号大小 (Font Size)
             </label>
-            <input
-              type="number"
-              value={form.fontSize}
-              onChange={(e) =>
-                setForm({ ...form, fontSize: Number(e.target.value) })
-              }
-              className="w-full p-2.5 rounded-xl border text-xs outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
-            />
+            <div className="flex items-center gap-2">
+              {/* Stepper Controls */}
+              <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] overflow-hidden shadow-xs">
+                <button
+                  type="button"
+                  onClick={() => handleFontSizeStep(-1)}
+                  className="px-2.5 py-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/15 transition-colors cursor-pointer"
+                  title="减小字号"
+                >
+                  <Minus className="w-3.5 h-3.5" />
+                </button>
+                <input
+                  type="text"
+                  value={fontSizeInput}
+                  onChange={(e) => handleFontSizeChange(e.target.value)}
+                  onBlur={() => {
+                    if (fontSizeInput === '' || parseInt(fontSizeInput, 10) < 10) {
+                      setFontSizeInput('14');
+                      setForm(prev => ({ ...prev, fontSize: 14 }));
+                    }
+                  }}
+                  className="w-12 text-center text-xs font-mono font-bold bg-transparent text-[var(--text-primary)] outline-none py-1.5 border-x border-[var(--border)]"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleFontSizeStep(1)}
+                  className="px-2.5 py-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/15 transition-colors cursor-pointer"
+                  title="增大字号"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <span className="text-xs text-[var(--text-tertiary)] font-mono">px (范围 10~36)</span>
+            </div>
           </div>
 
-          <div>
-            <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
-              编辑器字体 (Font Family)
-            </label>
-            <input
-              type="text"
-              value={form.fontFamily || 'Cascadia Mono, Consolas, Courier New, monospace'}
-              onChange={(e) =>
-                setForm({ ...form, fontFamily: e.target.value })
-              }
-              placeholder="Cascadia Mono, Consolas, Courier New, monospace"
-              className="w-full p-2.5 rounded-xl border text-xs font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
-            />
+          {/* Font Size Quick Presets */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] text-[var(--text-tertiary)] mr-1">常用预设:</span>
+            {FONT_SIZE_PRESETS.map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => handleSelectFontSizePreset(size)}
+                className={
+                  'px-2.5 py-1 rounded-lg text-xs font-mono transition-all cursor-pointer border ' +
+                  ((form.fontSize || 14) === size
+                    ? 'border-[var(--accent)] bg-[var(--accent)] text-white font-bold shadow-xs'
+                    : 'border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--text-tertiary)]')
+                }
+              >
+                {size}px
+              </button>
+            ))}
           </div>
+        </div>
+
+        {/* Live Typography Preview Box */}
+        <div className="mt-1 p-3.5 rounded-xl border border-[var(--border)] bg-[var(--bg-base)] space-y-1.5 shadow-inner">
+          <div className="flex items-center justify-between text-[11px] text-[var(--text-tertiary)] select-none">
+            <span>实时效果预览</span>
+            <span className="font-mono">{form.fontFamily || 'Cascadia Mono'} · {form.fontSize || 14}px</span>
+          </div>
+          <pre
+            className="font-mono text-[var(--text-primary)] leading-relaxed overflow-x-auto select-text p-1"
+            style={{
+              fontFamily: (form.fontFamily || 'Cascadia Mono') + ', Consolas, monospace',
+              fontSize: (form.fontSize || 14) + 'px',
+            }}
+          >
+{`#include <iostream>
+#include <vector>
+#include <algorithm>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    cout << "Olympia IDE - 专为 OI 选手打造" << '\\n';
+    return 0;
+}`}
+          </pre>
         </div>
       </div>
     </div>

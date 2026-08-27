@@ -1,7 +1,8 @@
 import React, { useRef, useEffect } from 'react';
-import Editor, { type OnMount } from '@monaco-editor/react';
+import Editor, { type OnMount, type BeforeMount } from '@monaco-editor/react';
 import { useAppStore } from '../../stores/useAppStore';
 import { tauriApi } from '../../services/tauriApi';
+import { registerMonacoThemes } from '../../services/monacoTheme';
 import { Code2, Plus, BookOpen } from 'lucide-react';
 
 export const MonacoCodeEditor: React.FC = () => {
@@ -12,65 +13,17 @@ export const MonacoCodeEditor: React.FC = () => {
   const syntaxCheckTimer = useRef<any>(null);
 
   const isLight = settings.theme === 'GitHubLight';
+  const currentThemeName = isLight ? 'oler-light-theme' : 'oler-dark-theme';
 
-  const defineAndApplyTheme = (monaco: any) => {
-    if (!monaco) return;
-
-    if (isLight) {
-      monaco.editor.defineTheme('oler-custom-theme', {
-        base: 'vs',
-        inherit: true,
-        rules: [
-          { token: 'comment', foreground: '6e7781', fontStyle: 'italic' },
-          { token: 'keyword', foreground: 'cf222e', fontStyle: 'bold' },
-          { token: 'string', foreground: '0a3069' },
-          { token: 'number', foreground: '0550ae' },
-          { token: 'type', foreground: '8250df' },
-          { token: 'identifier', foreground: '1f2328' },
-        ],
-        colors: {
-          'editor.background': '#ffffff',
-          'editor.foreground': '#1f2328',
-          'editorGutter.background': '#ffffff',
-          'editorLineNumber.foreground': '#8c959f',
-          'editorLineNumber.activeForeground': '#0969da',
-          'editor.lineHighlightBackground': '#f6f8fa',
-          'editorCursor.foreground': '#0969da',
-          'editor.selectionBackground': '#add6ff80',
-        },
-      });
-    } else {
-      monaco.editor.defineTheme('oler-custom-theme', {
-        base: 'vs-dark',
-        inherit: true,
-        rules: [
-          { token: 'comment', foreground: '5c6370', fontStyle: 'italic' },
-          { token: 'keyword', foreground: 'c678dd', fontStyle: 'bold' },
-          { token: 'string', foreground: '98c379' },
-          { token: 'number', foreground: 'd19a66' },
-          { token: 'type', foreground: 'e5c07b' },
-          { token: 'identifier', foreground: 'abb2bf' },
-        ],
-        colors: {
-          'editor.background': '#1e1e1e',
-          'editor.foreground': '#abb2bf',
-          'editorGutter.background': '#1e1e1e',
-          'editorLineNumber.foreground': '#636d83',
-          'editorLineNumber.activeForeground': '#c678dd',
-          'editor.lineHighlightBackground': '#2c313c',
-          'editorCursor.foreground': '#528bff',
-          'editor.selectionBackground': '#3e4451',
-        },
-      });
-    }
-
-    monaco.editor.setTheme('oler-custom-theme');
+  const handleBeforeMount: BeforeMount = (monaco) => {
+    registerMonacoThemes(monaco);
   };
 
   const handleEditorDidMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
-    defineAndApplyTheme(monaco);
+    registerMonacoThemes(monaco);
+    monaco.editor.setTheme(currentThemeName);
     runSyntaxCheck(activeTab?.code || '');
 
     // Bind Ctrl+S / Cmd+S save command directly inside Monaco
@@ -81,9 +34,9 @@ export const MonacoCodeEditor: React.FC = () => {
 
   useEffect(() => {
     if (monacoRef.current) {
-      defineAndApplyTheme(monacoRef.current);
+      monacoRef.current.editor.setTheme(currentThemeName);
     }
-  }, [settings.theme]);
+  }, [currentThemeName]);
 
   const runSyntaxCheck = async (code: string) => {
     if (!code.trim() || !monacoRef.current || !editorRef.current) return;
@@ -158,7 +111,8 @@ export const MonacoCodeEditor: React.FC = () => {
         defaultLanguage="cpp"
         language="cpp"
         value={activeTab?.code || ''}
-        theme="oler-custom-theme"
+        theme={currentThemeName}
+        beforeMount={handleBeforeMount}
         onChange={handleEditorChange}
         onMount={handleEditorDidMount}
         options={{

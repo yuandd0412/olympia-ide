@@ -129,13 +129,21 @@ interface AppState {
   setSelectedVerdict: (v: string) => void;
 }
 
+const getSavedTheme = (): import('../types').ThemeType => {
+  try {
+    const saved = localStorage.getItem('olympia-saved-theme');
+    if (saved === 'GitHubLight' || saved === 'OneDarkPro') return saved;
+  } catch (e) {}
+  return 'OneDarkPro';
+};
+
 export const useAppStore = create<AppState>((set, get) => ({
   contestEndTime: null,
   setContestEndTime: (timeMs) => set({ contestEndTime: timeMs }),
   activeNav: 'editor',
   settings: {
     isFirstRun: true,
-    theme: 'OneDarkPro',
+    theme: getSavedTheme(),
     compilerPath: 'g++',
     compilerFlags: ['-O2', '-std=c++17', '-Wall', '-Wextra'],
     enableCodeTemplate: false,
@@ -243,6 +251,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
 
       document.documentElement.setAttribute('data-theme', settings.theme);
+      try {
+        localStorage.setItem('olympia-saved-theme', settings.theme);
+      } catch (e) {}
     } catch (err) {
       console.error('Failed to load initial data:', err);
     }
@@ -252,6 +263,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const updated = { ...get().settings, ...newSettings };
     set({ settings: updated });
     document.documentElement.setAttribute('data-theme', updated.theme);
+    try {
+      localStorage.setItem('olympia-saved-theme', updated.theme);
+    } catch (e) {}
     await tauriApi.updateSettings(updated);
   },
 

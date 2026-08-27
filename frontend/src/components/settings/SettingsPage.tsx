@@ -18,6 +18,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
+import { registerMonacoThemes } from '../../services/monacoTheme';
 import type { AppSettings, ThemeType } from '../../types';
 
 const THEMES: Array<{
@@ -348,7 +349,8 @@ export const SettingsPage: React.FC = () => {
                 height="100%"
                 language="cpp"
                 value={form.codeTemplate}
-                theme={form.theme === 'GitHubLight' ? 'vs' : 'vs-dark'}
+                theme={form.theme === 'GitHubLight' ? 'oler-light-theme' : 'oler-dark-theme'}
+                beforeMount={registerMonacoThemes}
                 onChange={(v) => updateField('codeTemplate', v || '')}
                 options={{
                   fontSize: 13,

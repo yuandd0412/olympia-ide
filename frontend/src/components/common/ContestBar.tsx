@@ -42,7 +42,7 @@ export const ContestBar: React.FC = () => {
         initial={{ height: 0, opacity: 0 }}
         animate={{ height: 'auto', opacity: 1 }}
         exit={{ height: 0, opacity: 0 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
         className="w-full border-b shrink-0 px-4 py-1.5 flex items-center justify-between text-xs select-none z-30 shadow-sm"
         style={{
           backgroundColor: isUrgent ? 'rgba(255, 69, 58, 0.12)' : 'rgba(255, 159, 10, 0.08)',
@@ -124,7 +124,7 @@ export const ContestBar: React.FC = () => {
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              transition={{ type: 'spring', stiffness: 450, damping: 30 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
               className="w-full max-w-sm p-6 rounded-2xl border bg-[var(--bg-surface)] border-[var(--border)] shadow-2xl space-y-4"
             >
               <div className="flex items-center gap-3 text-[#ff453a]">

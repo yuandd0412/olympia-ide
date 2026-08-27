@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import { tauriApi } from '../../services/tauriApi';
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -46,7 +47,7 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
   };
 
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden bg-[var(--bg-surface)]" style={{ borderColor: 'var(--border)' }}>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15, ease: 'easeOut' }} className="w-full h-full flex flex-col overflow-hidden bg-[var(--bg-surface)]" style={{ borderColor: 'var(--border)' }}>
       {/* Top Header Controls */}
       <div className="h-9 px-3 border-b flex items-center justify-between shrink-0" style={{ borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-2 max-w-[50%]">
@@ -170,6 +171,6 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
           </div>
         )}
       </div>
-    </div>
+  </motion.div>
   );
 };

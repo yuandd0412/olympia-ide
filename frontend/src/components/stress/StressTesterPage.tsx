@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import React, { useState } from 'react';
 import Editor from '@monaco-editor/react';
 import {
@@ -120,26 +121,35 @@ export const StressTesterPage: React.FC = () => {
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setActiveCodeTab('sol')}
-                className={'px-3 py-1 rounded-md font-mono text-xs transition-all cursor-pointer flex items-center gap-1.5 ' + (activeCodeTab === 'sol' ? 'bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border)] font-semibold' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]')}
+                className={'relative px-3 py-1 rounded-md font-mono text-xs transition-colors cursor-pointer flex items-center gap-1.5 ' + (activeCodeTab === 'sol' ? 'text-[var(--text-primary)] font-semibold' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]')}
               >
-                <FileCode2 className="w-3 h-3 text-[var(--accent)]" />
-                <span>1. 待测程序 (Solution.cpp)</span>
+                {activeCodeTab === 'sol' && (
+                  <motion.div layoutId="stressSubTab" className="absolute inset-0 rounded-md bg-[var(--bg-base)] shadow-xs border border-[var(--border)]" transition={{ duration: 0.15, ease: 'easeOut' }} />
+                )}
+                <FileCode2 className="w-3 h-3 text-[var(--accent)] relative z-10" />
+                <span className="relative z-10">1. 待测程序 (Solution.cpp)</span>
               </button>
 
               <button
                 onClick={() => setActiveCodeTab('brute')}
-                className={'px-3 py-1 rounded-md font-mono text-xs transition-all cursor-pointer flex items-center gap-1.5 ' + (activeCodeTab === 'brute' ? 'bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border)] font-semibold' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]')}
+                className={'relative px-3 py-1 rounded-md font-mono text-xs transition-colors cursor-pointer flex items-center gap-1.5 ' + (activeCodeTab === 'brute' ? 'text-[var(--text-primary)] font-semibold' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]')}
               >
-                <FileCode2 className="w-3 h-3 text-[#34c759]" />
-                <span>2. 暴力/基准 (Standard.cpp)</span>
+                {activeCodeTab === 'brute' && (
+                  <motion.div layoutId="stressSubTab" className="absolute inset-0 rounded-md bg-[var(--bg-base)] shadow-xs border border-[var(--border)]" transition={{ duration: 0.15, ease: 'easeOut' }} />
+                )}
+                <FileCode2 className="w-3 h-3 text-[#34c759] relative z-10" />
+                <span className="relative z-10">2. 暴力/基准 (Standard.cpp)</span>
               </button>
 
               <button
                 onClick={() => setActiveCodeTab('gen')}
-                className={'px-3 py-1 rounded-md font-mono text-xs transition-all cursor-pointer flex items-center gap-1.5 ' + (activeCodeTab === 'gen' ? 'bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border)] font-semibold' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]')}
+                className={'relative px-3 py-1 rounded-md font-mono text-xs transition-colors cursor-pointer flex items-center gap-1.5 ' + (activeCodeTab === 'gen' ? 'text-[var(--text-primary)] font-semibold' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]')}
               >
-                <FileCode2 className="w-3 h-3 text-[#ff9f0a]" />
-                <span>3. 数据生成器 (Generator.cpp)</span>
+                {activeCodeTab === 'gen' && (
+                  <motion.div layoutId="stressSubTab" className="absolute inset-0 rounded-md bg-[var(--bg-base)] shadow-xs border border-[var(--border)]" transition={{ duration: 0.15, ease: 'easeOut' }} />
+                )}
+                <FileCode2 className="w-3 h-3 text-[#ff9f0a] relative z-10" />
+                <span className="relative z-10">3. 数据生成器 (Generator.cpp)</span>
               </button>
             </div>
 

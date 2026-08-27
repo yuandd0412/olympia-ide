@@ -116,7 +116,7 @@ export const App: React.FC = () => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
                 className="w-full h-full"
               >
                 <PanelGroup 
@@ -149,7 +149,7 @@ export const App: React.FC = () => {
                           <PanelLeftOpen className="w-4 h-4" />
                         </button>
                       )}
-                      <div className={'flex-1 transition-all ' + (!showViewer ? 'pl-8' : '')}>
+                      <div className={'flex-1 ' + (!showViewer ? 'pl-8' : '')}>
                         <EditorTabBar />
                       </div>
                     </div>
@@ -183,7 +183,7 @@ export const App: React.FC = () => {
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.15 }}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
                 className="w-full h-full"
               >
                 <StressTesterPage />
@@ -196,7 +196,7 @@ export const App: React.FC = () => {
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.15 }}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
                 className="w-full h-full"
               >
                 <ProblemsPage />
@@ -209,7 +209,7 @@ export const App: React.FC = () => {
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.15 }}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
                 className="w-full h-full"
               >
                 <AiCoachPage />
@@ -222,7 +222,7 @@ export const App: React.FC = () => {
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.15 }}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
                 className="w-full h-full"
               >
                 <SettingsPage />

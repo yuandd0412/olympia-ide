@@ -39,7 +39,7 @@ export const EditorTabBar: React.FC = () => {
         borderColor: 'var(--border)',
       }}
     >
-      {/* Left Tab List with Animation */}
+      {/* Left Tab List with Subtle, Smooth Animation */}
       <div className="flex items-center gap-1 overflow-x-auto max-w-[calc(100%-190px)] py-1">
         {tabs.length === 0 ? (
           <span className="text-[11px] text-[var(--text-tertiary)] px-2 font-mono">
@@ -54,14 +54,18 @@ export const EditorTabBar: React.FC = () => {
               return (
                 <motion.div
                   key={tab.id}
-                  layout
-                  initial={{ opacity: 0, scale: 0.92, y: 2 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.85, transition: { duration: 0.12 } }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  initial={{ opacity: 0, scale: 0.96 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.92 }}
+                  transition={{ duration: 0.14, ease: 'easeOut' }}
                   onClick={() => setActiveTabId(tab.id)}
                   onDoubleClick={() => handleStartRename(tab.id, tab.title)}
-                  className={'group relative h-7 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-mono cursor-pointer transition-all border ' + (isActive ? 'bg-[var(--bg-base)] text-[var(--text-primary)] border-[var(--border)] shadow-xs font-medium' : 'bg-transparent text-[var(--text-tertiary)] border-transparent hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]')}
+                  className={
+                    'group relative h-7 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-mono cursor-pointer transition-colors border ' +
+                    (isActive
+                      ? 'bg-[var(--bg-base)] text-[var(--text-primary)] border-[var(--border)] shadow-xs font-medium'
+                      : 'bg-transparent text-[var(--text-tertiary)] border-transparent hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]')
+                  }
                 >
                   <FileCode2 className="w-3.5 h-3.5 opacity-70 text-[var(--accent)] shrink-0" />
 
@@ -86,13 +90,13 @@ export const EditorTabBar: React.FC = () => {
                     <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
                   )}
 
-                  {/* Always allow closing any tab, including the last one */}
+                  {/* Close Tab Button */}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       closeTab(tab.id);
                     }}
-                    title="关闭标签页"
+                    title="关闭标签页 (Ctrl+W)"
                     className="p-0.5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer ml-1"
                   >
                     <X className="w-3 h-3" />
@@ -107,7 +111,7 @@ export const EditorTabBar: React.FC = () => {
         <button
           onClick={() => openNewTab()}
           title="新建代码文件 (Ctrl+N)"
-          className="h-7 w-7 rounded-md flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-all cursor-pointer hover:scale-105 active:scale-95"
+          className="h-7 w-7 rounded-md flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer hover:scale-105 active:scale-95"
         >
           <Plus className="w-3.5 h-3.5" />
         </button>
@@ -117,7 +121,7 @@ export const EditorTabBar: React.FC = () => {
           <button
             onClick={() => closeAllTabs()}
             title="关闭全部标签页"
-            className="h-7 px-1.5 rounded-md flex items-center gap-1 text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-all cursor-pointer"
+            className="h-7 px-1.5 rounded-md flex items-center gap-1 text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer"
           >
             <Layers className="w-3 h-3" />
             <span>全部关闭</span>

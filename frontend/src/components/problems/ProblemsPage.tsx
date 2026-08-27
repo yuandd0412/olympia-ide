@@ -1,3 +1,4 @@
+import { motion, AnimatePresence } from 'framer-motion';
 import React, { useState } from 'react';
 import {
     Download,
@@ -184,56 +185,68 @@ export const ProblemsPage: React.FC = () => {
       )}
 
       {/* Online Fetch Dialog */}
-      {showFetchDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-          <div
-            className="w-full max-w-md p-6 rounded-2xl border shadow-2xl space-y-4"
-            style={{
-              backgroundColor: 'var(--bg-surface)',
-              borderColor: 'var(--border)',
-            }}
+      <AnimatePresence>
+        {showFetchDialog && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
           >
-            <h2 className="text-base font-bold text-[var(--text-primary)]">
-              拉取洛谷在线题目
-            </h2>
-            <p className="text-xs text-[var(--text-tertiary)]">
-              输入洛谷题目编号（如 <code className="font-mono text-[var(--accent)]">P1001</code>）或完整的题目链接，将自动解析 LaTeX 题面与样例测试点。
-            </p>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              className="w-full max-w-md p-6 rounded-2xl border shadow-2xl space-y-4"
+              style={{
+                backgroundColor: 'var(--bg-surface)',
+                borderColor: 'var(--border)',
+              }}
+            >
+              <h2 className="text-base font-bold text-[var(--text-primary)]">
+                拉取洛谷在线题目
+              </h2>
+              <p className="text-xs text-[var(--text-tertiary)]">
+                输入洛谷题目编号（如 <code className="font-mono text-[var(--accent)]">P1001</code>）或完整的题目链接，将自动解析 LaTeX 题面与样例测试点。
+              </p>
 
-            <input
-              type="text"
-              value={fetchInput}
-              onChange={(e) => setFetchInput(e.target.value)}
-              placeholder="例如: P1001 或 https://www.luogu.com.cn/problem/P1001"
-              onKeyDown={(e) => e.key === 'Enter' && handleFetch()}
-              className="w-full p-2.5 rounded-xl border text-sm font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
-              autoFocus
-            />
+              <input
+                type="text"
+                value={fetchInput}
+                onChange={(e) => setFetchInput(e.target.value)}
+                placeholder="例如: P1001 或 https://www.luogu.com.cn/problem/P1001"
+                onKeyDown={(e) => e.key === 'Enter' && handleFetch()}
+                className="w-full p-2.5 rounded-xl border text-sm font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
+                autoFocus
+              />
 
-            {fetchError && (
-              <p className="text-xs text-[#ff453a] font-medium">{fetchError}</p>
-            )}
+              {fetchError && (
+                <p className="text-xs text-[#ff453a] font-medium">{fetchError}</p>
+              )}
 
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                onClick={() => setShowFetchDialog(false)}
-                className="px-4 py-1.5 rounded-xl text-xs font-medium border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] cursor-pointer"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleFetch}
-                disabled={isFetching || !fetchInput.trim()}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50 cursor-pointer"
-                style={{ backgroundColor: 'var(--accent)' }}
-              >
-                {isFetching && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>{isFetching ? '抓取中...' : '确定拉取'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  onClick={() => setShowFetchDialog(false)}
+                  className="px-4 py-1.5 rounded-xl text-xs font-medium border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] cursor-pointer"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleFetch}
+                  disabled={isFetching || !fetchInput.trim()}
+                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50 cursor-pointer"
+                  style={{ backgroundColor: 'var(--accent)' }}
+                >
+                  {isFetching && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{isFetching ? '抓取中...' : '确定拉取'}</span>
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Problem Detail Modal */}
       <ProblemDetailModal

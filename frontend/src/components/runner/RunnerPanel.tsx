@@ -41,9 +41,9 @@ export const RunnerPanel: React.FC = () => {
       case 'AC':
         return (
           <motion.span
-            initial={{ scale: 0.8, opacity: 0 }}
+            initial={{ scale: 0.92, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
             className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#34c759]/20 text-[#34c759] border border-[#34c759]/30 flex items-center gap-1 font-mono"
           >
             <CheckCircle2 className="w-3 h-3" /> AC
@@ -52,9 +52,9 @@ export const RunnerPanel: React.FC = () => {
       case 'WA':
         return (
           <motion.span
-            initial={{ scale: 0.8, opacity: 0 }}
+            initial={{ scale: 0.92, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
             className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#ff453a]/20 text-[#ff453a] border border-[#ff453a]/30 flex items-center gap-1 font-mono"
           >
             <XCircle className="w-3 h-3" /> WA
@@ -63,9 +63,9 @@ export const RunnerPanel: React.FC = () => {
       case 'TLE':
         return (
           <motion.span
-            initial={{ scale: 0.8, opacity: 0 }}
+            initial={{ scale: 0.92, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
             className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#ff9f0a]/20 text-[#ff9f0a] border border-[#ff9f0a]/30 flex items-center gap-1 font-mono"
           >
             <Clock className="w-3 h-3" /> TLE
@@ -74,9 +74,9 @@ export const RunnerPanel: React.FC = () => {
       case 'RE':
         return (
           <motion.span
-            initial={{ scale: 0.8, opacity: 0 }}
+            initial={{ scale: 0.92, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
             className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#c45c4a]/20 text-[#c45c4a] border border-[#c45c4a]/30 flex items-center gap-1 font-mono"
           >
             <AlertTriangle className="w-3 h-3" /> RE

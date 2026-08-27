@@ -1,3 +1,4 @@
+import { tauriApi } from '../../services/tauriApi';
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
@@ -98,16 +99,14 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
                 <h1 className="text-sm font-bold text-[var(--text-primary)] leading-tight flex-1">
                   {viewerProblem.title}
                 </h1>
-                <a
-                  href={"https://www.luogu.com.cn/problem/" + viewerProblem.id}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-1 text-[10px] text-[var(--accent)] hover:underline shrink-0 px-2 py-0.5 rounded bg-[var(--accent-subtle)]"
-                  title="在浏览器中打开原题链接与提交"
+                <button
+                  onClick={() => tauriApi.openUrl("https://www.luogu.com.cn/problem/" + viewerProblem.id)}
+                  className="flex items-center gap-1 text-[10px] text-[var(--accent)] hover:underline shrink-0 px-2 py-0.5 rounded bg-[var(--accent-subtle)] cursor-pointer"
+                  title="在系统默认浏览器中打开原题链接与提交"
                 >
                   <span>原题提交</span>
                   <ExternalLink className="w-2.5 h-2.5" />
-                </a>
+                </button>
               </div>
               <div className="flex items-center gap-3 text-[10px] font-mono text-[var(--text-tertiary)]">
                 <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {viewerProblem.timeLimitMs}ms</span>

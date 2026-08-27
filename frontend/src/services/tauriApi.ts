@@ -116,6 +116,15 @@ export const tauriApi = {
     return await invoke('check_syntax', { code, compilerPath, compilerFlags });
   },
 
+  async openUrl(url: string): Promise<void> {
+    try {
+      await invoke('open_url', { url });
+    } catch (e) {
+      console.error('Failed to open url:', e);
+      window.open(url, '_blank');
+    }
+  },
+
   async runTerminalCommand(
     command: string,
     cwd?: string

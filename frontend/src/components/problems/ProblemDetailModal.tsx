@@ -1,3 +1,4 @@
+import { tauriApi } from '../../services/tauriApi';
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
@@ -74,15 +75,13 @@ export const ProblemDetailModal: React.FC<Props> = ({ problem, isOpen, onClose }
 
           <div className="flex items-center gap-2">
 
-            <a
-              href={problem.sourceUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="p-1.5 rounded-lg border border-[var(--border)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-all"
-              title="在浏览器中查看原题"
+            <button
+              onClick={() => tauriApi.openUrl(problem.sourceUrl)}
+              className="p-1.5 rounded-lg border border-[var(--border)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-all cursor-pointer"
+              title="在系统默认浏览器中查看原题"
             >
               <ExternalLink className="w-4 h-4" />
-            </a>
+            </button>
             <button
               onClick={handleOpenEditor}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-xs text-white shadow-sm transition-all hover:brightness-110 active:scale-95 cursor-pointer"

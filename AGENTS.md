@@ -21,6 +21,9 @@ Desktop OI (Olympiad in Informatics) coding IDE: dark-mode-first, information-de
 - Generated dirs are already gitignored — never commit them: `frontend/node_modules`, `frontend/dist`, `frontend/src-tauri/target`.
 - Tests: no Rust unit tests yet; `cargo run --bin test_ingest` (cwd `frontend/src-tauri`) is an ingest smoke test. UI verification is manual for now.
 - Pitfall: files parsed by Tauri's config/capability system (e.g. `src-tauri/capabilities/default.json`) must be plain UTF-8 WITHOUT BOM — a stray BOM broke capability parsing once (fix commit `ff23c92`). Same class of bug caused the UTF-8 mojibake sweep across components (commit `20a2267`); the throwaway repair scripts live archived under `scripts/oneoff/`.
+- Known lint debt (2026-08-27): 6 residual oxlint warnings are INTENTIONAL — do not "fix" them mechanically.
+  - `react(purity)` ×3 (`Date.now()` during render in ActivityBar / AiCoachPage / StatusBar-era gate logic): a pure fix needs a ticking contest-clock source or a store-level expiry sweep; replacing with `contestEndTime !== null` alone would leave the AI lock engaged forever after a restart past an expired persisted deadline.
+  - `react(set-state-in-effect)` ×3 (ContestBar countdown and similar timer syncs): existing pattern works; converting to derived state changes render timing of the countdown.
 
 ## ABI Strict Rules
 - Qt 6.8.0 prebuilt is compiled with MinGW 13.1.0; toolchain MUST be 13.1.0.

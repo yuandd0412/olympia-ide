@@ -19,8 +19,29 @@ import { tauriApi } from '../../services/tauriApi';
 import type { ChatMessage } from '../../types';
 
 export const AiCoachPage: React.FC = () => {
+  // Hooks MUST run before any early return: when the contest countdown
+  // expires while this page stays mounted, the store flips contestEndTime
+  // to null and re-render goes through the unlocked branch — conditional
+  // hook order crashes React ("rendered more hooks than previous render").
   const contestEndTime = useAppStore((s) => s.contestEndTime);
-    const isContestActive = contestEndTime !== null && Date.now() < contestEndTime;
+  const { settings, activeProblem, tabs, activeTabId } = useAppStore();
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      role: 'assistant',
+      content:
+        '👋 你好！我是你的 **AI 竞赛教练**。我可以为你提供：\n\n- 💡 **算法与数据结构思路指引**（可选择无剧透提示）\n- ⏱️ **时空复杂度精细化分析**（$\\mathcal{O}(N \\log N)$、常数优化）\n- 🐞 **边界特判与死循环 Bug 排查**\n- 📚 **经典题型与模板代码解读**\n\n请在下方输入你的问题，或直接点击预置快捷提示词！',
+    },
+  ]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const isContestActive = contestEndTime !== null && Date.now() < contestEndTime;
 
   if (isContestActive) {
     return (
@@ -43,28 +64,8 @@ export const AiCoachPage: React.FC = () => {
     );
   }
 
-  const { settings, activeProblem, tabs, activeTabId } = useAppStore();
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const currentCode = activeTab?.code || '';
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: 'assistant',
-      content:
-        '👋 你好！我是你的 **AI 竞赛教练**。我可以为你提供：\n\n- 💡 **算法与数据结构思路指引**（可选择无剧透提示）\n- ⏱️ **时空复杂度精细化分析**（$\\mathcal{O}(N \\log N)$、常数优化）\n- 🐞 **边界特判与死循环 Bug 排查**\n- 📚 **经典题型与模板代码解读**\n\n请在下方输入你的问题，或直接点击预置快捷提示词！',
-    },
-  ]);
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
 
   const handleSend = async (userText?: string) => {
     const textToSend = userText || input;

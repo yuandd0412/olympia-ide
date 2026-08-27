@@ -74,7 +74,7 @@ export const App: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, []);
+  }, [loadInitialData, runCodeAction, setActiveNav]);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -92,8 +92,8 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div 
-      onDrop={handleDrop} 
+    <div
+      onDrop={handleDrop}
       onDragOver={handleDragOver}
       className="w-screen h-screen flex flex-col overflow-hidden bg-[var(--bg-base)] text-[var(--text-primary)] select-none"
     >

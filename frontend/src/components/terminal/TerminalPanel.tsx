@@ -36,7 +36,7 @@ export const TerminalPanel: React.FC = () => {
     fit.fit();
 
     term.writeln('\x1b[1;34m[Olympia IDE Terminal]\x1b[0m 终端已就绪。');
-    if (settings.preferTerminalRun) {
+    if (useAppStore.getState().settings.preferTerminalRun) {
       term.writeln('提示: 你已开启终端首选模式，点击上方运行按钮将在此处编译并运行你的代码。');
     }
 

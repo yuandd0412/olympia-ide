@@ -133,7 +133,7 @@ const getSavedTheme = (): import('../types').ThemeType => {
   try {
     const saved = localStorage.getItem('olympia-saved-theme');
     if (saved === 'GitHubLight' || saved === 'OneDarkPro') return saved;
-  } catch (e) {}
+  } catch {}
   return 'OneDarkPro';
 };
 
@@ -253,7 +253,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       document.documentElement.setAttribute('data-theme', settings.theme);
       try {
         localStorage.setItem('olympia-saved-theme', settings.theme);
-      } catch (e) {}
+      } catch {}
     } catch (err) {
       console.error('Failed to load initial data:', err);
     }
@@ -265,7 +265,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     document.documentElement.setAttribute('data-theme', updated.theme);
     try {
       localStorage.setItem('olympia-saved-theme', updated.theme);
-    } catch (e) {}
+    } catch {}
     await tauriApi.updateSettings(updated);
   },
 

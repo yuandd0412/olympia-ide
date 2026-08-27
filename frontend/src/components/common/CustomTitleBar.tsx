@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Minus, Square, Copy, X } from 'lucide-react';
 
 export const CustomTitleBar: React.FC = () => {
-  const appWindow = getCurrentWindow();
+  const appWindow = useMemo(() => getCurrentWindow(), []);
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
@@ -20,7 +20,7 @@ export const CustomTitleBar: React.FC = () => {
     return () => {
       if (unlistenFn) unlistenFn();
     };
-  }, []);
+  }, [appWindow]);
 
   return (
     <div

@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { X, Play, ExternalLink, Star, Clock, Cpu, Copy, Check } from 'lucide-react';
+import { X, Play, ExternalLink, Clock, Cpu, Copy, Check } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
 import type { Problem } from '../../types';
 
@@ -14,7 +14,7 @@ interface Props {
 }
 
 export const ProblemDetailModal: React.FC<Props> = ({ problem, isOpen, onClose }) => {
-  const { setActiveProblem, toggleFavorite } = useAppStore();
+  const { setActiveProblem } = useAppStore();
   const [copiedIdx, setCopiedIdx] = React.useState<number | null>(null);
 
   if (!isOpen || !problem) return null;
@@ -73,17 +73,7 @@ export const ProblemDetailModal: React.FC<Props> = ({ problem, isOpen, onClose }
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => toggleFavorite(problem.id)}
-              className="p-1.5 rounded-lg border border-[var(--border)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-all cursor-pointer"
-              title={problem.isFavorite ? '取消收藏' : '收藏题目'}
-            >
-              <Star
-                className={`w-4 h-4 ${
-                  problem.isFavorite ? 'fill-[#ff9f0a] text-[#ff9f0a]' : ''
-                }`}
-              />
-            </button>
+
             <a
               href={problem.sourceUrl}
               target="_blank"

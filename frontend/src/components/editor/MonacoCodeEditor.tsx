@@ -2,9 +2,10 @@ import React, { useRef, useEffect } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import { useAppStore } from '../../stores/useAppStore';
 import { tauriApi } from '../../services/tauriApi';
+import { Code2, Plus, BookOpen } from 'lucide-react';
 
 export const MonacoCodeEditor: React.FC = () => {
-  const { tabs, activeTabId, updateActiveCode, settings } = useAppStore();
+  const { tabs, activeTabId, updateActiveCode, settings, openNewTab, setActiveNav, saveActiveTab } = useAppStore();
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
@@ -71,6 +72,11 @@ export const MonacoCodeEditor: React.FC = () => {
     monacoRef.current = monaco;
     defineAndApplyTheme(monaco);
     runSyntaxCheck(activeTab?.code || '');
+
+    // Bind Ctrl+S / Cmd+S save command directly inside Monaco
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      saveActiveTab();
+    });
   };
 
   useEffect(() => {
@@ -111,6 +117,40 @@ export const MonacoCodeEditor: React.FC = () => {
     }, 800);
   };
 
+  // If no tabs are open, show a clean, elegant workbench empty state
+  if (tabs.length === 0 || !activeTab) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-[var(--bg-base)] text-[var(--text-tertiary)] select-none p-6 text-center">
+        <div className="p-4 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] mb-3 shadow-xs text-[var(--accent)]">
+          <Code2 className="w-8 h-8" />
+        </div>
+        <h2 className="text-sm font-bold text-[var(--text-primary)] mb-1">
+          当前无打开的代码标签页
+        </h2>
+        <p className="text-xs text-[var(--text-tertiary)] mb-5 max-w-sm leading-relaxed">
+          所有代码编辑器已全部关闭。你可以新建空白代码文件，或从题目库中载入题面开始做题。
+        </p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => openNewTab()}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white transition-all hover:brightness-110 active:scale-95 shadow-sm cursor-pointer"
+            style={{ backgroundColor: 'var(--accent)' }}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>新建代码文件 (Ctrl+N)</span>
+          </button>
+          <button
+            onClick={() => setActiveNav('problems')}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] transition-all cursor-pointer shadow-sm"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-[var(--accent)]" />
+            <span>浏览最近做题 (Ctrl+K)</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full h-full relative overflow-hidden bg-[var(--bg-base)]">
       <Editor
@@ -123,7 +163,7 @@ export const MonacoCodeEditor: React.FC = () => {
         onMount={handleEditorDidMount}
         options={{
           fontSize: settings.fontSize || 14,
-          fontFamily: `${settings.fontFamily || 'Cascadia Mono'}, Consolas, monospace`,
+          fontFamily: (settings.fontFamily || 'Cascadia Mono') + ', Consolas, monospace',
           fontLigatures: true,
           minimap: { enabled: true, scale: 0.75 },
           scrollBeyondLastLine: false,

@@ -90,6 +90,8 @@ interface AppState {
   // Tab Actions
   openNewTab: (title?: string, code?: string, problemId?: string, testcases?: TestCaseInput[]) => string;
   closeTab: (tabId: string) => void;
+  closeAllTabs: () => void;
+  saveActiveTab: () => Promise<void>;
   setActiveTabId: (tabId: string) => void;
   updateActiveCode: (code: string) => void;
   updateTabTitle: (tabId: string, title: string) => void;
@@ -278,15 +280,33 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   closeTab: (tabId) => {
     const { tabs, activeTabId } = get();
-    if (tabs.length <= 1) return; // Keep at least one tab open
     const filtered = tabs.filter((t) => t.id !== tabId);
-    let nextActive = activeTabId;
-    if (activeTabId === tabId) {
-      const idx = tabs.findIndex((t) => t.id === tabId);
-      const nextIdx = Math.max(0, idx - 1);
-      nextActive = filtered[nextIdx]?.id || filtered[0].id;
+    let nextActive = '';
+    if (filtered.length > 0) {
+      if (activeTabId === tabId) {
+        const idx = tabs.findIndex((t) => t.id === tabId);
+        const nextIdx = Math.max(0, idx - 1);
+        nextActive = filtered[nextIdx]?.id || filtered[0].id;
+      } else {
+        nextActive = activeTabId;
+      }
     }
     set({ tabs: filtered, activeTabId: nextActive });
+  },
+
+  closeAllTabs: () => {
+    set({ tabs: [], activeTabId: '' });
+  },
+
+  saveActiveTab: async () => {
+    const { tabs, activeTabId } = get();
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    if (!activeTab) return;
+
+    const updated = tabs.map((t) =>
+      t.id === activeTabId ? { ...t, isModified: false } : t
+    );
+    set({ tabs: updated });
   },
 
   setActiveTabId: (tabId) => set({ activeTabId: tabId }),

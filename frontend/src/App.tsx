@@ -56,6 +56,11 @@ export const App: React.FC = () => {
         e.preventDefault();
         useAppStore.getState().openNewTab();
       }
+      // Ctrl+S or Cmd+S -> Save Active Tab
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        useAppStore.getState().saveActiveTab();
+      }
       // Ctrl+W -> Close Tab
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'w') {
         e.preventDefault();

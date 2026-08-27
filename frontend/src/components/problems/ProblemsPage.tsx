@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
     Download,
-  Star,
   ArrowRight,
   Filter,
   Loader2,
@@ -16,7 +15,6 @@ export const ProblemsPage: React.FC = () => {
     problems,
     searchQuery,
     selectedDifficulty,
-    toggleFavorite,
     openProblemModal,
     isDetailModalOpen,
     modalProblem,
@@ -163,23 +161,9 @@ export const ProblemsPage: React.FC = () => {
                   {p.oj}
                 </span>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleFavorite(p.id);
-                    }}
-                    className="p-1 rounded text-[var(--text-tertiary)] hover:text-[#ff9f0a] transition-colors cursor-pointer"
-                  >
-                    <Star
-                      className={`w-3.5 h-3.5 ${
-                        p.isFavorite ? 'fill-[#ff9f0a] text-[#ff9f0a]' : ''
-                      }`}
-                    />
-                  </button>
-                  <span className="text-[var(--accent)] opacity-0 group-hover:opacity-100 transition-opacity">
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </span>
+                <div className="flex items-center gap-1 text-[var(--accent)] opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all">
+                  <span className="text-[10px] font-medium">查看</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
                 </div>
               </div>
             </div>

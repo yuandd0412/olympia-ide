@@ -52,7 +52,10 @@ export const CustomTitleBar: React.FC = () => {
         </button>
         <button
           className="w-11 h-full flex items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
-          onClick={() => appWindow.toggleMaximize()}
+          onClick={async () => {
+            await appWindow.toggleMaximize();
+            setIsMaximized(await appWindow.isMaximized());
+          }}
           title={isMaximized ? "向下还原" : "最大化"}
         >
           {isMaximized ? (

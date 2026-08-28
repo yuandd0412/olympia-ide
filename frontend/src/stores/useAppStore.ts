@@ -73,6 +73,8 @@ interface AppState {
   terminalLogs: import('../types').TerminalLog[];
   terminalHistory: string[];
   isTerminalRunning: boolean;
+  /** True once loadInitialData has fetched persisted state — gate first-run UI on this. */
+  hydrated: boolean;
 
   // UI Search & Filter state
   isDetailModalOpen: boolean;
@@ -201,6 +203,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   ],
   terminalHistory: ['g++ --version'],
   isTerminalRunning: false,
+  hydrated: false,
 
   isDetailModalOpen: false,
   modalProblem: null,
@@ -248,6 +251,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         activeTabId: 'tab-1',
         viewerProblem: activeP,
         solves,
+        hydrated: true,
       });
 
       document.documentElement.setAttribute('data-theme', settings.theme);
@@ -256,6 +260,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       } catch {}
     } catch (err) {
       console.error('Failed to load initial data:', err);
+      set({ hydrated: true });
     }
   },
 

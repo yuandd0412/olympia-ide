@@ -20,7 +20,7 @@ import { OnboardingWizard } from './components/common/OnboardingWizard';
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle, useDefaultLayout } from 'react-resizable-panels';
 
 export const App: React.FC = () => {
-  const { activeNav, setActiveNav, loadInitialData, runCodeAction, settings } = useAppStore();
+  const { activeNav, setActiveNav, loadInitialData, runCodeAction, settings, hydrated } = useAppStore();
   const [showViewer, setShowViewer] = useState(true);
 
   const horizontalLayout = useDefaultLayout({ id: 'olympia-layout-horizontal', storage: localStorage });
@@ -100,7 +100,9 @@ export const App: React.FC = () => {
       <CustomTitleBar />
       <ContestBar />
       
-      {settings.isFirstRun && <OnboardingWizard />}
+      {/* Gate on hydrated: isFirstRun defaults to true until persisted settings arrive,
+          so rendering earlier makes the wizard flash on every launch. */}
+      {hydrated && settings.isFirstRun && <OnboardingWizard />}
 
       {/* Top Application Body */}
       <div className="flex-1 flex overflow-hidden min-h-0">

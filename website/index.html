@@ -141,17 +141,20 @@
       <p class="dl-meta">v0.1.0 · Windows 10 / 11 · x64 · 中文安装器 · 两个版本任选</p>
       <!-- 精简版随 Pages 静态发布;完整版 (~105 MB) 超出 Pages 25MiB 单文件上限,走 R2(见 DEPLOY.md) -->
       <div class="dl-variants">
-        <div class="variant">
-          <h3>精简版</h3>
+        <div class="variant v-hot">
+          <h3>精简版 <span class="v-badge">推荐</span></h3>
           <p class="v-size">约 6 MB</p>
           <p class="v-desc">下载体积小。首次启动时从国内镜像自动下载 MinGW 13.1.0 编译工具链（约 69 MB，需联网一次）。</p>
-          <a class="btn btn-ghost" href="downloads/Olympia-IDE_0.1.0_x64-setup.exe">下载精简版</a>
+          <a class="btn btn-primary" href="downloads/Olympia-IDE_0.1.0_x64-setup.exe">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 1v8.5L4.8 6.3 3.7 7.4 8 11.7l4.3-4.3-1.1-1.1L8 9.5V1H7v8.5L3.8 6.3 2.7 7.4 7 11.7V15h2v-3.3l4.3-4.3-1.1-1.1L9 9.5V1H8z"/></svg>
+            下载精简版
+          </a>
         </div>
-        <div class="variant v-hot">
-          <h3>完整版 <span class="v-badge">推荐</span></h3>
-          <p class="v-size">约 80 MB</p>
-          <p class="v-desc">内置 MinGW 13.1.0 编译工具链，离线开箱即用，零配置，适合机房与弱网环境。</p>
-          <a class="btn btn-primary" href="https://dl.olympia.dpdns.org/Olympia-IDE_0.1.0_x64-full-setup.exe">下载完整版</a>
+        <div class="variant">
+          <h3>完整版 <span class="v-badge soon">敬请期待</span></h3>
+          <p class="v-size">约 105 MB</p>
+          <p class="v-desc">内置 MinGW 13.1.0 编译工具链，离线开箱即用，适合机房与弱网环境。发布渠道筹备中，当前请先使用精简版。</p>
+          <button class="btn btn-ghost" disabled>暂未开放</button>
         </div>
       </div>
       <p class="dl-note">安装需要管理员权限（全机安装），自动创建开始菜单与桌面快捷方式。</p>

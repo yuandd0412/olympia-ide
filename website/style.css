@@ -518,6 +518,8 @@ body {
   margin-left: 4px;
 }
 
+.v-badge.soon { background: #8a8a8a; }
+
 .v-size { font-size: 26px; font-weight: 700; color: #3ea6e8; letter-spacing: -0.02em; }
 
 .variant.v-hot .v-size { color: var(--accent-hover); }

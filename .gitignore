@@ -25,6 +25,10 @@ third_party/
 # Downloaded toolchain used by the "full" installer build (frontend/src-tauri)
 frontend/src-tauri/vendor/
 
+# Installer artifacts staged for Pages deployment (copied in before deploy, see website/DEPLOY.md)
+website/downloads/
+website/.wrangler/
+
 # IDE / editor
 .vscode/
 .idea/

@@ -7,53 +7,50 @@
 
 | 内容 | 位置 | 说明 |
 |---|---|---|
-| 官网页面 | Cloudflare Pages → `olympia.dpdns.org` | 本目录静态文件 |
-| 精简版安装包（~6 MB） | R2 桶 → `dl.olympia.dpdns.org` | Pages 单文件上限 25 MiB，安装包放 R2 统一管理 |
-| 完整版安装包（~80 MB） | R2 桶 → `dl.olympia.dpdns.org` | 同上 |
+| 官网页面 | Cloudflare Pages → `olympia.dpdns.org` | 本目录静态文件,项目名 `olympia-ide` |
+| 精简版安装包(~6 MB) | Pages 静态资源 `downloads/` | 低于 25 MiB 单文件上限,随官网一起发布 |
+| 完整版安装包(~105 MB) | R2 桶 → `dl.olympia.dpdns.org` | 超出 Pages 限制;R2 需在控制台先开通 |
 
 ## 步骤
 
-### 1. 发布官网到 Pages
+### 0. 登录
 
 ```powershell
-cd D:\oler-ide-v2\website
-npx wrangler pages deploy . --project-name olympia-ide
+npx wrangler login
 ```
 
-首次执行会打开浏览器登录 Cloudflare。完成后在 Cloudflare 控制台：
-**Workers & Pages → olympia-ide → Custom domains** 绑定 `olympia.dpdns.org`。
-
-### 2. 创建 R2 下载桶并绑定 dl 子域
+### 1. 发布官网 + 精简版(已完成一次,之后每次发版重复)
 
 ```powershell
-npx wrangler r2 bucket create olympia-downloads
+# 1a. 把最新精简版拷进静态目录(此目录已 gitignore,不入库)
+copy ..\src-tauri\target\release\bundle\nsis\"Olympia IDE_0.1.0_x64-setup.exe" downloads\Olympia-IDE_0.1.0_x64-setup.exe
+
+# 1b. 发布
+npx wrangler pages deploy . --project-name olympia-ide --branch main
 ```
 
-控制台：**R2 → olympia-downloads → Settings → Custom Domains**
-绑定 `dl.olympia.dpdns.org`（域名同在 Cloudflare，一键签发证书）。
+发布后在控制台 **Workers & Pages → olympia-ide → Custom domains** 绑定 `olympia.dpdns.org`。
 
-### 3. 上传安装包
+### 2. 完整版走 R2
 
-构建产物位于 `frontend/src-tauri/target/release/bundle/nsis/`：
+1. 控制台 **R2 → Overview → Enable R2**(一次性开通,免费额度即可);
+2. `npx wrangler r2 bucket create olympia-downloads`;
+3. 控制台 **R2 → olympia-downloads → Settings → Custom Domains** 绑定 `dl.olympia.dpdns.org`;
+4. 上传完整版:
 
 ```powershell
-# 精简版（默认 tauri build 产物）
-npx wrangler r2 object put olympia-downloads/Olympia-IDE_0.1.0_x64-setup.exe ^
-  --file ..\src-tauri\target\release\bundle\nsis\Olympia IDE_0.1.0_x64-setup.exe
-
-# 完整版（tauri:full 产物，内置 MinGW 工具链）
 npx wrangler r2 object put olympia-downloads/Olympia-IDE_0.1.0_x64-full-setup.exe ^
-  --file ..\src-tauri\target\release\bundle\nsis\Olympia IDE_0.1.0_x64-full-setup.exe
+  --file ..\src-tauri\target\release\bundle\nsis\"Olympia IDE_0.1.0_x64-full-setup.exe"
 ```
 
-上传完成后，官网两个下载按钮即可用（链接已在 `index.html` 中写好）。
+上传后官网"完整版"按钮即生效(链接已写在 index.html)。
 
-### 4. 版本升级流程
+### 3. 版本升级流程
 
-1. `frontend/package.json` 与 `src-tauri/tauri.conf.json` 中升版本号；
+1. `src-tauri/tauri.conf.json` 中升 `version`（package.json 的版本号与发布无关）；
 2. `npm run tauri build`（精简版）与 `npm run tauri:full`（完整版）；
-3. 以新文件名上传 R2（保留旧版本供回滚），更新 `index.html` 中的链接与版本号；
-4. `npx wrangler pages deploy . --project-name olympia-ide` 重新发布官网。
+3. 更新 `index.html` 中的版本号与下载文件名，精简版按步骤 1 拷贝，完整版以新文件名上传 R2（保留旧版本供回滚）；
+4. `npx wrangler pages deploy . --project-name olympia-ide --branch main` 重新发布官网。
 
 ## 备注
 

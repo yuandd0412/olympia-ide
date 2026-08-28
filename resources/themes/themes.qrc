@@ -1,9 +1,0 @@
-<RCC>
-    <qresource prefix="/themes">
-        <file>OneDarkPro.qss</file>
-        <file>OneLight.qss</file>
-        <file>AmberDark.qss</file>
-        <file>AmberLight.qss</file>
-        <file>MistBlue.qss</file>
-    </qresource>
-</RCC>

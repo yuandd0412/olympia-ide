@@ -40,7 +40,9 @@
     "windows": {
       "nsis": {
         "installMode": "perMachine",
-        "languages": ["SimpChinese"]
+        "languages": ["SimpChinese"],
+        "sidebarImage": "installer/sidebar.bmp",
+        "headerImage": "installer/header.bmp"
       }
     }
   }

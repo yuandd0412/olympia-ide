@@ -4,9 +4,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src-tauri', 'target', 'release', 'bundle', 'nsis');
-const pkg = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'));
-const version = pkg.version;
+const here = path.dirname(fileURLToPath(import.meta.url));
+const dir = path.join(here, '..', 'src-tauri', 'target', 'release', 'bundle', 'nsis');
+// 版本号以 tauri.conf.json 为准（package.json 的 version 与发布版本无关）
+const conf = JSON.parse(fs.readFileSync(path.join(here, '..', 'src-tauri', 'tauri.conf.json'), 'utf8'));
+const version = conf.version;
 const src = path.join(dir, `Olympia IDE_${version}_x64-setup.exe`);
 const dest = path.join(dir, `Olympia IDE_${version}_x64-full-setup.exe`);
 

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Olympia IDE — 为 OI 而生的竞赛编程 IDE</title>
+  <meta name="description" content="Olympia IDE 是一款面向 OI / ACM 竞赛选手的桌面编程 IDE：内置编译评测、自动化对拍、题库训练错题本、真实比赛模式与 AI 竞赛教练，一站式本地闭环。" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23007acc'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='white' stroke-width='3.5'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="style.css" />
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+  <!-- ======= 导航 ======= -->
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="#top">
+        <span class="brand-mark">O</span>
+        <span class="brand-name">Olympia IDE</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#features">特性</a>
+        <a href="#showcase">界面</a>
+        <a href="#download">下载</a>
+        <a href="#roadmap">路线图</a>
+        <a class="nav-cta" href="#download">免费下载</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ======= 首屏 ======= -->
+  <section class="hero" id="top">
+    <div class="hero-glow" aria-hidden="true"></div>
+    <div class="hero-inner">
+      <p class="hero-badge"><span class="dot"></span>v0.1.0 · Windows x64 · 免费开源 (MIT)</p>
+      <h1>为 OI 而生的<br /><em>竞赛编程 IDE</em></h1>
+      <p class="hero-sub">
+        题库管理、编译评测、对拍验证、比赛模式与 AI 教练——
+        从读题到 AC，一站式本地闭环，不为环境配置浪费一分钟。
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#download">
+          <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M8 1v8.5L4.8 6.3 3.7 7.4 8 11.7l4.3-4.3-1.1-1.1L8 9.5V1H7v8.5L3.8 6.3 2.7 7.4 7 11.7V15h2v-3.3l4.3-4.3-1.1-1.1L9 9.5V1H8z"/></svg>
+          下载 Windows 安装包
+        </a>
+        <a class="btn btn-ghost" href="#features">了解特性 →</a>
+      </div>
+      <p class="hero-note">中文安装器 · 全中文界面 · 支持 Windows 10 / 11</p>
+
+      <!-- 仿真编辑器窗口 -->
+      <div class="window" role="img" aria-label="Olympia IDE 界面预览：左侧代码编辑器正在编辑 C++ 代码，下方评测面板显示 AC">
+        <div class="window-titlebar">
+          <span class="win-logo">O</span>
+          <span class="win-title">Olympia IDE</span>
+          <span class="win-controls" aria-hidden="true"><i></i><i></i><i class="close"></i></span>
+        </div>
+        <div class="window-tabbar">
+          <span class="tab active">P1001.cpp</span>
+          <span class="tab">brute.cpp</span>
+          <span class="tab-run">▶ 运行评测 <kbd>Ctrl+R</kbd></span>
+        </div>
+        <div class="window-body">
+          <div class="editor">
+            <ol>
+              <li><span class="k">#include</span> <span class="str">&lt;bits/stdc++.h&gt;</span></li>
+              <li><span class="k">using namespace</span> std;</li>
+              <li></li>
+              <li><span class="k">long long</span> <span class="fn">qpow</span>(<span class="k">long long</span> a, <span class="k">long long</span> b) {</li>
+              <li>    <span class="k">long long</span> res = <span class="num">1</span>;</li>
+              <li>    <span class="k">for</span> (; b; b &gt;&gt;= <span class="num">1</span>, a = a * a % mod)</li>
+              <li>        <span class="k">if</span> (b &amp; <span class="num">1</span>) res = res * a % mod;</li>
+              <li>    <span class="k">return</span> res;</li>
+              <li>}</li>
+              <li></li>
+              <li><span class="k">int</span> <span class="fn">main</span>() {</li>
+              <li>    <span class="cmt">// 快速幂求逆元，处理模意义下的除法</span></li>
+              <li>    cin &gt;&gt; n &gt;&gt; m;  mod = <span class="num">998244353</span>;</li>
+              <li>    cout &lt;&lt; qpow(n, m - <span class="num">2</span>) &lt;&lt; <span class="str">'\n'</span>;</li>
+              <li>}</li>
+            </ol>
+          </div>
+          <div class="runner">
+            <div class="runner-head">测试结果</div>
+            <div class="case pass"><span class="verdict">AC</span> 样例 1 · 2 ms</div>
+            <div class="case pass"><span class="verdict">AC</span> 样例 2 · 3 ms</div>
+            <div class="case pass"><span class="verdict">AC</span> 样例 3 · 2 ms</div>
+            <div class="runner-foot">✔ 全部通过 · 最长 3 ms / 1.8 MB</div>
+          </div>
+        </div>
+        <div class="window-status">
+          <span class="st-ok">MinGW 13.1.0 (x64) · C++17</span>
+          <span>P1001 · 1s / 256MB</span>
+          <span class="st-run">就绪 (Ctrl+R 运行评测)</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======= 特性 ======= -->
+  <section class="section" id="features">
+    <h2>为竞赛细节打磨的每一处</h2>
+    <p class="section-sub">不是通用编辑器加了个皮肤——评测、对拍、比赛锁，都是 OI 选手每天真实在用的东西。</p>
+    <div class="grid">
+      <article class="card reveal">
+        <div class="card-icon i-ac">✔</div>
+        <h3>内置极速评测</h3>
+        <p>多样例毫秒级比对，自动判定 AC / WA / TLE / MLE / RE，逐字符 diff 定位第一个不一致的输出。</p>
+      </article>
+      <article class="card reveal">
+        <div class="card-icon i-warn">⚔</div>
+        <h3>自动化对拍器</h3>
+        <p>内置随机数据生成器，批量对比待测解法与暴力正解，拍出构造数据的反例只需一键。</p>
+      </article>
+      <article class="card reveal">
+        <div class="card-icon i-accent">📚</div>
+        <h3>题库 · 训练 · 错题本</h3>
+        <p>本地题库沉淀题目与样例，训练计划追踪连续打卡，错题本按判定结果归档，赛后复盘有迹可循。</p>
+      </article>
+      <article class="card reveal">
+        <div class="card-icon i-warn">🏆</div>
+        <h3>真实比赛模式</h3>
+        <p>NOIP / CSP 式倒计时，比赛期间 AI 教练自动锁定；倒计时归零自动解锁，模拟纯粹赛场环境。</p>
+      </article>
+      <article class="card reveal">
+        <div class="card-icon i-accent">🤖</div>
+        <h3>AI 竞赛教练</h3>
+        <p>接入你自己的大模型 API：防剧透的思路提示、时空复杂度分析、边界 Bug 排查。平时是你的陪练，赛时懂得闭嘴。</p>
+      </article>
+      <article class="card reveal">
+        <div class="card-icon i-ac">🌙</div>
+        <h3>双主题 · 全中文</h3>
+        <p>One Dark Pro 深色沉浸，GitHub Light 清爽明快；安装器与界面全中文，键盘快捷键开箱即用。</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ======= 下载 ======= -->
+  <section class="section download" id="download">
+    <div class="dl-card reveal">
+      <h2>下载 Olympia IDE</h2>
+      <p class="dl-meta">v0.1.0 · Windows 10 / 11 · x64 · 约 6 MB · 中文安装器</p>
+      <!-- TODO: 首次 Release 后替换为 Releases 直链 -->
+      <a class="btn btn-primary btn-lg" href="#" title="正式发布后启用">
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 1v8.5L4.8 6.3 3.7 7.4 8 11.7l4.3-4.3-1.1-1.1L8 9.5V1H7v8.5L3.8 6.3 2.7 7.4 7 11.7V15h2v-3.3l4.3-4.3-1.1-1.1L9 9.5V1H8z"/></svg>
+        Windows x64 安装包
+      </a>
+      <p class="dl-note">安装需要管理员权限（全机安装），自动创建开始菜单与桌面快捷方式。</p>
+      <ul class="dl-reqs">
+        <li>系统自带 WebView2 运行时（Win 11 已内置，Win 10 缺失时安装器会提示）</li>
+        <li>需要本机安装 MinGW-w64 (G++) 工具链用于编译运行</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ======= 路线图 ======= -->
+  <section class="section" id="roadmap">
+    <h2>路线图</h2>
+    <p class="section-sub">项目处于活跃开发期，以下是近期的方向。</p>
+    <div class="timeline">
+      <div class="tl-item done reveal"><span class="tl-tag">已完成</span>核心闭环：编辑 · 评测 · 对拍 · 题库 · 比赛模式 · AI 教练</div>
+      <div class="tl-item done reveal"><span class="tl-tag">已完成</span>中文 NSIS 安装包与双主题系统</div>
+      <div class="tl-item reveal"><span class="tl-tag next">进行中</span>OJ 题目一键导入（洛谷 / Codeforces / AtCoder）</div>
+      <div class="tl-item reveal"><span class="tl-tag next">计划中</span>OJ 凭据管理与一键提交</div>
+      <div class="tl-item reveal"><span class="tl-tag plan">远期</span>便携版 · 更多主题 · 训练数据统计报表</div>
+    </div>
+  </section>
+
+  <!-- ======= 页脚 ======= -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="brand">
+        <span class="brand-mark">O</span>
+        <span class="brand-name">Olympia IDE</span>
+      </div>
+      <p>由 OI 选手，为 OI 选手打造。</p>
+      <p class="footer-meta">MIT License · <a href="#" title="仓库地址发布后启用">GitHub</a> · <a href="#top">回到顶部</a></p>
+    </div>
+  </footer>
+
+  <script>
+    // 滚动淡入：渐进增强（无 JS 时内容始终可见），遵循系统"减少动态效果"设置
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const els = document.querySelectorAll('.reveal');
+    if (reduced || !('IntersectionObserver' in window)) {
+      els.forEach(el => el.classList.add('in'));
+    } else {
+      const io = new IntersectionObserver(entries => {
+        entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+      }, { threshold: 0.12, rootMargin: '0px 0px -5% 0px' });
+      els.forEach(el => io.observe(el));
+      // 兜底：3 秒后仍未入场的元素直接显示，避免任何环境下内容丢失
+      setTimeout(() => els.forEach(el => el.classList.add('in')), 3000);
+    }
+  </script>
+</body>
+</html>

@@ -61,6 +61,8 @@ third_party/         vendor 库（gitignored，克隆后需打补丁，见 AGENT
 
 ## 文档
 
+官网落地页在 [website/index.html](website/index.html)（纯静态 HTML/CSS，零构建；本地预览：`python -m http.server 8080 --directory website`）。
+
 根级设计规格在 [docs/00-design-spec.md](docs/00-design-spec.md)；其余按编号组织于 `docs/`：
 产品（01）、设计系统（02）、页面规范（03）、编辑器（04）、测试结果（05）、welcome（06）、风险（07）、路线图（08）、术语表（09）、UI 风格指南（10），另有 `mockups/` 视觉原型。
 

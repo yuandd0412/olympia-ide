@@ -31,19 +31,22 @@ npx wrangler pages deploy . --project-name olympia-ide --branch main
 
 发布后在控制台 **Workers & Pages → olympia-ide → Custom domains** 绑定 `olympia.dpdns.org`。
 
-### 2. 完整版走 R2
+### 2. 完整版走 Gitee Release（国内直连快，无需支付方式）
 
-1. 控制台 **R2 → Overview → Enable R2**(一次性开通,免费额度即可);
-2. `npx wrangler r2 bucket create olympia-downloads`;
-3. 控制台 **R2 → olympia-downloads → Settings → Custom Domains** 绑定 `dl.olympia.dpdns.org`;
-4. 上传完整版:
+完整版 ~100 MB 级别，超出 Pages 单文件 25 MiB 上限；R2 开通需要账号绑定
+支付方式，因此默认走 Gitee（需实名认证，附件单文件上限 100 MB）。
 
-```powershell
-npx wrangler r2 object put olympia-downloads/Olympia-IDE_0.1.0_x64-full-setup.exe ^
-  --file ..\src-tauri\target\release\bundle\nsis\"Olympia IDE_0.1.0_x64-full-setup.exe"
-```
+> 前置：完整版产物必须先用 `scripts/strip-toolchain.py` 裁剪工具链后再
+> `npm run tauri:full`，否则 ~105 MB 超 Gitee 单文件上限（裁剪后实测 49 MB）。
 
-上传后官网"完整版"按钮即生效(链接已写在 index.html)。
+1. 注册 Gitee 并完成 **设置 → 实名认证**（身份证）；
+2. 新建**公开**仓库（如 `olympia-ide`，无需初始化 README）；
+3. 仓库页 → **创建发行版 (Releases)** → 标签 `v0.1.0` → 把完整版 exe 拖进附件 → 发布；
+4. 附件直链形如 `https://gitee.com/<owner>/olympia-ide/releases/download/v0.1.0/Olympia-IDE_0.1.0_x64-full-setup.exe`，
+   把它填进 `index.html` 的"完整版"按钮并重新 `pages deploy`。
+
+若 R2 日后开通，可改走 R2：`npx wrangler r2 bucket create olympia-downloads` →
+控制台 R2 → 桶 → Custom Domains 绑 `dl.olympia.dpdns.org` → 上传完整版 → 更新链接。
 
 ### 3. 版本升级流程
 

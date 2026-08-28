@@ -23,6 +23,13 @@ Desktop OI (Olympiad in Informatics) coding IDE: dark-mode-first, information-de
 - Generated dirs are already gitignored — never commit them: `frontend/node_modules`, `frontend/dist`, `frontend/src-tauri/target`.
 - Tests: no Rust unit tests yet; `cargo run --bin test_ingest` (cwd `frontend/src-tauri`) is an ingest smoke test. UI verification is manual for now.
 - Pitfall: files parsed by Tauri's config/capability system (e.g. `src-tauri/capabilities/default.json`) must be plain UTF-8 WITHOUT BOM — a stray BOM broke capability parsing once (fix commit `ff23c92`). Same class of bug caused the UTF-8 mojibake sweep across components (commit `20a2267`); the throwaway repair scripts live archived under `scripts/oneoff/`.
+
+### Toolchain Strategy (Dual Installer)
+
+- **Slim** (`npm run tauri build`, ~6 MB): on first run the onboarding wizard offers a one-click download of pinned MinGW 13.1.0 via `src-tauri/src/toolchain.rs` — TUNA mirror with download.qt.io fallback, sha256-verified, extracted to `~/.oleride/mingw64`. `detect_toolchain` probes bundled → appdata → settings path → PATH, in that order.
+- **Full** (`npm run tauri:full`, ~105 MB): embeds `src-tauri/vendor/mingw64/` (gitignored; extract the pinned 7z there) as a bundle resource next to the exe.
+- The two NSIS outputs share a filename (same productName); the full build auto-renames via `frontend/scripts/rename-full-installer.mjs`. Run slim last, or it gets overwritten.
+- Publishing: `website/DEPLOY.md` (Cloudflare Pages + R2, domain `olympia.dpdns.org`).
 - Known lint debt (2026-08-27): 6 residual oxlint warnings are INTENTIONAL — do not "fix" them mechanically.
   - `react(purity)` ×3 (`Date.now()` during render in ActivityBar / AiCoachPage / StatusBar-era gate logic): a pure fix needs a ticking contest-clock source or a store-level expiry sweep; replacing with `contestEndTime !== null` alone would leave the AI lock engaged forever after a restart past an expired persisted deadline.
   - `react(set-state-in-effect)` ×3 (ContestBar countdown and similar timer syncs): existing pattern works; converting to derived state changes render timing of the countdown.

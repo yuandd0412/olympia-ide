@@ -22,6 +22,9 @@ _deps/
 # Vendored third-party (re-cloneable)
 third_party/
 
+# Downloaded toolchain used by the "full" installer build (frontend/src-tauri)
+frontend/src-tauri/vendor/
+
 # IDE / editor
 .vscode/
 .idea/

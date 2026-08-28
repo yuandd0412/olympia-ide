@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:full": "tauri build --config src-tauri/tauri.full.conf.json && node scripts/rename-full-installer.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

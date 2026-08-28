@@ -1,7 +1,7 @@
-# Oler IDE v2 — Documentation
+# Olympia IDE — Documentation
 
 This directory contains the **product, design, and engineering docs** for
-Oler IDE v2. It is the single source of truth that the next agent reads
+Olympia IDE (repo codename `oler-ide-v2`). It is the single source of truth that the next agent reads
 before changing any code in `src/`, `cmake/`, or `resources/`.
 
 The 13 files are organised into 9 sub-directories. Each sub-directory

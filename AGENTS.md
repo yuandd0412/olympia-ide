@@ -1,4 +1,6 @@
-# Oler IDE v2 — Project Agent Guide
+# Olympia IDE — Project Agent Guide
+
+> Repo folder `oler-ide-v2` keeps the legacy v2 codename; the product name everywhere user-facing is **Olympia IDE**.
 
 ## Project at a Glance
 Desktop OI (Olympiad in Informatics) coding IDE: dark-mode-first, information-dense, built-in compile/run pipeline, problem ingest, stress tester, and AI coach. The repo carries TWO codebases:

@@ -156,6 +156,7 @@ pub fn run() {
             submit_problem,
             check_syntax,
             open_url,
+            runner::run_in_console,
             toolchain::detect_toolchain,
             toolchain::install_toolchain
         ])
@@ -191,8 +192,11 @@ async fn check_syntax(
     cmd_args.push("-fdiagnostics-color=never".to_string());
     cmd_args.push(src_path.to_string_lossy().to_string());
 
-    let output = tokio::process::Command::new(&compiler_path)
-        .args(&cmd_args)
+    let mut syntax_cmd = tokio::process::Command::new(&compiler_path);
+    syntax_cmd.args(&cmd_args);
+    #[cfg(windows)]
+    syntax_cmd.creation_flags(0x0800_0000);
+    let output = syntax_cmd
         .output()
         .await
         .map_err(|e| e.to_string())?;

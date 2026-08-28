@@ -56,8 +56,10 @@ fn status(variant: &str, gpp: Option<PathBuf>, version: Option<String>) -> Toolc
 }
 
 async fn probe_version(gpp: &str) -> Option<String> {
-    let out = tokio::process::Command::new(gpp)
-        .arg("--version")
+    let mut cmd = tokio::process::Command::new(gpp);
+    cmd.arg("--version");
+    crate::runner::headless(&mut cmd);
+    let out = cmd
         .output()
         .await
         .ok()?;

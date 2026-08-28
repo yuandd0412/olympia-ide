@@ -389,6 +389,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ isRunning: true });
 
     try {
+      // 终端优先: Dev-C++ style — hidden compile, then pop an interactive CMD window
+      if (settings.preferTerminalRun) {
+        await tauriApi.runConsole(
+          activeTab.code,
+          settings.compilerPath,
+          settings.compilerFlags
+        );
+        set({ isRunning: false });
+        return;
+      }
       const res = await tauriApi.runCode(
         activeTab.code,
         activeTab.testcases,

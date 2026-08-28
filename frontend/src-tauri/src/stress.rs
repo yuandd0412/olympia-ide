@@ -1,4 +1,5 @@
 use crate::models::{StressRoundResult, StressTestResult};
+use crate::runner::headless;
 use std::path::PathBuf;
 use std::process::Stdio;
 use tokio::io::AsyncWriteExt;
@@ -43,6 +44,7 @@ async fn compile_target(
         cmd.arg(f);
     }
     cmd.arg(&src_path).arg("-o").arg(&exe_path);
+    headless(&mut cmd);
 
     let output = cmd
         .output()
@@ -71,6 +73,7 @@ async fn run_binary_with_input(
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    headless(&mut cmd);
 
     let mut child = cmd
         .spawn()

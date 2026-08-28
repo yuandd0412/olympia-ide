@@ -171,6 +171,15 @@ export const tauriApi = {
     return await invoke<ToolchainStatus>('detect_toolchain');
   },
 
+  /** Dev-C++ style run: compile headlessly, then open an interactive CMD window. */
+  async runConsole(sourceCode: string, compilerPath?: string, flags?: string[]): Promise<string> {
+    return await invoke<string>('run_in_console', {
+      sourceCode,
+      compilerPath,
+      flags,
+    });
+  },
+
   /** Downloads (with CN mirror fallback), verifies and extracts the pinned MinGW toolchain. */
   async installToolchain(): Promise<ToolchainStatus> {
     return await invoke<ToolchainStatus>('install_toolchain');

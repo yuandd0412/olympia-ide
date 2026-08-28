@@ -351,7 +351,7 @@ export const OnboardingWizard: React.FC = () => {
                     </div>
                     <div className="flex flex-col items-center text-center gap-1">
                       <span className="font-bold text-xs text-[var(--text-primary)]">终端优先</span>
-                      <span className="text-[11px] text-[var(--text-tertiary)]">使用内置交互式控制台<br/>手动输入与调试测试点</span>
+                      <span className="text-[11px] text-[var(--text-tertiary)]">点击运行自动弹出 CMD 窗口<br/>交互式输入输出 (Dev-C++ 风格)</span>
                     </div>
                   </motion.button>
                 </div>

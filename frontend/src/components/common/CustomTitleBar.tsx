@@ -32,9 +32,10 @@ export const CustomTitleBar: React.FC = () => {
     >
       {/* Left: App Logo / Title */}
       <div className="flex items-center px-3 gap-2 pointer-events-none">
-        <div className="w-4 h-4 rounded bg-[var(--accent)] flex items-center justify-center text-[10px] font-bold text-white">
-          O
-        </div>
+        <svg width="17" height="17" viewBox="0 0 512 512" aria-hidden="true" className="drop-shadow-[0_0_6px_rgba(0,122,204,0.5)]">
+          <path d="M 294.8 111.1 A 150 150 0 1 0 400.9 217.2" fill="none" stroke="#2f9ce8" strokeWidth="56" strokeLinecap="round" />
+          <path d="M 170 266 L 243 340 L 350 205" fill="none" stroke="#34c759" strokeWidth="56" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
         <span className="text-xs font-semibold text-[var(--text-secondary)]">Olympia IDE</span>
       </div>
 

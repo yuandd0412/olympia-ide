@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { save as saveFileDialogApi } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
 import type {
   AppSettings,
   ChatMessage,
@@ -178,6 +180,19 @@ export const tauriApi = {
       compilerPath,
       flags,
     });
+  },
+
+  /** 弹出系统"保存文件"对话框;返回所选绝对路径,取消返回 null */
+  async saveFileDialog(defaultName: string): Promise<string | null> {
+    const path = await saveFileDialogApi({
+      defaultPath: defaultName,
+      filters: [{ name: 'C++ 源文件', extensions: ['cpp', 'cc', 'cxx', 'h', 'hpp'] }],
+    });
+    return path ?? null;
+  },
+
+  async writeFile(path: string, contents: string): Promise<void> {
+    await writeTextFile(path, contents);
   },
 
   /** Downloads (with CN mirror fallback), verifies and extracts the pinned MinGW toolchain. */

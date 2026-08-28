@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityBar } from './components/common/ActivityBar';
 import { StatusBar } from './components/common/StatusBar';
 import { EditorTabBar } from './components/editor/EditorTabBar';
@@ -21,7 +21,16 @@ import { Group as PanelGroup, Panel, Separator as PanelResizeHandle, useDefaultL
 
 export const App: React.FC = () => {
   const { activeNav, setActiveNav, loadInitialData, runCodeAction, settings, hydrated } = useAppStore();
-  const [showViewer, setShowViewer] = useState(true);
+  const viewerRef = useRef<{ collapse: () => void; expand: () => void } | null>(null);
+  const [viewerCollapsed, setViewerCollapsed] = useState(false);
+  const collapseViewer = () => {
+    setViewerCollapsed(true);
+    viewerRef.current?.collapse();
+  };
+  const expandViewer = () => {
+    setViewerCollapsed(false);
+    viewerRef.current?.expand();
+  };
 
   const horizontalLayout = useDefaultLayout({ id: 'olympia-layout-horizontal', storage: localStorage });
   const verticalLayout = useDefaultLayout({ id: 'olympia-layout-vertical', storage: localStorage });
@@ -82,7 +91,7 @@ export const App: React.FC = () => {
       const file = e.dataTransfer.files[0];
       const url = URL.createObjectURL(file);
       useAppStore.getState().setViewerPdfUrl(url);
-      setShowViewer(true);
+      expandViewer();
       setActiveNav('editor');
     }
   };
@@ -128,30 +137,37 @@ export const App: React.FC = () => {
                   orientation="horizontal" 
                   className="w-full h-full"
                 >
-                  {showViewer && (
-                    <>
-                      <Panel id="problem-viewer" defaultSize="35%" minSize="20%" maxSize="60%" className="h-full">
-                        <ProblemViewerPanel onClose={() => setShowViewer(false)} />
-                      </Panel>
-                      <PanelResizeHandle className="w-1 bg-[var(--border)] hover:bg-[var(--accent)] transition-all cursor-col-resize z-50 relative group flex items-center justify-center">
-                        <div className="w-0.5 h-8 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover:opacity-100 group-hover:bg-[var(--accent)]" />
-                      </PanelResizeHandle>
-                    </>
+                  <Panel
+                    id="problem-viewer"
+                    panelRef={viewerRef as never}
+                    defaultSize="35%"
+                    minSize="20%"
+                    maxSize="60%"
+                    collapsible
+                    collapsedSize="0"
+                    className="h-full"
+                  >
+                    <ProblemViewerPanel onClose={collapseViewer} />
+                  </Panel>
+                  {!viewerCollapsed && (
+                    <PanelResizeHandle className="w-1 bg-[var(--border)] hover:bg-[var(--accent)] transition-all cursor-col-resize z-50 relative group flex items-center justify-center">
+                      <div className="w-0.5 h-8 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover:opacity-100 group-hover:bg-[var(--accent)]" />
+                    </PanelResizeHandle>
                   )}
 
                   <Panel id="editor-main" minSize="30%" className="h-full flex flex-col min-w-0">
                     {/* Editor Top Bar */}
                     <div className="flex items-center w-full relative">
-                      {!showViewer && (
-                        <button 
-                          onClick={() => setShowViewer(true)} 
+                      {viewerCollapsed && (
+                        <button
+                          onClick={expandViewer}
                           className="absolute left-1 top-1/2 -translate-y-1/2 z-10 p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] cursor-pointer"
                           title="打开题面阅读器"
                         >
                           <PanelLeftOpen className="w-4 h-4" />
                         </button>
                       )}
-                      <div className={'flex-1 ' + (!showViewer ? 'pl-8' : '')}>
+                      <div className={'flex-1 ' + (viewerCollapsed ? 'pl-8' : '')}>
                         <EditorTabBar />
                       </div>
                     </div>

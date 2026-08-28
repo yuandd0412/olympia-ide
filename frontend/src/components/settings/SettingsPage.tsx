@@ -416,6 +416,39 @@ export const SettingsPage: React.FC = () => {
               className="w-full p-2.5 rounded-xl border text-xs font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
             />
           </div>
+
+          <div className="md:col-span-2">
+            <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1.5">
+              运行模式
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => updateField('preferTerminalRun', false)}
+                className={
+                  'p-2.5 rounded-xl border-2 text-xs font-semibold transition-all cursor-pointer ' +
+                  (!form.preferTerminalRun
+                    ? 'border-[var(--accent)] bg-[var(--accent-subtle)] text-[var(--text-primary)]'
+                    : 'border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] opacity-70 hover:opacity-100')
+                }
+              >
+                样例优先（内置多测例评测）
+              </button>
+              <button
+                onClick={() => updateField('preferTerminalRun', true)}
+                className={
+                  'p-2.5 rounded-xl border-2 text-xs font-semibold transition-all cursor-pointer ' +
+                  (form.preferTerminalRun
+                    ? 'border-[var(--accent)] bg-[var(--accent-subtle)] text-[var(--text-primary)]'
+                    : 'border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] opacity-70 hover:opacity-100')
+                }
+              >
+                终端优先（弹出 CMD 窗口运行）
+              </button>
+            </div>
+            <p className="text-[11px] text-[var(--text-tertiary)] mt-1.5">
+              终端优先：编译后自动弹出系统命令行窗口交互运行，程序结束后按任意键关闭（Dev-C++ 风格）。
+            </p>
+          </div>
         </div>
       </div>
 

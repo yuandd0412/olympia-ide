@@ -121,6 +121,8 @@ export interface CodeTab {
   title: string;
   code: string;
   isModified: boolean;
+  /** 保存到磁盘的绝对路径；未落盘过时为空 */
+  filePath?: string;
   problemId?: string;
   testcases: TestCaseInput[];
   runResult?: RunResult | null;

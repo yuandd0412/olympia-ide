@@ -93,7 +93,7 @@ interface AppState {
   openNewTab: (title?: string, code?: string, problemId?: string, testcases?: TestCaseInput[]) => string;
   closeTab: (tabId: string) => void;
   closeAllTabs: () => void;
-  saveActiveTab: () => Promise<void>;
+  saveActiveTab: () => Promise<boolean>;
   setActiveTabId: (tabId: string) => void;
   updateActiveCode: (code: string) => void;
   updateTabTitle: (tabId: string, title: string) => void;
@@ -320,12 +320,28 @@ export const useAppStore = create<AppState>((set, get) => ({
   saveActiveTab: async () => {
     const { tabs, activeTabId } = get();
     const activeTab = tabs.find((t) => t.id === activeTabId);
-    if (!activeTab) return;
+    if (!activeTab) return false;
 
-    const updated = tabs.map((t) =>
-      t.id === activeTabId ? { ...t, isModified: false } : t
-    );
-    set({ tabs: updated });
+    try {
+      // 首次保存（或未落盘过的标签页）：弹出系统对话框选择保存位置
+      let path: string | null | undefined = activeTab.filePath;
+      if (!path) {
+        path = await tauriApi.saveFileDialog(activeTab.title.endsWith('.cpp') ? activeTab.title : `${activeTab.title}.cpp`);
+        if (!path) return false; // 用户取消
+      }
+      await tauriApi.writeFile(path, activeTab.code);
+
+      const fileName = path.split(/[\\/]/).pop() || activeTab.title;
+      const savedPath = path;
+      const updated = tabs.map((t) =>
+        t.id === activeTabId ? { ...t, isModified: false, filePath: savedPath, title: fileName } : t
+      );
+      set({ tabs: updated });
+      return true;
+    } catch (err) {
+      console.error('Failed to save file:', err);
+      return false;
+    }
   },
 
   setActiveTabId: (tabId) => set({ activeTabId: tabId }),
@@ -385,6 +401,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { tabs, activeTabId, settings, activeProblem } = get();
     const activeTab = tabs.find((t) => t.id === activeTabId);
     if (!activeTab) return;
+
+    // 编译 = 保存：脏标签页（或从未落盘的标签页）先写盘，用户取消保存则中止运行
+    if (activeTab.isModified || !activeTab.filePath) {
+      const saved = await get().saveActiveTab();
+      if (!saved) return;
+    }
 
     set({ isRunning: true });
 

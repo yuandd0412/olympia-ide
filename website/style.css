@@ -205,6 +205,7 @@ body {
 .window {
   max-width: 880px;
   margin: 64px auto 0;
+  scroll-margin-top: 90px;
   background: var(--bg-base);
   border: 1px solid #3a3a3a;
   border-radius: 12px;

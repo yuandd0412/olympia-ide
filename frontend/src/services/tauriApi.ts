@@ -1,8 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import type {
   AppSettings,
   ChatMessage,
-  
+
   Problem,
   RunResult,
   SolveRecord,
@@ -10,6 +11,23 @@ import type {
   TestCaseInput,
   TrainingSession,
 } from '../types';
+
+export interface ToolchainStatus {
+  /** "bundled" | "appdata" | "system" | "none" */
+  variant: string;
+  gppPath: string | null;
+  version: string | null;
+}
+
+export interface ToolchainProgress {
+  phase: 'download' | 'verify' | 'extract';
+  downloaded: number;
+  total: number | null;
+}
+
+export function onToolchainProgress(handler: (p: ToolchainProgress) => void) {
+  return listen<ToolchainProgress>('olympia://toolchain-progress', (e) => handler(e.payload));
+}
 
 export const tauriApi = {
   async getSettings(): Promise<AppSettings> {
@@ -147,6 +165,15 @@ export const tauriApi = {
       apiKey,
       model,
     });
+  },
+
+  async detectToolchain(): Promise<ToolchainStatus> {
+    return await invoke<ToolchainStatus>('detect_toolchain');
+  },
+
+  /** Downloads (with CN mirror fallback), verifies and extracts the pinned MinGW toolchain. */
+  async installToolchain(): Promise<ToolchainStatus> {
+    return await invoke<ToolchainStatus>('install_toolchain');
   },
 };
 

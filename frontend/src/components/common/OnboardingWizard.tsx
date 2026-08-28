@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '../../stores/useAppStore';
-import { Check, ChevronRight, Moon, Sun, Key, Code2, Sparkles, Loader2, TerminalSquare, Swords, Flame } from 'lucide-react';
+import { Check, ChevronRight, Moon, Sun, Key, Code2, Sparkles, Loader2, TerminalSquare, Swords, Flame, Download, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { tauriApi, onToolchainProgress, type ToolchainStatus } from '../../services/tauriApi';
 import type { ThemeType } from '../../types';
 
 export const OnboardingWizard: React.FC = () => {
@@ -15,6 +16,53 @@ export const OnboardingWizard: React.FC = () => {
   const [apiKey, setApiKey] = useState(settings.aiApiKey || '');
   const [preferTerminal, setPreferTerminal] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Toolchain (compiler environment) step
+  const TC_STEP = 1;
+  const [tc, setTc] = useState<ToolchainStatus | null>(null);
+  const [tcBusy, setTcBusy] = useState(false);
+  const [tcPhase, setTcPhase] = useState<'idle' | 'download' | 'verify' | 'extract'>('idle');
+  const [tcPct, setTcPct] = useState(0);
+  const [tcErr, setTcErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    const un = onToolchainProgress((p) => {
+      setTcPhase(p.phase);
+      if (p.phase === 'download' && p.total) {
+        setTcPct(Math.min(100, Math.round((p.downloaded * 100) / p.total)));
+      }
+    });
+    return () => { un.then((f) => f()); };
+  }, []);
+
+  useEffect(() => {
+    if (step !== TC_STEP || tc || tcBusy) return;
+    setTcBusy(true);
+    tauriApi.detectToolchain()
+      .then(setTc)
+      .catch(() => setTc({ variant: 'none', gppPath: null, version: null }))
+      .finally(() => setTcBusy(false));
+  }, [step, tc, tcBusy]);
+
+  const handleInstallToolchain = async () => {
+    setTcBusy(true);
+    setTcErr(null);
+    setTcPct(0);
+    setTcPhase('download');
+    try {
+      const s = await tauriApi.installToolchain();
+      setTc(s);
+      // Backend already persisted the path when it replaced the bare "g++";
+      // mirror it into the in-memory store so wizard finish won't overwrite it.
+      if (s.gppPath && (s.variant === 'appdata' || s.variant === 'bundled')) {
+        await updateSettings({ compilerPath: s.gppPath });
+      }
+    } catch (e: any) {
+      setTcErr(String(e?.message || e));
+    } finally {
+      setTcBusy(false);
+    }
+  };
 
   const steps = [
     {
@@ -32,6 +80,10 @@ export const OnboardingWizard: React.FC = () => {
           </div>
         </motion.div>
       )
+    },
+    {
+      title: '配置编译环境',
+      subtitle: 'Olympia IDE 需要 MinGW-w64 (G++) 工具链来编译与评测代码，检测缺失时可在本步一键安装。'
     },
     {
       title: '选择主题风格',
@@ -139,8 +191,68 @@ export const OnboardingWizard: React.FC = () => {
                 </div>
               )}
 
-              {/* Step 1: Theme Selector */}
+              {/* Step 1: Toolchain */}
               {step === 1 && (
+                <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                  {tcBusy && !tc && tcPhase === 'idle' && (
+                    <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                      <Loader2 className="w-4 h-4 animate-spin text-[var(--accent)]" />
+                      <span>正在检测编译环境...</span>
+                    </div>
+                  )}
+
+                  {tc && tc.variant !== 'none' && (
+                    <div className="w-full max-w-md p-5 rounded-2xl border border-[#34c759]/30 bg-[#34c759]/10 flex flex-col items-center gap-2 text-center">
+                      <div className="p-2 rounded-xl bg-[#34c759]/15 text-[#34c759]"><CheckCircle2 className="w-6 h-6" /></div>
+                      <p className="text-xs font-bold text-[var(--text-primary)]">编译环境已就绪</p>
+                      {tc.version && <p className="text-[11px] font-mono text-[var(--text-secondary)]">{tc.version}</p>}
+                      {tc.gppPath && <p className="text-[10px] font-mono text-[var(--text-tertiary)] break-all">{tc.gppPath}</p>}
+                    </div>
+                  )}
+
+                  {tc && tc.variant === 'none' && (
+                    <div className="w-full max-w-md p-5 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] flex flex-col items-center gap-3 text-center">
+                      <div className="p-2 rounded-xl bg-[var(--accent-subtle)] text-[var(--accent)]"><Download className="w-6 h-6" /></div>
+                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                        未检测到可用的 G++ 工具链。可自动下载 <span className="font-mono font-semibold text-[var(--text-primary)]">MinGW 13.1.0</span>（约 69 MB，国内镜像直连），安装到用户目录并自动完成配置。
+                      </p>
+                      {tcBusy ? (
+                        <div className="w-full flex flex-col gap-2">
+                          <div className="w-full h-1.5 rounded-full bg-[var(--bg-base)] overflow-hidden">
+                            <div
+                              className={'h-full rounded-full transition-all ' + (tcPhase === 'download' ? 'bg-[var(--accent)]' : 'bg-[#ff9f0a]')}
+                              style={{ width: tcPhase === 'download' ? `${Math.max(4, tcPct)}%` : '100%', opacity: tcPhase === 'download' ? 1 : 0.5 }}
+                            />
+                          </div>
+                          <p className="text-[11px] text-[var(--text-tertiary)] font-mono">
+                            {tcPhase === 'download' && `下载中 ${tcPct}%`}
+                            {tcPhase === 'verify' && '校验完整性 (sha256)...'}
+                            {tcPhase === 'extract' && '解压工具链...'}
+                          </p>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={handleInstallToolchain}
+                          className="flex items-center gap-2 bg-[var(--accent)] hover:brightness-110 text-white px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-lg shadow-[var(--accent)]/20"
+                        >
+                          <Download className="w-3.5 h-3.5" /> 自动下载并安装
+                        </button>
+                      )}
+                      <p className="text-[10px] text-[var(--text-tertiary)]">也可以跳过此步，稍后在「偏好设置」中手动指定编译器路径。</p>
+                    </div>
+                  )}
+
+                  {tcErr && (
+                    <div className="w-full max-w-md p-3 rounded-xl border border-[#ff453a]/30 bg-[#ff453a]/10 flex items-center gap-2 text-[11px] text-[#ff453a]">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span className="flex-1 text-left break-all">{tcErr}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step 2: Theme Selector */}
+              {step === 2 && (
                 <div className="flex-1 flex items-center justify-center gap-6">
                   <motion.button
                     whileHover={{ scale: 1.02 }}
@@ -174,7 +286,7 @@ export const OnboardingWizard: React.FC = () => {
                 </div>
               )}
 
-              {/* Step 2: Code Template */}
+              {/* Step 3: Code Template */}
               {step === 2 && (
                 <div className="flex-1 flex flex-col gap-4">
                   <label className="flex items-center gap-3 p-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] cursor-pointer select-none">
@@ -210,7 +322,7 @@ export const OnboardingWizard: React.FC = () => {
                 </div>
               )}
 
-              {/* Step 3: Run Mode */}
+              {/* Step 4: Run Mode */}
               {step === 3 && (
                 <div className="flex-1 flex items-center justify-center gap-6">
                   <motion.button
@@ -245,7 +357,7 @@ export const OnboardingWizard: React.FC = () => {
                 </div>
               )}
 
-              {/* Step 4: API Key */}
+              {/* Step 5: API Key */}
               {step === 4 && (
                 <div className="flex-1 flex flex-col gap-4 justify-center">
                   <div className="p-6 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] flex flex-col gap-3.5">

@@ -1,7 +1,7 @@
 use crate::models::{AppSettings, Problem, Sample, SolveRecord, TrainingSession};
 use std::path::PathBuf;
 
-fn data_dir() -> PathBuf {
+pub fn data_dir() -> PathBuf {
     let base = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     let p = base.join(".oleride");
     if !p.exists() {

@@ -4,6 +4,7 @@ pub mod models;
 pub mod runner;
 pub mod storage;
 pub mod stress;
+pub mod toolchain;
 
 use models::{
     AppSettings, Problem, RunResult, SolveRecord, StressTestResult, TestCaseInput,
@@ -154,7 +155,9 @@ pub fn run() {
             chat_with_ai,
             submit_problem,
             check_syntax,
-            open_url
+            open_url,
+            toolchain::detect_toolchain,
+            toolchain::install_toolchain
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

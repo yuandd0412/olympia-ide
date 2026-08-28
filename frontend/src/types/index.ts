@@ -128,6 +128,25 @@ export interface CodeTab {
   runResult?: RunResult | null;
 }
 
+/** 练习记录（题集/比赛）内的一道题：以 PDF 页码区间界定 */
+export interface PracticeProblem {
+  id: string;
+  title: string;
+  pageStart: number;
+  pageEnd: number;
+}
+
+/** 从 PDF 导入产生的练习记录：比赛（含截止时间）或题集 */
+export interface PracticeRecord {
+  id: string;
+  name: string;
+  type: 'contest' | 'problem-set';
+  fileName?: string;
+  problems: PracticeProblem[];
+  createdAt: string;
+  contestEndTime?: number | null;
+}
+
 export interface StressRoundResult {
   round: number;
   passed: boolean;

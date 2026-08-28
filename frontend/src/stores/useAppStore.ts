@@ -4,11 +4,31 @@ import type {
   AppSettings,
   CodeTab,
   NavTab,
+  PracticeProblem,
+  PracticeRecord,
   Problem,
   SolveRecord,
   StressTestResult,
   TestCaseInput,
 } from '../types';
+
+const RECORDS_KEY = 'olympia-practice-records';
+const ACTIVE_RECORD_KEY = 'olympia-active-record';
+
+const loadRecords = (): PracticeRecord[] => {
+  try {
+    const raw = localStorage.getItem(RECORDS_KEY);
+    return raw ? (JSON.parse(raw) as PracticeRecord[]) : [];
+  } catch {
+    return [];
+  }
+};
+
+const persistRecords = (records: PracticeRecord[]) => {
+  try {
+    localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
+  } catch {}
+};
 
 const DEFAULT_BRUTE_CPP = `#include <iostream>
 using namespace std;
@@ -125,6 +145,17 @@ interface AppState {
   setViewerPdfUrl: (url: string | null) => void;
   setViewerProblem: (problem: Problem | null) => void;
 
+  // Practice Records (题集 / 比赛)
+  practiceRecords: PracticeRecord[];
+  activeRecordId: string | null;
+  createPracticeRecord: (rec: PracticeRecord) => void;
+  updatePracticeRecord: (id: string, patch: Partial<PracticeRecord>) => void;
+  deletePracticeRecord: (id: string) => void;
+  setActiveRecordId: (id: string | null) => void;
+  addPracticeProblem: (recordId: string, problem: PracticeProblem) => void;
+  updatePracticeProblem: (recordId: string, problemId: string, patch: Partial<PracticeProblem>) => void;
+  removePracticeProblem: (recordId: string, problemId: string) => void;
+
   // Filters
   setSearchQuery: (q: string) => void;
   setSelectedDifficulty: (d: string) => void;
@@ -207,6 +238,63 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   isDetailModalOpen: false,
   modalProblem: null,
+
+  practiceRecords: loadRecords(),
+  activeRecordId: localStorage.getItem(ACTIVE_RECORD_KEY) || null,
+
+  createPracticeRecord: (rec) => {
+    const records = [rec, ...get().practiceRecords];
+    persistRecords(records);
+    localStorage.setItem(ACTIVE_RECORD_KEY, rec.id);
+    set({ practiceRecords: records, activeRecordId: rec.id });
+  },
+
+  updatePracticeRecord: (id, patch) => {
+    const records = get().practiceRecords.map((r) => (r.id === id ? { ...r, ...patch } : r));
+    persistRecords(records);
+    set({ practiceRecords: records });
+  },
+
+  deletePracticeRecord: (id) => {
+    const records = get().practiceRecords.filter((r) => r.id !== id);
+    persistRecords(records);
+    const activeRecordId = get().activeRecordId === id ? null : get().activeRecordId;
+    if (activeRecordId === null) localStorage.removeItem(ACTIVE_RECORD_KEY);
+    set({ practiceRecords: records, activeRecordId });
+  },
+
+  setActiveRecordId: (id) => {
+    if (id === null) localStorage.removeItem(ACTIVE_RECORD_KEY);
+    else localStorage.setItem(ACTIVE_RECORD_KEY, id);
+    set({ activeRecordId: id });
+  },
+
+  addPracticeProblem: (recordId, problem) => {
+    const records = get().practiceRecords.map((r) =>
+      r.id === recordId ? { ...r, problems: [...r.problems, problem] } : r
+    );
+    persistRecords(records);
+    set({ practiceRecords: records });
+  },
+
+  updatePracticeProblem: (recordId, problemId, patch) => {
+    const records = get().practiceRecords.map((r) =>
+      r.id === recordId
+        ? { ...r, problems: r.problems.map((p) => (p.id === problemId ? { ...p, ...patch } : p)) }
+        : r
+    );
+    persistRecords(records);
+    set({ practiceRecords: records });
+  },
+
+  removePracticeProblem: (recordId, problemId) => {
+    const records = get().practiceRecords.map((r) =>
+      r.id === recordId ? { ...r, problems: r.problems.filter((p) => p.id !== problemId) } : r
+    );
+    persistRecords(records);
+    set({ practiceRecords: records });
+  },
+
   searchQuery: '',
   selectedDifficulty: '全部',
   selectedVerdict: '全部',

@@ -11,6 +11,7 @@ import type {
   StressTestResult,
   TestCaseInput,
 } from '../types';
+import type { ExtractedProblem } from '../services/pdfExtract';
 
 const RECORDS_KEY = 'olympia-practice-records';
 const ACTIVE_RECORD_KEY = 'olympia-active-record';
@@ -155,6 +156,7 @@ interface AppState {
   addPracticeProblem: (recordId: string, problem: PracticeProblem) => void;
   updatePracticeProblem: (recordId: string, problemId: string, patch: Partial<PracticeProblem>) => void;
   removePracticeProblem: (recordId: string, problemId: string) => void;
+  importPdfProblems: (record: PracticeRecord, extracted: ExtractedProblem[]) => Promise<void>;
 
   // Filters
   setSearchQuery: (q: string) => void;
@@ -293,6 +295,46 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     persistRecords(records);
     set({ practiceRecords: records });
+  },
+
+  importPdfProblems: async (record, extracted) => {
+    const short = record.id.replace(/-/g, '').slice(0, 6);
+    const prefix = record.type === 'contest' ? `CT-${short}-` : `PS-${short}-`;
+    // 去重：同一记录重复识别时，先移除旧的 PDF 题目条目
+    const kept = get().problems.filter((p) => !p.id.startsWith(prefix));
+    const newProblems: Problem[] = extracted.map((p, i) => ({
+      id: `${prefix}${i + 1}`,
+      title: p.title,
+      oj: 'PDF',
+      difficulty: '暂无',
+      tags: [record.name],
+      timeLimitMs: 1000,
+      memoryLimitKb: 262144,
+      descriptionMd: p.text || '（该题文本提取为空，请通过页码跳转查看 PDF 原文。）',
+      inputFormat: '',
+      outputFormat: '',
+      samples: [],
+      hint: '',
+      sourceUrl: '',
+      isFavorite: false,
+    }));
+    const problems = [...kept, ...newProblems];
+    try {
+      await tauriApi.saveProblemsList(problems);
+    } catch (err) {
+      console.error('Failed to persist PDF problems:', err);
+    }
+    const mapped = extracted.map((p, i) => ({
+      id: newProblems[i].id,
+      title: p.title,
+      pageStart: p.pageStart,
+      pageEnd: p.pageEnd,
+    }));
+    const records = get().practiceRecords.map((r) =>
+      r.id === record.id ? { ...r, problems: mapped } : r
+    );
+    persistRecords(records);
+    set({ problems, practiceRecords: records });
   },
 
   searchQuery: '',

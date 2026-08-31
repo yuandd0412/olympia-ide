@@ -24,6 +24,7 @@ import {
   Layers
 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
+import { extractPdfProblems, type ExtractedProblem } from '../../services/pdfExtract';
 import type { PracticeRecord } from '../../types';
 
 interface ProblemViewerPanelProps {
@@ -46,6 +47,7 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
     addPracticeProblem,
     updatePracticeProblem,
     removePracticeProblem,
+    importPdfProblems,
     setContestEndTime,
   } = useAppStore();
 
@@ -60,6 +62,23 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
   const [importName, setImportName] = useState('');
   const [importDuration, setImportDuration] = useState(120);
   const [importedFileName, setImportedFileName] = useState('');
+  const [extracted, setExtracted] = useState<ExtractedProblem[] | null>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extractErr, setExtractErr] = useState<string | null>(null);
+
+  const runExtraction = async () => {
+    if (!viewerPdfUrl) return;
+    setExtracting(true);
+    setExtractErr(null);
+    try {
+      const { problems: ex } = await extractPdfProblems(viewerPdfUrl);
+      setExtracted(ex);
+    } catch (e: any) {
+      setExtractErr(String(e?.message || e));
+    } finally {
+      setExtracting(false);
+    }
+  };
 
   const activeRecord = practiceRecords.find((r) => r.id === activeRecordId) || null;
   const sortedProblems = activeRecord
@@ -74,11 +93,13 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
     setImportName(file.name.replace(/\.pdf$/i, ''));
     setImportType('problem-set');
     setImportDuration(120);
+    setExtracted(null);
+    setExtractErr(null);
     setShowImportModal(true);
     e.target.value = '';
   };
 
-  const confirmImport = () => {
+  const confirmImport = async () => {
     const rec: PracticeRecord = {
       id: crypto.randomUUID(),
       name: importName.trim() || importedFileName || '未命名记录',
@@ -91,6 +112,13 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
     createPracticeRecord(rec);
     if (importType === 'contest' && rec.contestEndTime) {
       setContestEndTime(rec.contestEndTime);
+    }
+    if (extracted && extracted.length > 0) {
+      try {
+        await importPdfProblems(rec, extracted);
+      } catch (e) {
+        console.error('PDF problem import failed:', e);
+      }
     }
     setShowImportModal(false);
   };
@@ -280,12 +308,22 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
                   <span className="text-[11px] font-bold text-[var(--text-primary)]">
                     题目切分（{activeRecord.problems.length} 题）
                   </span>
+                <div className="flex items-center gap-1.5">
                   <button
                     onClick={addProblemAtCurrentPage}
                     className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent-subtle)] cursor-pointer"
                   >
                     <Plus className="w-3 h-3" /> 在第 {currentPage} 页添加题目
                   </button>
+                  <button
+                    onClick={runExtraction}
+                    disabled={extracting || !viewerPdfUrl}
+                    className="px-2 py-1 rounded-lg text-[10px] font-semibold border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] cursor-pointer disabled:opacity-50"
+                    title="自动识别 PDF 内题目标题并生成题目"
+                  >
+                    {extracting ? '识别中...' : '自动识别'}
+                  </button>
+                </div>
                 </div>
 
                 {sortedProblems.length === 0 && (
@@ -472,6 +510,38 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
                   />
                 </div>
               )}
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-medium text-[var(--text-secondary)]">
+                    自动识别题目 <span className="text-[10px] text-[var(--text-tertiary)]">（识别"第N题 / T1 / Problem 2"式标题）</span>
+                  </label>
+                  <button
+                    onClick={runExtraction}
+                    disabled={extracting}
+                    className="text-[10px] px-2 py-0.5 rounded border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent-subtle)] cursor-pointer disabled:opacity-50"
+                  >
+                    {extracting ? '解析中...' : '识别'}
+                  </button>
+                </div>
+                {extractErr && (
+                  <p className="text-[10px] text-[#ff453a] leading-relaxed">识别失败：{extractErr}</p>
+                )}
+                {extracted && extracted.length === 0 && (
+                  <p className="text-[10px] text-[var(--text-tertiary)]">未识别到题目标题，可先创建，之后在阅读器里手动标记页码区间。</p>
+                )}
+                {extracted && extracted.length > 0 && (
+                  <div className="max-h-28 overflow-y-auto space-y-1 p-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border)]">
+                    {extracted.map((p, i) => (
+                      <div key={i} className="flex items-center justify-between text-[10px] text-[var(--text-secondary)]">
+                        <span className="truncate flex-1">{p.title}</span>
+                        <span className="font-mono text-[var(--text-tertiary)] shrink-0 ml-2">第{p.pageStart}-{p.pageEnd}页</span>
+                      </div>
+                    ))}
+                    <p className="text-[10px] text-[var(--text-tertiary)] pt-0.5">共 {extracted.length} 题，确认后将以正式题目形式加入最近做题。</p>
+                  </div>
+                )}
+              </div>
 
               <div className="flex items-center justify-end gap-2 pt-1">
                 <button

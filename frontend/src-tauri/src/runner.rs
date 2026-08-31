@@ -108,8 +108,12 @@ pub async fn run_in_console(
         write_and_compile(&source_code, compiler_path.as_deref(), flags.as_ref()).await?;
 
     let mut cmd = Command::new("cmd");
+    // Separate args: std quotes exe_path only when needed. Hand-rolling quotes
+    // here breaks cmd.exe (it rejects \" escapes, unlike argv parsers).
     cmd.arg("/C")
-        .arg(format!("\"{}\" & pause", exe_path.display()));
+        .arg(exe_path.display().to_string())
+        .arg("&")
+        .arg("pause");
     if let Some(dir) = exe_path.parent() {
         cmd.current_dir(dir);
     }

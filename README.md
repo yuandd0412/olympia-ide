@@ -22,6 +22,7 @@ npm run tauri:full   # 完整版安装包（内置 MinGW，先跑 scripts/strip-
 ## 下载
 
 官网：<https://olympia.dpdns.org>
+
 Releases：<https://github.com/yuandd0412/olympia-ide/releases>
 
 ## 目录速览

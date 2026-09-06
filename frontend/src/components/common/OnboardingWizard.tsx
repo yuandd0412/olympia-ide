@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '../../stores/useAppStore';
-import { Check, ChevronRight, Moon, Sun, Key, Code2, Sparkles, Loader2, TerminalSquare, Swords, Flame, Download, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Check, ChevronRight, Moon, Sun, Key, Code2, Sparkles, Loader2, Swords, Flame, Download, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { tauriApi, onToolchainProgress, type ToolchainStatus } from '../../services/tauriApi';
 import type { ThemeType } from '../../types';
 
@@ -14,7 +14,6 @@ export const OnboardingWizard: React.FC = () => {
   const [enableTemplate, setEnableTemplate] = useState(settings.enableCodeTemplate || false);
   const [template, setTemplate] = useState(settings.codeTemplate || "#include <iostream>\nusing namespace std;\n\nint main() {\n    // Write your code here\n    return 0;\n}");
   const [apiKey, setApiKey] = useState(settings.aiApiKey || '');
-  const [preferTerminal, setPreferTerminal] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Toolchain (compiler environment) step
@@ -94,10 +93,6 @@ export const OnboardingWizard: React.FC = () => {
       subtitle: '是否需要在每次新建文件时，自动为你填入代码模板？'
     },
     {
-      title: '首选运行模式',
-      subtitle: '你更喜欢内置的样例评测机，还是交互式内置终端？'
-    },
-    {
       title: '配置 AI 竞赛教练',
       subtitle: '接入大模型 API，让 AI 随时为你答疑解惑、分析时空复杂度与排查 Bug。'
     }
@@ -113,7 +108,7 @@ export const OnboardingWizard: React.FC = () => {
         enableCodeTemplate: enableTemplate,
         codeTemplate: template,
         aiApiKey: apiKey,
-        preferTerminalRun: preferTerminal,
+        preferTerminalRun: false,
         isFirstRun: false, // Finish onboarding
       });
       setSaving(false);
@@ -322,42 +317,7 @@ export const OnboardingWizard: React.FC = () => {
                 </div>
               )}
 
-              {/* Step 4: Run Mode */}
-              {step === 3 && (
-                <div className="flex-1 flex items-center justify-center gap-6">
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setPreferTerminal(false)}
-                    className={'flex-1 p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3.5 cursor-pointer ' + (!preferTerminal ? 'border-[var(--accent)] bg-[var(--accent-subtle)] shadow-md ring-2 ring-[var(--accent)]/30' : 'border-[var(--border)] bg-[var(--bg-elevated)] opacity-70 hover:opacity-100')}
-                  >
-                    <div className="p-3 rounded-2xl bg-[var(--accent-subtle)] text-[var(--accent)]">
-                      <Code2 className="w-8 h-8" />
-                    </div>
-                    <div className="flex flex-col items-center text-center gap-1">
-                      <span className="font-bold text-xs text-[var(--text-primary)]">样例优先 (推荐)</span>
-                      <span className="text-[11px] text-[var(--text-tertiary)]">使用内置多测例评测机<br/>一键运行与比对全部样例</span>
-                    </div>
-                  </motion.button>
-
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setPreferTerminal(true)}
-                    className={'flex-1 p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3.5 cursor-pointer ' + (preferTerminal ? 'border-[var(--accent)] bg-[var(--accent-subtle)] shadow-md ring-2 ring-[var(--accent)]/30' : 'border-[var(--border)] bg-[var(--bg-elevated)] opacity-70 hover:opacity-100')}
-                  >
-                    <div className="p-3 rounded-2xl bg-[#ff9f0a]/15 text-[#ff9f0a]">
-                      <TerminalSquare className="w-8 h-8" />
-                    </div>
-                    <div className="flex flex-col items-center text-center gap-1">
-                      <span className="font-bold text-xs text-[var(--text-primary)]">终端优先</span>
-                      <span className="text-[11px] text-[var(--text-tertiary)]">点击运行自动弹出 CMD 窗口<br/>交互式输入输出 (Dev-C++ 风格)</span>
-                    </div>
-                  </motion.button>
-                </div>
-              )}
-
-              {/* Step 5: API Key */}
+              {/* Step 4: API Key */}
               {step === 4 && (
                 <div className="flex-1 flex flex-col gap-4 justify-center">
                   <div className="p-6 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] flex flex-col gap-3.5">

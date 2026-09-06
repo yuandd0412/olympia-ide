@@ -4,9 +4,7 @@
 
 ## 当前状态
 
-单主线：**Tauri 2 + React 19 + TypeScript** 桌面应用（`frontend/`）。题目库、训练、错题本、AI 教练、对拍器、运行面板、终端、设置、引导向导均已成形；官网（[olympia.dpdns.org](https://olympia.dpdns.org)）与双版本安装包（精简 / 完整）已发布。
-
-早期曾以 Qt 6.8 / C++17 完成过一版 foundation 实现（Phase 0–5），已移出主线；需要回溯时 checkout 标签 [`qt-foundation`](https://github.com/yuandd0412/olympia-ide/tree/qt-foundation)（历史提交永远可访问）。
+单**Tauri 2 + React 19 + TypeScript** 桌面应用（`frontend/`）。题目库、训练、错题本、AI 教练、对拍器、运行面板、终端、设置、引导向导均已成形；官网（[olympia.dpdns.org](https://olympia.dpdns.org)）与双版本安装包（精简 / 完整）已发布。
 
 ## 快速开始
 

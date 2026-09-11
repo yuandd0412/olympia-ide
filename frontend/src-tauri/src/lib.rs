@@ -224,6 +224,8 @@ async fn check_syntax(
         }
     }
 
+    let _ = tokio::fs::remove_file(&src_path).await;
+
     Ok(markers)
 }
 

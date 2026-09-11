@@ -166,6 +166,9 @@ pub async fn execute_code(
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         headless(&mut run_cmd);
+        // TLE: the timeout future owns the child; dropping it must kill the
+        // process instead of leaving an orphan running forever.
+        run_cmd.kill_on_drop(true);
 
         let start = Instant::now();
         let mut child = match run_cmd.spawn() {

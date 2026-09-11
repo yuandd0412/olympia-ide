@@ -429,6 +429,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   closeTab: (tabId) => {
     const { tabs, activeTabId } = get();
+    const target = tabs.find((t) => t.id === tabId);
+    // 防数据丢失：未保存的改动直接关掉就没了，先确认
+    if (target && (target.isModified || (!target.filePath && target.code.trim()))) {
+      if (!window.confirm(`「${target.title}」有未保存的更改，确定关闭？`)) return;
+    }
     const filtered = tabs.filter((t) => t.id !== tabId);
     let nextActive = '';
     if (filtered.length > 0) {
@@ -444,6 +449,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   closeAllTabs: () => {
+    const { tabs } = get();
+    const dirty = tabs.some((t) => t.isModified || (!t.filePath && t.code.trim()));
+    if (dirty && !window.confirm(`有 ${tabs.length} 个标签页存在未保存的更改，全部关闭？`)) return;
     set({ tabs: [], activeTabId: '' });
   },
 
@@ -470,6 +478,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return true;
     } catch (err) {
       console.error('Failed to save file:', err);
+      window.alert(`保存失败：${String(err)}`);
       return false;
     }
   },
@@ -643,7 +652,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const activeTab = tabs.find((t) => t.id === activeTabId);
     if (!activeTab) return;
 
-    const nextId = activeTab.testcases.length + 1;
+    // 与 addTestcase 相同的 id 规则：max+1，避免删过用例后 length+1 撞 id
+    const nextId = activeTab.testcases.length > 0
+      ? Math.max(...activeTab.testcases.map((t) => t.id)) + 1
+      : 1;
     const updatedTc = [
       ...activeTab.testcases,
       {

@@ -37,6 +37,7 @@ export const tauriApi = {
       return await invoke<AppSettings>('get_settings');
     } catch {
       return {
+        isFirstRun: true,
         theme: 'OneDarkPro',
         compilerPath: 'g++',
         compilerFlags: ['-O2', '-std=c++17', '-Wall', '-Wextra'],

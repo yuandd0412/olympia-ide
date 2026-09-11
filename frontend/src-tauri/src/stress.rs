@@ -74,6 +74,8 @@ async fn run_binary_with_input(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     headless(&mut cmd);
+    // Timeout must kill the child, not leak it (see runner.rs note).
+    cmd.kill_on_drop(true);
 
     let mut child = cmd
         .spawn()

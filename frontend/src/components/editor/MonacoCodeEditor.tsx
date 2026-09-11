@@ -3,6 +3,7 @@ import Editor, { type OnMount, type BeforeMount } from '@monaco-editor/react';
 import { useAppStore } from '../../stores/useAppStore';
 import { tauriApi } from '../../services/tauriApi';
 import { registerMonacoThemes } from '../../services/monacoTheme';
+import { registerCppCompletion } from '../../services/monacoCpp';
 import { Code2, Plus, BookOpen } from 'lucide-react';
 
 export const MonacoCodeEditor: React.FC = () => {
@@ -17,6 +18,7 @@ export const MonacoCodeEditor: React.FC = () => {
 
   const handleBeforeMount: BeforeMount = (monaco) => {
     registerMonacoThemes(monaco);
+    registerCppCompletion(monaco);
   };
 
   const handleEditorDidMount: OnMount = (editor, monaco) => {

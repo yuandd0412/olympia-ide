@@ -699,7 +699,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       const updatedHistory = [command, ...terminalHistory.filter((c) => c !== command)].slice(0, 50);
 
       set({
-        terminalLogs: [...terminalLogs, newLog],
+        // 上限 200 条，防止长会话内存与渲染膨胀
+        terminalLogs: [...terminalLogs, newLog].slice(-200),
         terminalHistory: updatedHistory,
         isTerminalRunning: false,
       });
@@ -714,7 +715,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         durationMs: 0,
       };
       set({
-        terminalLogs: [...terminalLogs, newLog],
+        terminalLogs: [...terminalLogs, newLog].slice(-200),
         isTerminalRunning: false,
       });
     }

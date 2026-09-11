@@ -90,11 +90,15 @@ export const SettingsPage: React.FC = () => {
 
   const [form, setForm] = useState<AppSettings>({ ...settings });
   const [fontSizeInput, setFontSizeInput] = useState<string>(String(settings.fontSize || 14));
+  const [flagsInput, setFlagsInput] = useState<string>(form.compilerFlags.join(' '));
 
   // Keep local form in sync with global store changes
   React.useEffect(() => {
     setForm(settings);
     setFontSizeInput(String(settings.fontSize || 14));
+    const joined = settings.compilerFlags.join(' ');
+    // 输入中的原始串（含末尾空格）不被 store 往回写打掉
+    setFlagsInput((prev) => (prev.trim() === joined ? prev : joined));
   }, [settings]);
 
   // Real-time instant field updater
@@ -408,10 +412,12 @@ export const SettingsPage: React.FC = () => {
             </label>
             <input
               type="text"
-              value={form.compilerFlags.join(' ')}
-              onChange={(e) =>
-                updateField('compilerFlags', e.target.value.split(' ').filter(Boolean))
-              }
+              value={flagsInput}
+              onChange={(e) => {
+                setFlagsInput(e.target.value);
+                updateField('compilerFlags', e.target.value.split(/\s+/).filter(Boolean));
+              }}
+              onBlur={() => setFlagsInput((prev) => prev.trim())}
               placeholder="-O2 -std=c++17 -Wall -Wextra"
               className="w-full p-2.5 rounded-xl border text-xs font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
             />
@@ -580,7 +586,7 @@ export const SettingsPage: React.FC = () => {
                   onBlur={() => {
                     if (fontSizeInput === '' || parseInt(fontSizeInput, 10) < 10) {
                       setFontSizeInput('14');
-                      setForm(prev => ({ ...prev, fontSize: 14 }));
+                      updateField('fontSize', 14);
                     }
                   }}
                   className="w-12 text-center text-xs font-mono font-bold bg-transparent text-[var(--text-primary)] outline-none py-1.5 border-x border-[var(--border)]"

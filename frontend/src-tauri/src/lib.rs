@@ -165,7 +165,9 @@ pub fn run() {
 }
 #[tauri::command]
 async fn submit_problem(problem_id: String, code: String) -> Result<String, String> {
-    // ռλ�ӿڣ�δ��������� OJ ���Զ��ύ����
+    // Placeholder: OJ auto-submission is not wired up - this always reports success.
+    // `code` is deliberately unused until a real OJ receiver lands.
+    let _ = code;
     Ok(format!("Submitted {} successfully", problem_id))
 }
 #[derive(serde::Serialize, Clone)]

@@ -2,6 +2,7 @@
   "$schema": "./node_modules/@tauri-apps/cli/config.schema.json",
   "bundle": {
     "resources": {
+      "THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md",
       "vendor/mingw64/": "mingw64/"
     }
   }

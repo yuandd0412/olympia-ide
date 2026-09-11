@@ -44,6 +44,7 @@
         "sidebarImage": "installer/sidebar.bmp",
         "headerImage": "installer/header.bmp"
       }
-    }
+    },
+    "resources": ["THIRD-PARTY-NOTICES.md"]
   }
 }

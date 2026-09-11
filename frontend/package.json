@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "notices": "node scripts/gen-third-party-notices.mjs",
+    "notices:check": "node scripts/gen-third-party-notices.mjs --check",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:full": "tauri build --config src-tauri/tauri.full.conf.json && node scripts/rename-full-installer.mjs"

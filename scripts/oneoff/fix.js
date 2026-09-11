@@ -1,0 +1,22 @@
+﻿const fs = require('fs');
+let c = fs.readFileSync('frontend/src/components/runner/RunnerPanel.tsx', 'utf8');
+c = c.replace(/title="[^"]*\?/, 'title="添加测试例"');
+c = c.replace(/100% [^\?]*\?\/span>/, '100% 匹配一致</span>');
+c = c.replace(/\(空输\?\}/, '(空输出)\}');
+c = c.replace(/开始编译\?\}/, '开始编译。\'}');
+fs.writeFileSync('frontend/src/components/runner/RunnerPanel.tsx', c, 'utf8');
+
+let c2 = fs.readFileSync('frontend/src/components/stress/StressTesterPage.tsx', 'utf8');
+c2 = c2.replace(/对拍\?\(Stress Tester\)/, '对拍器 (Stress Tester)');
+c2 = c2.replace(/通过随机生成测试数据，自动化对比待测解法与暴力正\?\s*<\/span>/, '通过随机生成测试数据，自动化对比待测解法与暴力正确。</span>');
+c2 = c2.replace(/10 \?\/option>/, '10 组</option>');
+c2 = c2.replace(/30 \?\/option>/, '30 组</option>');
+c2 = c2.replace(/50 \?\/option>/, '50 组</option>');
+c2 = c2.replace(/100 \?\/option>/, '100 组</option>');
+c2 = c2.replace(/500 \?\/option>/, '500 组</option>');
+c2 = c2.replace(/<span>正在自动化对\?\.\.<\/span>/, '<span>正在自动化对拍...</span>');
+c2 = c2.replace(/<span>开始对\?\/span>/, '<span>开始对拍</span>');
+c2 = c2.replace(/3\. 数据生成\?\(Generator\.cpp\)<\/span>/, '3. 数据生成器 (Generator.cpp)</span>');
+c2 = c2.replace(/优化解法 \/ 待验证代\?\}/, '优化解法 / 待验证代码\'}');
+c2 = c2.replace(/\[Error\]: \?\}/, '[Error]: \'}');
+fs.writeFileSync('frontend/src/components/stress/StressTesterPage.tsx', c2, 'utf8');

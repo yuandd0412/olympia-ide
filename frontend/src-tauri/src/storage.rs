@@ -1,5 +1,5 @@
 use crate::models::{AppSettings, Problem, Sample, SolveRecord, TrainingSession};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub fn data_dir() -> PathBuf {
     let base = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
@@ -10,23 +10,46 @@ pub fn data_dir() -> PathBuf {
     p
 }
 
+/// Atomic write: tmp file + rename, so a crash mid-write can never leave a
+/// half-written JSON behind (the corruption source this file once suffered).
+fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, content).map_err(|e| format!("Failed to write {}: {}", tmp.display(), e))?;
+    std::fs::rename(&tmp, path).map_err(|e| format!("Failed to replace {}: {}", path.display(), e))
+}
+
+/// Preserve a JSON file that failed to parse before anything overwrites it,
+/// so user data stays recoverable instead of being silently reseeded.
+fn quarantine_corrupt(path: &Path) {
+    let bak = path.with_extension("corrupt-bak.json");
+    let _ = std::fs::rename(path, bak);
+}
+
 pub fn load_settings() -> AppSettings {
     let path = data_dir().join("settings.json");
-    if let Ok(content) = std::fs::read_to_string(&path) {
-        if let Ok(settings) = serde_json::from_str::<AppSettings>(&content) {
-            return settings;
+    match std::fs::read_to_string(&path) {
+        Ok(content) => match serde_json::from_str::<AppSettings>(&content) {
+            Ok(settings) => settings,
+            Err(_) => {
+                quarantine_corrupt(&path);
+                let default_s = AppSettings::default();
+                let _ = save_settings(&default_s);
+                default_s
+            }
+        },
+        Err(_) => {
+            let default_s = AppSettings::default();
+            let _ = save_settings(&default_s);
+            default_s
         }
     }
-    let default_s = AppSettings::default();
-    let _ = save_settings(&default_s);
-    default_s
 }
 
 pub fn save_settings(settings: &AppSettings) -> Result<(), String> {
     let path = data_dir().join("settings.json");
     let s = serde_json::to_string_pretty(settings)
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-    std::fs::write(&path, s).map_err(|e| format!("Failed to write settings.json: {}", e))
+    write_atomic(&path, &s)
 }
 
 /// Fresh-install seed: the canonical Luogu P1001 (A+B Problem) record, so the
@@ -43,7 +66,7 @@ pub fn default_problems() -> Vec<Problem> {
         difficulty: "入门".to_string(),
         tags: vec!["模拟".to_string()],
         time_limit_ms: 1000,
-        memory_limit_kb: 128000,
+        memory_limit_kb: 131072,
         description_md: "## 题目描述\n输入两个整数 $a, b$，输出它们的和（$|a|, |b| \\le 10^9$）。"
             .to_string(),
         input_format: "两个整数 $a, b$。".to_string(),
@@ -61,55 +84,71 @@ pub fn default_problems() -> Vec<Problem> {
 
 pub fn load_problems() -> Vec<Problem> {
     let path = data_dir().join("problems.json");
-    if let Ok(content) = std::fs::read_to_string(&path) {
-        if let Ok(problems) = serde_json::from_str::<Vec<Problem>>(&content) {
-            return problems;
+    match std::fs::read_to_string(&path) {
+        Ok(content) => match serde_json::from_str::<Vec<Problem>>(&content) {
+            Ok(problems) => problems,
+            Err(_) => {
+                quarantine_corrupt(&path);
+                let default_p = default_problems();
+                let _ = save_problems(&default_p);
+                default_p
+            }
+        },
+        Err(_) => {
+            let default_p = default_problems();
+            let _ = save_problems(&default_p);
+            default_p
         }
     }
-    let default_p = default_problems();
-    let _ = save_problems(&default_p);
-    default_p
 }
 
 pub fn save_problems(problems: &[Problem]) -> Result<(), String> {
     let path = data_dir().join("problems.json");
     let s = serde_json::to_string_pretty(problems)
         .map_err(|e| format!("Failed to serialize problems: {}", e))?;
-    std::fs::write(&path, s).map_err(|e| format!("Failed to write problems.json: {}", e))
+    write_atomic(&path, &s)
 }
 
 pub fn load_solves() -> Vec<SolveRecord> {
     let path = data_dir().join("solves.json");
-    if let Ok(content) = std::fs::read_to_string(&path) {
-        if let Ok(solves) = serde_json::from_str::<Vec<SolveRecord>>(&content) {
-            return solves;
-        }
+    match std::fs::read_to_string(&path) {
+        Ok(content) => match serde_json::from_str::<Vec<SolveRecord>>(&content) {
+            Ok(solves) => solves,
+            Err(_) => {
+                quarantine_corrupt(&path);
+                vec![]
+            }
+        },
+        Err(_) => vec![],
     }
-    vec![]
 }
 
 pub fn save_solves(solves: &[SolveRecord]) -> Result<(), String> {
     let path = data_dir().join("solves.json");
     let s = serde_json::to_string_pretty(solves)
         .map_err(|e| format!("Failed to serialize solves: {}", e))?;
-    std::fs::write(&path, s).map_err(|e| format!("Failed to write solves.json: {}", e))
+    write_atomic(&path, &s)
 }
 
 pub fn load_sessions() -> Vec<TrainingSession> {
     let path = data_dir().join("sessions.json");
-    if let Ok(content) = std::fs::read_to_string(&path) {
-        if let Ok(sessions) = serde_json::from_str::<Vec<TrainingSession>>(&content) {
-            return sessions;
-        }
+    match std::fs::read_to_string(&path) {
+        Ok(content) => match serde_json::from_str::<Vec<TrainingSession>>(&content) {
+            Ok(sessions) => sessions,
+            Err(_) => {
+                quarantine_corrupt(&path);
+                vec![]
+            }
+        },
+        Err(_) => vec![],
     }
-    vec![]
 }
 
 pub fn save_sessions(sessions: &[TrainingSession]) -> Result<(), String> {
     let path = data_dir().join("sessions.json");
     let s = serde_json::to_string_pretty(sessions)
         .map_err(|e| format!("Failed to serialize sessions: {}", e))?;
-    std::fs::write(&path, s).map_err(|e| format!("Failed to write sessions.json: {}", e))
+    write_atomic(&path, &s)
 }
 
 #[cfg(test)]
@@ -147,5 +186,6 @@ mod tests {
         assert_eq!(p.samples[0].input, "20 30");
         assert_eq!(p.samples[0].output, "50");
         assert_eq!(p.source_url, "https://www.luogu.com.cn/problem/P1001");
+        assert_eq!(p.memory_limit_kb, 131072, "seed memory must be 128MB in KB");
     }
 }

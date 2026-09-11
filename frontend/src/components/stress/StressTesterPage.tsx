@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
 import { registerMonacoThemes } from '../../services/monacoTheme';
+import { registerCppCompletion } from '../../services/monacoCpp';
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle, useDefaultLayout } from 'react-resizable-panels';
 
 export const StressTesterPage: React.FC = () => {
@@ -169,7 +170,7 @@ export const StressTesterPage: React.FC = () => {
                 language="cpp"
                 value={stressSolCode}
                 theme={isLight ? 'oler-light-theme' : 'oler-dark-theme'}
-                beforeMount={registerMonacoThemes}
+                beforeMount={(m) => { registerMonacoThemes(m); registerCppCompletion(m); }}
                 onChange={(v) => setStressSolCode(v || '')}
                 options={{
                   fontSize: 13,
@@ -189,7 +190,7 @@ export const StressTesterPage: React.FC = () => {
                 language="cpp"
                 value={stressBruteCode}
                 theme={isLight ? 'oler-light-theme' : 'oler-dark-theme'}
-                beforeMount={registerMonacoThemes}
+                beforeMount={(m) => { registerMonacoThemes(m); registerCppCompletion(m); }}
                 onChange={(v) => setStressBruteCode(v || '')}
                 options={{
                   fontSize: 13,
@@ -209,7 +210,7 @@ export const StressTesterPage: React.FC = () => {
                 language="cpp"
                 value={stressGenCode}
                 theme={isLight ? 'oler-light-theme' : 'oler-dark-theme'}
-                beforeMount={registerMonacoThemes}
+                beforeMount={(m) => { registerMonacoThemes(m); registerCppCompletion(m); }}
                 onChange={(v) => setStressGenCode(v || '')}
                 options={{
                   fontSize: 13,

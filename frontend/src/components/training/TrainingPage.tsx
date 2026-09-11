@@ -10,16 +10,37 @@ import { useAppStore } from '../../stores/useAppStore';
 export const TrainingPage: React.FC = () => {
   const { solves, settings } = useAppStore();
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  const todaySolves = solves.filter((s) => s.solvedAt.startsWith(todayStr)).length;
+  // solvedAt 是 UTC ISO 串；按本地日期统计（UTC+8 的凌晨刷题属于“今天”）
+  const localDateStr = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const todayStr = localDateStr(new Date());
+  const todaySolves = solves.filter((s) => localDateStr(new Date(s.solvedAt)) === todayStr).length;
   const totalSolves = solves.length;
+
+  // 真实连续打卡：从今天（或昨天——今天还没刷不打断）往回数有记录的连续天数
+  const streakDays = (() => {
+    const days = new Set(solves.map((s) => localDateStr(new Date(s.solvedAt))));
+    const cursor = new Date();
+    if (!days.has(localDateStr(cursor))) cursor.setDate(cursor.getDate() - 1);
+    let count = 0;
+    while (days.has(localDateStr(cursor))) {
+      count++;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    return count;
+  })();
 
   // 30 Days Trend Data
   const last30Days = Array.from({ length: 30 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - (29 - i));
-    const dateStr = d.toISOString().split('T')[0];
-    const count = solves.filter((s) => s.solvedAt.startsWith(dateStr)).length;
+    const dateStr = localDateStr(d);
+    const count = solves.filter((s) => localDateStr(new Date(s.solvedAt)) === dateStr).length;
     return {
       date: dateStr,
       label: dateStr.slice(5),
@@ -64,7 +85,7 @@ export const TrainingPage: React.FC = () => {
           </div>
           <div className="flex items-baseline gap-2">
             <span className="font-mono text-3xl font-bold text-[var(--text-primary)]">
-              {todaySolves > 0 ? '1' : '0'}
+              {streakDays}
             </span>
             <span className="text-xs text-[var(--text-tertiary)]">天</span>
           </div>

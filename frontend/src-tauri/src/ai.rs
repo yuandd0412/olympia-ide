@@ -26,7 +26,12 @@ pub async fn ask_ai_coach(
         format!("{}/chat/completions", base_url.trim_end_matches('/'))
     };
 
-    let client = reqwest::Client::new();
+    // Without a timeout a hung endpoint would leave the UI spinner forever.
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
     let body = json!({
         "model": model,
         "messages": messages,

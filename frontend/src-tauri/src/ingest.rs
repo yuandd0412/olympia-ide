@@ -126,12 +126,20 @@ pub async fn fetch_luogu_problem(input: String) -> Result<Problem, String> {
         .unwrap_or("")
         .to_string();
 
+    // Luogu returns limits as string-or-number arrays: time in SECONDS
+    // ("1.00"), memory in MB ("128"). Parse both forms explicitly.
+    fn value_to_f64(v: &Value) -> Option<f64> {
+        v.as_f64()
+            .or_else(|| v.as_str().and_then(|s| s.trim().parse::<f64>().ok()))
+    }
+
     let time_lim = pdata
         .get("limits")
         .and_then(|l| l.get("time"))
         .and_then(|t| t.as_array())
         .and_then(|arr| arr.first())
-        .and_then(|v| v.as_u64())
+        .and_then(value_to_f64)
+        .map(|secs| (secs * 1000.0).round() as u64)
         .unwrap_or(1000);
 
     let mem_lim = pdata
@@ -139,8 +147,9 @@ pub async fn fetch_luogu_problem(input: String) -> Result<Problem, String> {
         .and_then(|l| l.get("memory"))
         .and_then(|t| t.as_array())
         .and_then(|arr| arr.first())
-        .and_then(|v| v.as_u64())
-        .unwrap_or(128000);
+        .and_then(value_to_f64)
+        .map(|mb| (mb * 1024.0).round() as u64)
+        .unwrap_or(262_144);
 
     let mut samples = Vec::new();
     if let Some(s_arr) = pdata.get("samples").and_then(|s| s.as_array()) {

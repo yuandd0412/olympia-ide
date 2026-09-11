@@ -34,7 +34,11 @@ export const RunnerPanel: React.FC = () => {
   React.useEffect(() => { if (terminalRunSignal > 0) setActivePanelTab('terminal'); }, [terminalRunSignal]);
 
   const activeResult = runResult?.testcases.find((t) => t.id === selectedCaseId);
-  const activeInput = testcases.find((t) => t.id === selectedCaseId);
+  // 选中项被删除后回退到第一个用例，避免输入框悬空（打字静默无效）
+  const selectedCase =
+    testcases.find((t) => t.id === selectedCaseId) ?? testcases[0];
+  const selectedId = selectedCase?.id ?? 1;
+  const activeInput = selectedCase;
 
   const getVerdictBadge = (verdict?: string) => {
     switch (verdict) {
@@ -176,7 +180,7 @@ export const RunnerPanel: React.FC = () => {
               </div>
 
               {testcases.map((tc, idx) => {
-                const isSel = tc.id === selectedCaseId;
+                const isSel = tc.id === selectedId;
                 const result = runResult?.testcases.find((r) => r.id === tc.id);
                 return (
                   <div
@@ -215,7 +219,7 @@ export const RunnerPanel: React.FC = () => {
                   value={activeInput?.input || ''}
                   onChange={(e) =>
                     updateTestcase(
-                      selectedCaseId,
+                      selectedId,
                       e.target.value,
                       activeInput?.expectedOutput || ''
                     )
@@ -241,7 +245,7 @@ export const RunnerPanel: React.FC = () => {
                   value={activeInput?.expectedOutput || ''}
                   onChange={(e) =>
                     updateTestcase(
-                      selectedCaseId,
+                      selectedId,
                       activeInput?.input || '',
                       e.target.value
                     )

@@ -18,30 +18,18 @@
     {
       "identifier": "fs:allow-read-text-file",
       "allow": [
-        { "path": "**" }
+        {
+          "path": "**"
+        }
       ]
     },
     {
       "identifier": "fs:allow-write-text-file",
       "allow": [
-        { "path": "**" }
-      ]
-    },
-    {
-      "identifier": "shell:allow-execute",
-      "allow": [
-        { "name": "cmd", "cmd": "cmd", "args": true },
-        { "name": "powershell", "cmd": "powershell", "args": true },
-        { "name": "g++", "cmd": "g++", "args": true }
-      ]
-    },
-    {
-      "identifier": "shell:allow-spawn",
-      "allow": [
-        { "name": "cmd", "cmd": "cmd", "args": true },
-        { "name": "powershell", "cmd": "powershell", "args": true }
+        {
+          "path": "**"
+        }
       ]
     }
   ]
 }
-

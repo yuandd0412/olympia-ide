@@ -10,17 +10,13 @@
     "notices": "node scripts/gen-third-party-notices.mjs",
     "notices:check": "node scripts/gen-third-party-notices.mjs --check",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "tauri:full": "tauri build --config src-tauri/tauri.full.conf.json && node scripts/rename-full-installer.mjs"
+    "tauri": "tauri"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.2",
     "@tauri-apps/plugin-fs": "^2.5.1",
-    "@tauri-apps/plugin-shell": "^2.3.5",
-    "@xterm/addon-fit": "^0.11.0",
-    "@xterm/xterm": "^6.0.0",
     "clsx": "^2.1.1",
     "framer-motion": "^13.1.1",
     "katex": "^0.18.4",

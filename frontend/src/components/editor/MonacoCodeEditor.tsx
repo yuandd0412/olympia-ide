@@ -4,7 +4,7 @@ import { useAppStore } from '../../stores/useAppStore';
 import { tauriApi } from '../../services/tauriApi';
 import { registerMonacoThemes } from '../../services/monacoTheme';
 import { registerCppCompletion } from '../../services/monacoCpp';
-import { Code2, Plus, BookOpen } from 'lucide-react';
+import { Code2, Plus, BookOpen, Loader2 } from 'lucide-react';
 
 export const MonacoCodeEditor: React.FC = () => {
   const { tabs, activeTabId, updateActiveCode, settings, openNewTab, setActiveNav, saveActiveTab } = useAppStore();
@@ -110,6 +110,12 @@ export const MonacoCodeEditor: React.FC = () => {
     <div className="w-full h-full relative overflow-hidden bg-[var(--bg-base)]">
       <Editor
         height="100%"
+        loading={
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[var(--bg-base)] text-[var(--text-tertiary)] select-none">
+            <Loader2 className="w-6 h-6 animate-spin text-[var(--accent)]" />
+            <span className="text-xs">正在加载编辑器组件...</span>
+          </div>
+        }
         defaultLanguage="cpp"
         language="cpp"
         value={activeTab?.code || ''}

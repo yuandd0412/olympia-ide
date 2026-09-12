@@ -90,10 +90,6 @@ interface AppState {
   viewerPdfUrl: string | null;
   viewerProblem: Problem | null;
 
-  // Integrated Terminal State
-  terminalLogs: import('../types').TerminalLog[];
-  terminalHistory: string[];
-  isTerminalRunning: boolean;
   /** True once loadInitialData has fetched persisted state — gate first-run UI on this. */
   hydrated: boolean;
 
@@ -103,7 +99,6 @@ interface AppState {
   searchQuery: string;
   selectedDifficulty: string;
   selectedVerdict: string;
-  terminalRunSignal: number;
 
   // Actions
   setActiveNav: (nav: NavTab) => void;
@@ -132,10 +127,6 @@ interface AppState {
   setStressMaxRounds: (rounds: number) => void;
   runStressAction: () => Promise<void>;
   importStressFailToRunner: () => void;
-
-  // Terminal Actions
-  executeTerminalCommand: (command: string) => Promise<void>;
-  clearTerminal: () => void;
 
   // Problem & Viewer Actions
   setActiveProblem: (problem: Problem) => void;
@@ -221,21 +212,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   viewerPdfUrl: null,
   viewerProblem: null,
-
-  // Integrated Terminal Initial State
-  terminalLogs: [
-    {
-      id: 'init-1',
-      command: 'g++ --version',
-      stdout: 'g++ (MinGW-W64 x86_64-posix-seh) 13.1.0\nCopyright (C) 2023 Free Software Foundation, Inc.',
-      stderr: '',
-      exitCode: 0,
-      timestamp: new Date().toLocaleTimeString(),
-      durationMs: 12,
-    },
-  ],
-  terminalHistory: ['g++ --version'],
-  isTerminalRunning: false,
   hydrated: false,
 
   isDetailModalOpen: false,
@@ -352,7 +328,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       ]);
 
       const activeP = problems[0] || null;
-      let initialTestcases: TestCaseInput[] = [{ id: 1, input: '20 30', expectedOutput: '50' }];
+      // 全新安装不再预置任何示例数据，用例列表从空白开始
+      let initialTestcases: TestCaseInput[] = [{ id: 1, input: '', expectedOutput: '' }];
       if (activeP && activeP.samples.length > 0) {
         initialTestcases = activeP.samples.map((s, idx) => ({
           id: idx + 1,
@@ -670,58 +647,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     set({ tabs: updatedTabs, activeNav: 'editor' });
   },
-
-  terminalRunSignal: 0,
-  triggerTerminalRun: () => set((state) => ({ terminalRunSignal: state.terminalRunSignal + 1 })),
-  executeTerminalCommand: async (command) => {
-    if (!command.trim()) return;
-    const { terminalLogs, terminalHistory } = get();
-
-    if (command.trim().toLowerCase() === 'clear' || command.trim().toLowerCase() === 'cls') {
-      set({ terminalLogs: [] });
-      return;
-    }
-
-    set({ isTerminalRunning: true });
-
-    try {
-      const res = await tauriApi.runTerminalCommand(command);
-      const newLog = {
-        id: crypto.randomUUID(),
-        command,
-        stdout: res.stdout,
-        stderr: res.stderr,
-        exitCode: res.exitCode,
-        timestamp: new Date().toLocaleTimeString(),
-        durationMs: res.durationMs,
-      };
-
-      const updatedHistory = [command, ...terminalHistory.filter((c) => c !== command)].slice(0, 50);
-
-      set({
-        // 上限 200 条，防止长会话内存与渲染膨胀
-        terminalLogs: [...terminalLogs, newLog].slice(-200),
-        terminalHistory: updatedHistory,
-        isTerminalRunning: false,
-      });
-    } catch (err) {
-      const newLog = {
-        id: crypto.randomUUID(),
-        command,
-        stdout: '',
-        stderr: String(err),
-        exitCode: -1,
-        timestamp: new Date().toLocaleTimeString(),
-        durationMs: 0,
-      };
-      set({
-        terminalLogs: [...terminalLogs, newLog].slice(-200),
-        isTerminalRunning: false,
-      });
-    }
-  },
-
-  clearTerminal: () => set({ terminalLogs: [] }),
 
   setActiveProblem: (problem) => {
     const testcases = problem.samples.map((s, idx) => ({

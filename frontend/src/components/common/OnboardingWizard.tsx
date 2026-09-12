@@ -252,7 +252,7 @@ export const OnboardingWizard: React.FC = () => {
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    onClick={() => setTheme('OneDarkPro')}
+                    onClick={() => { setTheme('OneDarkPro'); updateSettings({ theme: 'OneDarkPro' }); }}
                     className={'flex-1 p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3.5 cursor-pointer ' + (theme === 'OneDarkPro' ? 'border-[var(--accent)] bg-[var(--accent-subtle)] shadow-md ring-2 ring-[var(--accent)]/30' : 'border-[var(--border)] bg-[var(--bg-elevated)] opacity-70 hover:opacity-100')}
                   >
                     <div className="w-12 h-12 rounded-2xl bg-[#1e1e1e] border border-[#333] flex items-center justify-center text-[#7aa2f7]">
@@ -267,7 +267,7 @@ export const OnboardingWizard: React.FC = () => {
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    onClick={() => setTheme('GitHubLight')}
+                    onClick={() => { setTheme('GitHubLight'); updateSettings({ theme: 'GitHubLight' }); }}
                     className={'flex-1 p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3.5 cursor-pointer ' + (theme === 'GitHubLight' ? 'border-[var(--accent)] bg-[var(--accent-subtle)] shadow-md ring-2 ring-[var(--accent)]/30' : 'border-[var(--border)] bg-[var(--bg-elevated)] opacity-70 hover:opacity-100')}
                   >
                     <div className="w-12 h-12 rounded-2xl bg-white border border-[#e1e4e8] flex items-center justify-center text-[#e5a43b]">

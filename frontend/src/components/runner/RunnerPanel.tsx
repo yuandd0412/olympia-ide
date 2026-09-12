@@ -9,10 +9,8 @@ import {
   AlertTriangle,
   FileCode,
   Layers,
-  Terminal as TerminalIcon,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
-import { TerminalPanel } from '../terminal/TerminalPanel';
 
 export const RunnerPanel: React.FC = () => {
   const {
@@ -28,10 +26,8 @@ export const RunnerPanel: React.FC = () => {
   const testcases = activeTab?.testcases || [];
   const runResult = activeTab?.runResult || null;
 
-  const [activePanelTab, setActivePanelTab] = useState<'cases' | 'output' | 'terminal'>('cases');
+  const [activePanelTab, setActivePanelTab] = useState<'cases' | 'output'>('cases');
   const [selectedCaseId, setSelectedCaseId] = useState<number>(1);
-  const terminalRunSignal = useAppStore((s) => s.terminalRunSignal);
-  React.useEffect(() => { if (terminalRunSignal > 0) setActivePanelTab('terminal'); }, [terminalRunSignal]);
 
   const activeResult = runResult?.testcases.find((t) => t.id === selectedCaseId);
   // 选中项被删除后回退到第一个用例，避免输入框悬空（打字静默无效）
@@ -126,18 +122,10 @@ export const RunnerPanel: React.FC = () => {
               <span className="w-2 h-2 rounded-full bg-[#ff453a]" />
             )}
           </button>
-
-          <button
-            onClick={() => setActivePanelTab('terminal')}
-            className={'px-3 py-1 rounded-md font-medium transition-all cursor-pointer flex items-center gap-1.5 ' + (activePanelTab === 'terminal' ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-xs' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]')}
-          >
-            <TerminalIcon className="w-3.5 h-3.5 text-[var(--accent)]" />
-            <span>集成终端 (Terminal)</span>
-          </button>
         </div>
 
         {/* Global Verdict Banner */}
-        {runResult && activePanelTab !== 'terminal' && (
+        {runResult && (
           <div className="flex items-center gap-3">
             {runResult.isCompilationError ? (
               <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#c49a3c]/20 text-[#c49a3c] border border-[#c49a3c]/30 font-mono">
@@ -157,11 +145,7 @@ export const RunnerPanel: React.FC = () => {
 
       {/* Main Body */}
       <div className="flex-1 overflow-hidden flex relative">
-        <div className={'absolute inset-0 z-10 bg-[var(--bg-base)] ' + (activePanelTab === 'terminal' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none')}>
-          <TerminalPanel />
-        </div>
-
-        <div className={'absolute inset-0 bg-[var(--bg-surface)] ' + (activePanelTab !== 'terminal' ? 'opacity-100 pointer-events-auto z-0' : 'opacity-0 pointer-events-none -z-10') + ' flex'}>
+        <div className="absolute inset-0 bg-[var(--bg-surface)] flex">
           {activePanelTab === 'cases' ? (
             <div className="flex-1 p-3 overflow-hidden flex gap-3">
             {/* Case List Selector (Left) */}

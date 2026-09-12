@@ -79,16 +79,6 @@ export interface TerminalCommandResult {
   durationMs: number;
 }
 
-export interface TerminalLog {
-  id: string;
-  command: string;
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  timestamp: string;
-  durationMs: number;
-}
-
 export interface TestCaseInput {
   id: number;
   input: string;

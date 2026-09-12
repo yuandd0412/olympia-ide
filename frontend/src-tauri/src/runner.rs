@@ -299,48 +299,6 @@ pub async fn execute_code(
     })
 }
 
-pub async fn execute_terminal_command(
-    command_str: String,
-    cwd: Option<String>,
-) -> Result<crate::models::TerminalCommandResult, String> {
-    let start = Instant::now();
-    let mut cmd = if cfg!(windows) {
-        let mut c = Command::new("powershell");
-        c.arg("-NoProfile").arg("-Command").arg(&command_str);
-        c
-    } else {
-        let mut c = Command::new("sh");
-        c.arg("-c").arg(&command_str);
-        c
-    };
-
-    if let Some(dir) = cwd {
-        if !dir.is_empty() {
-            cmd.current_dir(dir);
-        }
-    }
-
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-    headless(&mut cmd);
-
-    let output = cmd
-        .output()
-        .await
-        .map_err(|e| format!("Failed to execute command: {}", e))?;
-
-    let duration_ms = start.elapsed().as_millis() as u64;
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let exit_code = output.status.code().unwrap_or(-1);
-
-    Ok(crate::models::TerminalCommandResult {
-        exit_code,
-        stdout,
-        stderr,
-        duration_ms,
-    })
-}
-
 pub async fn write_temp_code(source_code: String) -> Result<(String, String), String> {
     let temp_dir = std::env::temp_dir().join("oler_ide_runner");
     tokio::fs::create_dir_all(&temp_dir)

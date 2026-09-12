@@ -138,29 +138,25 @@
   <section class="section download" id="download">
     <div class="dl-card reveal">
       <h2>下载 Olympia IDE</h2>
-      <p class="dl-meta">v0.1.0 · Windows 10 / 11 · x64 · 中文安装器 · 两个版本任选</p>
+      <p class="dl-meta">v0.1.0 · Windows 10 / 11 · x64 · 中文安装器</p>
       <!-- 精简版随 Pages 静态发布;完整版 (~105 MB) 超出 Pages 25MiB 单文件上限,走 R2(见 DEPLOY.md) -->
+      <p class="dl-meta">v0.1.0 · Windows 10 / 11 · x64 · 中文安装器</p>
+      <!-- 精简/完整双版本已合并：唯一版本内置 MinGW 工具链，随 Pages 静态发布 -->
       <div class="dl-variants">
-        <div class="variant v-hot">
-          <h3>精简版 <span class="v-badge">推荐</span></h3>
-          <p class="v-size">约 6 MB</p>
-          <p class="v-desc">下载体积小。首次启动时从国内镜像自动下载 MinGW 13.1.0 编译工具链（约 69 MB，需联网一次）。</p>
-          <a class="btn btn-primary" href="downloads/Olympia-IDE_0.1.0_x64-setup.exe">
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 1v8.5L4.8 6.3 3.7 7.4 8 11.7l4.3-4.3-1.1-1.1L8 9.5V1H7v8.5L3.8 6.3 2.7 7.4 7 11.7V15h2v-3.3l4.3-4.3-1.1-1.1L9 9.5V1H8z"/></svg>
-            下载精简版
-          </a>
-        </div>
-        <div class="variant">
-          <h3>完整版</h3>
+        <div class="variant v-hot" style="grid-column: 1 / -1; max-width: 480px; margin: 0 auto;">
+          <h3>Olympia IDE <span class="v-badge">内置工具链</span></h3>
           <p class="v-size">约 49 MB</p>
-          <p class="v-desc">内置 MinGW 13.1.0 编译工具链，离线开箱即用，适合机房与弱网环境。国内直连快（Gitee）；GitHub 亦有同版备份。</p>
-          <a class="btn btn-ghost" href="https://gitee.com/yuanddMSK/olympia-ide/releases/download/v0.1.0/Olympia%20IDE_0.1.0_x64-full-setup.exe">下载完整版</a>
+          <p class="v-desc">内置 MinGW 13.1.0 编译工具链，安装即用、离线可用，零配置。国内直连快（Gitee）；GitHub 亦有同版备份。</p>
+          <a class="btn btn-primary" href="https://gitee.com/yuanddMSK/olympia-ide/releases/download/v0.1.0/Olympia%20IDE_0.1.0_x64-full-setup.exe">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 1v8.5L4.8 6.3 3.7 7.4 8 11.7l4.3-4.3-1.1-1.1L8 9.5V1H7v8.5L3.8 6.3 2.7 7.4 7 11.7V15h2v-3.3l4.3-4.3-1.1-1.1L9 9.5V1H8z"/></svg>
+            下载 Windows 安装包
+          </a>
         </div>
       </div>
       <p class="dl-note">安装需要管理员权限（全机安装），自动创建开始菜单与桌面快捷方式。</p>
       <ul class="dl-reqs">
         <li>系统自带 WebView2 运行时（Win 11 已内置，Win 10 缺失时安装器会提示）</li>
-        <li>精简版首次启动需联网获取编译工具链；完整版无任何网络要求</li>
+        <li>无需任何网络：工具链已内置，安装即用</li>
       </ul>
     </div>
   </section>

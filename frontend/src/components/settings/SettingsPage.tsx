@@ -138,7 +138,7 @@ export const SettingsPage: React.FC = () => {
   const isContestActive = contestEndTime !== null && Date.now() < contestEndTime;
 
   return (
-    <div className="w-full h-full flex flex-col p-6 overflow-y-auto select-none space-y-6 max-w-4xl mx-auto">
+    <div className="w-full h-full flex flex-col p-6 overflow-y-auto select-none space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

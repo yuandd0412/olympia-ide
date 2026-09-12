@@ -103,14 +103,6 @@ async fn run_stress_test(
 }
 
 #[tauri::command]
-async fn run_terminal_command(
-    command: String,
-    cwd: Option<String>,
-) -> Result<TerminalCommandResult, String> {
-    runner::execute_terminal_command(command, cwd).await
-}
-
-#[tauri::command]
 async fn write_temp_code(source_code: String) -> Result<(String, String), String> {
     runner::write_temp_code(source_code).await
 }
@@ -134,7 +126,6 @@ async fn chat_with_ai(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::default().build())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
@@ -150,7 +141,6 @@ pub fn run() {
             save_sessions_list,
             run_code,
             run_stress_test,
-            run_terminal_command,
             write_temp_code,
             chat_with_ai,
             submit_problem,

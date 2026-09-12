@@ -1,6 +1,7 @@
 pub mod ai;
 pub mod ingest;
 pub mod models;
+pub mod multi_oj;
 pub mod runner;
 pub mod storage;
 pub mod stress;
@@ -33,7 +34,7 @@ fn save_problems_list(problems: Vec<Problem>) -> Result<(), String> {
 
 #[tauri::command]
 async fn fetch_problem_online(problem_id: String) -> Result<Problem, String> {
-    ingest::fetch_luogu_problem(problem_id).await
+    multi_oj::fetch_problem_auto(problem_id).await
 }
 
 #[tauri::command]

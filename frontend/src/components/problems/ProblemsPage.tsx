@@ -179,7 +179,7 @@ export const ProblemsPage: React.FC = () => {
             未找到匹配的题目
           </p>
           <p className="text-[11px] text-[var(--text-tertiary)] mt-1">
-            尝试更换搜索关键词，或点击右上角「拉取洛谷题目」
+            尝试更换搜索关键词，或点击右上角「一键导入在线题目」
           </p>
         </div>
       )}
@@ -206,17 +206,17 @@ export const ProblemsPage: React.FC = () => {
               }}
             >
               <h2 className="text-base font-bold text-[var(--text-primary)]">
-                拉取洛谷在线题目
+                一键导入在线题目
               </h2>
               <p className="text-xs text-[var(--text-tertiary)]">
-                输入洛谷题目编号（如 <code className="font-mono text-[var(--accent)]">P1001</code>）或完整的题目链接，将自动解析 LaTeX 题面与样例测试点。
+                支持洛谷 / Codeforces / AtCoder：输入题号或完整链接，自动识别 OJ 并解析题面与样例。题面为空的题目（如 CF 反爬拦截）会附原题链接。
               </p>
 
               <input
                 type="text"
                 value={fetchInput}
                 onChange={(e) => setFetchInput(e.target.value)}
-                placeholder="例如: P1001 或 https://www.luogu.com.cn/problem/P1001"
+                placeholder="例如: P1001 · CF1900A · abc300_a 或粘贴题目链接"
                 onKeyDown={(e) => e.key === 'Enter' && handleFetch()}
                 className="w-full p-2.5 rounded-xl border text-sm font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
                 autoFocus

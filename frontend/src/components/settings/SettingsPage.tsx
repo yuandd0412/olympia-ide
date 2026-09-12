@@ -4,86 +4,104 @@ import {
   Palette,
   Terminal,
   Sparkles,
-  Check,
   Info,
   Moon,
   Sun,
   Code2,
   Trophy,
-  Flame,
   Clock,
   LogOut,
   Type,
   Minus,
   Plus,
+  Keyboard,
+  Wand2,
+  Check,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
 import { registerMonacoThemes } from '../../services/monacoTheme';
+import { tauriApi } from '../../services/tauriApi';
 import type { AppSettings, ThemeType } from '../../types';
 
-const THEMES: Array<{
-  id: ThemeType;
-  name: string;
-  desc: string;
-  accent: string;
-  previewBg: string;
-  previewFg: string;
-  isLight: boolean;
-}> = [
-  {
-    id: 'OneDarkPro',
-    name: 'One Dark Pro',
-    desc: '经典 VS Code / Atom 深色，高对比度代码高亮，低疲劳护眼',
-    accent: '#007acc',
-    previewBg: '#1e1e1e',
-    previewFg: '#cccccc',
-    isLight: false,
-  },
-  {
-    id: 'GitHubLight',
-    name: 'GitHub Light',
-    desc: '清爽白皙日光浅色，苹果与 GitHub 极简排版，清晰明了',
-    accent: '#0969da',
-    previewBg: '#ffffff',
-    previewFg: '#1f2328',
-    isLight: true,
-  },
-];
-
 const CODE_FONTS = [
-  {
-    id: 'Cascadia Mono',
-    name: 'Cascadia Mono',
-    desc: '微软现代等宽字体，符号与数字清晰利落',
-  },
-  {
-    id: 'JetBrains Mono',
-    name: 'JetBrains Mono',
-    desc: '专为程序员设计，代码辨识度极佳',
-  },
-  {
-    id: 'Fira Code',
-    name: 'Fira Code',
-    desc: '经典开源等宽字体，连字与排版优美',
-  },
-  {
-    id: 'Consolas',
-    name: 'Consolas',
-    desc: 'Windows / NOIP 赛场经典标准等宽字体',
-  },
-  {
-    id: 'Courier New',
-    name: 'Courier New',
-    desc: '传统等宽打印字体，历史悠久且通用',
-  },
-  {
-    id: 'Source Code Pro',
-    name: 'Source Code Pro',
-    desc: 'Adobe 开源等宽字体，字母结构规整',
-  },
+  { id: 'Cascadia Mono', name: 'Cascadia Mono' },
+  { id: 'JetBrains Mono', name: 'JetBrains Mono' },
+  { id: 'Fira Code', name: 'Fira Code' },
+  { id: 'Consolas', name: 'Consolas' },
+  { id: 'Courier New', name: 'Courier New' },
+  { id: 'Source Code Pro', name: 'Source Code Pro' },
 ];
 
 const FONT_SIZE_PRESETS = [12, 13, 14, 15, 16, 18, 20];
+
+const SHORTCUTS: Array<[string, string]> = [
+  ['Ctrl+R', '编译并评测当前代码'],
+  ['Ctrl+S', '保存当前文件'],
+  ['Ctrl+N', '新建代码标签页'],
+  ['Ctrl+W', '关闭当前标签页'],
+  ['Ctrl+E', '回到编辑器'],
+  ['Ctrl+K', '打开最近做题'],
+];
+
+/* ---- 规范控件：表单行 / 开关 / 药丸组 / 分区 ---- */
+
+const Section: React.FC<{ icon: React.ReactNode; title: string; children: React.ReactNode }> = ({ icon, title, children }) => (
+  <section className="pt-6 first:pt-0">
+    <div className="flex items-center gap-2 mb-4">
+      <span className="text-[var(--accent)]">{icon}</span>
+      <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">{title}</h2>
+    </div>
+    <div className="space-y-3.5">{children}</div>
+  </section>
+);
+
+const Row: React.FC<{ label: string; hint?: string; children: React.ReactNode }> = ({ label, hint, children }) => (
+  <div className="flex items-start gap-4">
+    <label className="w-[140px] shrink-0 pt-1.5 text-right text-xs text-[var(--text-secondary)]">{label}</label>
+    <div className="flex-1 min-w-0">
+      {children}
+      {hint && <p className="text-[11px] text-[var(--text-tertiary)] mt-1 leading-relaxed">{hint}</p>}
+    </div>
+  </div>
+);
+
+const Switch: React.FC<{ checked: boolean; onChange: (v: boolean) => void }> = ({ checked, onChange }) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    onClick={() => onChange(!checked)}
+    className={'relative w-9 h-5 rounded-full transition-colors cursor-pointer ' + (checked ? 'bg-[var(--accent)]' : 'bg-[var(--bg-elevated)] border border-[var(--border)]')}
+  >
+    <span
+      className={'absolute top-0.5 w-4 h-4 rounded-full transition-all ' + (checked ? 'left-[18px] bg-[var(--text-primary)]' : 'left-0.5 bg-[var(--text-tertiary)]')}
+    />
+  </button>
+);
+
+const Pills: React.FC<{ value: string; options: Array<{ id: string; label: string; icon?: React.ReactNode }>; onChange: (id: string) => void }> = ({ value, options, onChange }) => (
+  <div className="inline-flex items-center gap-1 p-0.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border)]">
+    {options.map((o) => (
+      <button
+        key={o.id}
+        type="button"
+        onClick={() => onChange(o.id)}
+        className={
+          'px-3 py-1 rounded-md text-xs transition-colors cursor-pointer flex items-center gap-1.5 ' +
+          (value === o.id
+            ? 'bg-[var(--accent-subtle)] text-[var(--text-primary)] font-medium'
+            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]')
+        }
+      >
+        {value === o.id && <Check className="w-3 h-3 text-[var(--accent)]" />}
+        {o.icon}
+        {o.label}
+      </button>
+    ))}
+  </div>
+);
+
+/* ---- 页面 ---- */
 
 export const SettingsPage: React.FC = () => {
   const { settings, updateSettings, contestEndTime, setContestEndTime } = useAppStore();
@@ -91,6 +109,8 @@ export const SettingsPage: React.FC = () => {
   const [form, setForm] = useState<AppSettings>({ ...settings });
   const [fontSizeInput, setFontSizeInput] = useState<string>(String(settings.fontSize || 14));
   const [flagsInput, setFlagsInput] = useState<string>(form.compilerFlags.join(' '));
+  const [detecting, setDetecting] = useState(false);
+  const [detectMsg, setDetectMsg] = useState<string | null>(null);
 
   // Keep local form in sync with global store changes
   React.useEffect(() => {
@@ -101,555 +121,330 @@ export const SettingsPage: React.FC = () => {
     setFlagsInput((prev) => (prev.trim() === joined ? prev : joined));
   }, [settings]);
 
-  // Real-time instant field updater
   const updateField = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     updateSettings({ [key]: value });
   };
 
-  const handleSelectTheme = (theme: ThemeType) => {
-    updateField('theme', theme);
-  };
-
-  const handleFontSizeChange = (valStr: string) => {
-    // Only allow digits
-    const cleaned = valStr.replace(/[^0-9]/g, '');
-    setFontSizeInput(cleaned);
-    if (cleaned !== '') {
-      const parsed = parseInt(cleaned, 10);
-      if (!isNaN(parsed) && parsed >= 10 && parsed <= 36) {
-        updateField('fontSize', parsed);
+  const handleDetectCompiler = async () => {
+    setDetecting(true);
+    setDetectMsg(null);
+    try {
+      const st = await tauriApi.detectToolchain();
+      if (st.gppPath) {
+        if (form.compilerPath !== st.gppPath) updateField('compilerPath', st.gppPath);
+        setDetectMsg(`✓ 已检测到：${st.version || st.gppPath}`);
+      } else {
+        setDetectMsg('未检测到可用工具链，可在首次启动向导中自动安装。');
       }
+    } catch (e) {
+      setDetectMsg('检测失败：' + String(e));
+    } finally {
+      setDetecting(false);
     }
   };
 
+  const handleFontSizeChange = (valStr: string) => {
+    const cleaned = valStr.replace(/[^0-9]/g, '');
+    setFontSizeInput(cleaned);
+    const parsed = parseInt(cleaned, 10);
+    if (!isNaN(parsed) && parsed >= 10 && parsed <= 36) updateField('fontSize', parsed);
+  };
+
   const handleFontSizeStep = (delta: number) => {
-    const current = parseInt(fontSizeInput, 10) || form.fontSize || 14;
-    const next = Math.max(10, Math.min(36, current + delta));
+    const next = Math.max(10, Math.min(36, (parseInt(fontSizeInput, 10) || form.fontSize || 14) + delta));
     setFontSizeInput(String(next));
     updateField('fontSize', next);
   };
 
-  const handleSelectFontSizePreset = (size: number) => {
-    setFontSizeInput(String(size));
-    updateField('fontSize', size);
-  };
-
   const isContestActive = contestEndTime !== null && Date.now() < contestEndTime;
+  const isLight = form.theme === 'GitHubLight';
+
+  const themeOptions = [
+    { id: 'OneDarkPro', label: 'One Dark Pro', icon: <Moon className="w-3 h-3 text-[#7aa2f7]" /> },
+    { id: 'GitHubLight', label: 'GitHub Light', icon: <Sun className="w-3 h-3 text-[#e5a43b]" /> },
+  ];
 
   return (
-    <div className="w-full h-full flex flex-col p-6 overflow-y-auto select-none space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-[var(--text-primary)]">
-            偏好设置
-          </h1>
-          <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
-            配置 IDE 界面主题、比赛实战模式、代码字体排版、本地 C++ 编译器与 AI 算法教练
+    <div className="w-full h-full overflow-y-auto select-none">
+      <div className="max-w-[640px] mx-auto px-6 py-6">
+        {/* 页头 */}
+        <header className="mb-2">
+          <h1 className="text-base font-semibold text-[var(--text-primary)]">设置</h1>
+          <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">
+            所有更改即时生效并自动保存
           </p>
-        </div>
+        </header>
 
-        {/* Real-time sync indicator */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] text-xs shadow-xs select-none">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[11px] font-medium text-[var(--text-secondary)]">实时自动同步</span>
-        </div>
-      </div>
-
-      {/* Contest Mode (比赛实战模拟模式) */}
-      <div
-        className="p-5 rounded-2xl border flex flex-col gap-3.5 transition-all shadow-xs"
-        style={{
-          backgroundColor: isContestActive ? 'rgba(255, 69, 58, 0.08)' : 'var(--bg-surface)',
-          borderColor: isContestActive ? 'rgba(255, 69, 58, 0.4)' : 'var(--border)',
-        }}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className={'w-2.5 h-2.5 rounded-full ' + (isContestActive ? 'bg-[#ff453a] animate-pulse' : 'bg-[#ff9f0a]')} />
-            <span className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
-              <Trophy className="w-4 h-4 text-[#ff9f0a]" />
-              <span>比赛实战模拟模式 (Contest Simulation)</span>
-            </span>
-          </div>
-
-          {isContestActive ? (
-            <span className="px-2.5 py-0.5 rounded-full bg-[#ff453a] text-white text-[11px] font-bold shadow-xs">
-              进行中 · 结束时间: {new Date(contestEndTime).toLocaleTimeString()}
-            </span>
-          ) : (
-            <span className="text-[11px] text-[var(--text-tertiary)]">未开启</span>
-          )}
-        </div>
-
-        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-          开启后将强制禁用 AI 算法教练与思路解答功能，模拟 NOIP / CSP / NOI / ICPC 真实赛场环境。设置时长结束后将自动恢复。
-        </p>
-
-        {/* Quick Presets Buttons */}
-        <div className="flex items-center gap-2.5 flex-wrap pt-1">
-          <button
-            onClick={() => setContestEndTime(Date.now() + 1.5 * 3600 * 1000)}
-            className="flex items-center gap-1 px-3.5 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] hover:border-[var(--accent)] hover:bg-[var(--accent-subtle)] text-xs font-medium text-[var(--text-primary)] transition-all cursor-pointer shadow-xs"
-          >
-            <Clock className="w-3.5 h-3.5 text-[var(--accent)]" />
-            <span>1.5 小时 (普及组模拟)</span>
-          </button>
-
-          <button
-            onClick={() => setContestEndTime(Date.now() + 3.5 * 3600 * 1000)}
-            className="flex items-center gap-1 px-3.5 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] hover:border-[#ff9f0a] hover:bg-[#ff9f0a]/10 text-xs font-medium text-[var(--text-primary)] transition-all cursor-pointer shadow-xs"
-          >
-            <Flame className="w-3.5 h-3.5 text-[#ff9f0a]" />
-            <span>3.5 小时 (CSP-S 提高组模拟)</span>
-          </button>
-
-          <button
-            onClick={() => setContestEndTime(Date.now() + 4.0 * 3600 * 1000)}
-            className="flex items-center gap-1 px-3.5 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] hover:border-[#ff453a] hover:bg-[#ff453a]/10 text-xs font-medium text-[var(--text-primary)] transition-all cursor-pointer shadow-xs"
-          >
-            <Trophy className="w-3.5 h-3.5 text-[#ff453a]" />
-            <span>4.0 小时 (NOIP 模拟)</span>
-          </button>
-
-          <button
-            onClick={() => setContestEndTime(Date.now() + 5.0 * 3600 * 1000)}
-            className="flex items-center gap-1 px-3.5 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] hover:border-[#af52de] hover:bg-[#af52de]/10 text-xs font-medium text-[var(--text-primary)] transition-all cursor-pointer shadow-xs"
-          >
-            <Trophy className="w-3.5 h-3.5 text-[#af52de]" />
-            <span>5.0 小时 (NOI / ICPC 模拟)</span>
-          </button>
-
-          {isContestActive && (
-            <button
-              onClick={() => setContestEndTime(null)}
-              className="flex items-center gap-1 px-3.5 py-1.5 rounded-xl bg-[#ff453a] hover:brightness-110 text-white text-xs font-bold transition-all cursor-pointer shadow-xs ml-auto"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>提前结束比赛</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Theme Section */}
-      <div
-        className="p-5 rounded-2xl border flex flex-col gap-4"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          borderColor: 'var(--border)',
-        }}
-      >
-        <div className="flex items-center gap-2">
-          <Palette className="w-4 h-4 text-[var(--accent)]" />
-          <span className="text-xs font-bold text-[var(--text-primary)]">
-            IDE 界面主题 (Theme Palette)
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {THEMES.map((th) => {
-            const isSelected = form.theme === th.id;
-            return (
-              <div
-                key={th.id}
-                onClick={() => handleSelectTheme(th.id)}
-                className={'p-4 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ' + (isSelected ? 'border-[var(--accent)] bg-[var(--accent-subtle)] ring-2 ring-[var(--accent)] shadow-xs' : 'border-[var(--border)] bg-[var(--bg-elevated)] hover:border-[var(--text-tertiary)]')}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      className="w-7 h-7 rounded-lg flex items-center justify-center border"
-                      style={{
-                        backgroundColor: th.previewBg,
-                        borderColor: th.isLight ? '#d0d7de' : '#333333',
-                        color: th.previewFg,
-                      }}
-                    >
-                      {th.isLight ? <Sun className="w-4 h-4 text-[#e5a43b]" /> : <Moon className="w-4 h-4 text-[#7aa2f7]" />}
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-[var(--text-primary)] block">
-                        {th.name}
-                      </span>
-                      <span className="text-[10px] text-[var(--text-tertiary)] block">
-                        {th.isLight ? '浅色日光模式' : '深色暗黑模式'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {isSelected && (
-                    <div
-                      className="w-5 h-5 rounded-full flex items-center justify-center text-white shrink-0 shadow-xs"
-                      style={{ backgroundColor: 'var(--accent)' }}
-                    >
-                      <Check className="w-3 h-3" />
-                    </div>
-                  )}
-                </div>
-
-                {/* Mini Code Preview Bar */}
-                <div
-                  className="p-2.5 rounded-lg border font-mono text-[11px] leading-relaxed flex items-center gap-2 select-none"
-                  style={{
-                    backgroundColor: th.previewBg,
-                    borderColor: th.isLight ? '#e1e4e8' : '#303030',
-                    color: th.previewFg,
-                  }}
-                >
-                  <span style={{ color: th.isLight ? '#cf222e' : '#c678dd' }}>int</span>
-                  <span>main()</span>
-                  <span style={{ color: th.isLight ? '#6e7781' : '#5c6370' }}>// {th.name}</span>
-                </div>
-
-                <p className="text-[11px] text-[var(--text-secondary)] mt-2.5 leading-normal">
-                  {th.desc}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Custom Boilerplate (缺省源配置) */}
-      <div
-        className="p-5 rounded-2xl border flex flex-col gap-4"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          borderColor: 'var(--border)',
-        }}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Code2 className="w-4 h-4 text-[var(--accent)]" />
-            <span className="text-xs font-bold text-[var(--text-primary)]">
-              新建文件缺省源 (Custom Code Boilerplate)
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-[var(--text-tertiary)]">
-              {form.enableCodeTemplate ? '已启用自动填入' : '未启用(新建纯空白文件)'}
-            </span>
-            <input
-              type="checkbox"
-              checked={form.enableCodeTemplate}
-              onChange={(e) =>
-                updateField('enableCodeTemplate', e.target.checked)
-              }
-              className="w-4 h-4 accent-[var(--accent)] cursor-pointer"
-            />
-          </div>
-        </div>
-
-        {form.enableCodeTemplate ? (
-          <div className="space-y-2">
-            <p className="text-xs text-[var(--text-secondary)]">
-              每次新建 <code className="font-mono text-[var(--accent)]">.cpp</code> 标签页时，自动将以下模板代码填入编辑器：
-            </p>
-            <div className="h-48 border rounded-xl overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-              <Editor
-                height="100%"
-                language="cpp"
-                value={form.codeTemplate}
-                theme={form.theme === 'GitHubLight' ? 'oler-light-theme' : 'oler-dark-theme'}
-                beforeMount={registerMonacoThemes}
-                onChange={(v) => updateField('codeTemplate', v || '')}
-                options={{
-                  fontSize: 13,
-                  fontFamily: (form.fontFamily || 'Cascadia Mono') + ', Consolas, monospace',
-                  minimap: { enabled: false },
-                  automaticLayout: true,
-                  tabSize: 4,
-                  scrollBeyondLastLine: false,
-                  lineNumbers: 'on',
-                }}
+        {/* 外观 */}
+        <div className="border-t border-[var(--border)] pt-2 mt-2">
+          <Section icon={<Palette className="w-4 h-4" />} title="外观">
+            <Row label="主题">
+              <Pills
+                value={form.theme}
+                options={themeOptions}
+                onChange={(id) => updateField('theme', id as ThemeType)}
               />
-            </div>
-          </div>
-        ) : (
-          <p className="text-xs text-[var(--text-tertiary)] leading-relaxed">
-            未开启自定义缺省源。新建代码标签页默认完全为空 (0 行空白文件)。
-          </p>
-        )}
-      </div>
-
-      {/* Compiler Configuration */}
-      <div
-        className="p-5 rounded-2xl border flex flex-col gap-4"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          borderColor: 'var(--border)',
-        }}
-      >
-        <div className="flex items-center gap-2">
-          <Terminal className="w-4 h-4 text-[var(--accent)]" />
-          <span className="text-xs font-bold text-[var(--text-primary)]">
-            C++ 编译器环境 (MinGW / GCC)
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
-              编译器可执行路径 (g++)
-            </label>
-            <input
-              type="text"
-              value={form.compilerPath}
-              onChange={(e) =>
-                updateField('compilerPath', e.target.value)
-              }
-              placeholder="g++ 或 C:\\Qt\\Tools\\mingw1310_64\\bin\\g++.exe"
-              className="w-full p-2.5 rounded-xl border text-xs font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
-              编译参数标志 (空格分隔)
-            </label>
-            <input
-              type="text"
-              value={flagsInput}
-              onChange={(e) => {
-                setFlagsInput(e.target.value);
-                updateField('compilerFlags', e.target.value.split(/\s+/).filter(Boolean));
-              }}
-              onBlur={() => setFlagsInput((prev) => prev.trim())}
-              placeholder="-O2 -std=c++17 -Wall -Wextra"
-              className="w-full p-2.5 rounded-xl border text-xs font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Luogu Integration Help Box */}
-      <div
-        className="p-5 rounded-2xl border flex flex-col gap-2"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          borderColor: 'var(--border)',
-        }}
-      >
-        <div className="flex items-center gap-2">
-          <Info className="w-4 h-4 text-[var(--accent)]" />
-          <span className="text-xs font-bold text-[var(--text-primary)]">
-            洛谷 (Luogu) 题面同步机制说明
-          </span>
-        </div>
-
-        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-          Olympia IDE 通过调用洛谷公开内容接口（<code className="font-mono text-[var(--accent)]">https://www.luogu.com.cn/problem/{'{id}'}?_contentOnly=1</code>）自动解析题面 LaTeX 源码、时空限制与输入输出样例，并缓存于本地（<code className="font-mono text-[var(--accent)]">~/.oleride/problems.json</code>），支持无网络离线练习。
-        </p>
-      </div>
-
-      {/* AI Coach Config */}
-      <div
-        className="p-5 rounded-2xl border flex flex-col gap-4"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          borderColor: 'var(--border)',
-        }}
-      >
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-[var(--accent)]" />
-          <span className="text-xs font-bold text-[var(--text-primary)]">
-            AI 竞赛教练模型接口 (OpenAI / DeepSeek 兼容)
-          </span>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
-              API Base URL (端点地址)
-            </label>
-            <input
-              type="text"
-              value={form.aiBaseUrl}
-              onChange={(e) => updateField('aiBaseUrl', e.target.value)}
-              placeholder="https://api.openai.com/v1 或 https://api.deepseek.com"
-              className="w-full p-2.5 rounded-xl border text-xs font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
-              API Key (令牌密钥)
-            </label>
-            <input
-              type="password"
-              value={form.aiApiKey}
-              onChange={(e) => updateField('aiApiKey', e.target.value)}
-              placeholder="sk-..."
-              className="w-full p-2.5 rounded-xl border text-xs font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
-              模型名称 (Model)
-            </label>
-            <input
-              type="text"
-              value={form.aiModel}
-              onChange={(e) => updateField('aiModel', e.target.value)}
-              placeholder="deepseek-chat 或 gpt-4o-mini"
-              className="w-full p-2.5 rounded-xl border text-xs font-mono outline-none focus:border-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)]"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Editor Typography (字体与字号选择) */}
-      <div
-        className="p-5 rounded-2xl border flex flex-col gap-4"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          borderColor: 'var(--border)',
-        }}
-      >
-        <div className="flex items-center gap-2">
-          <Type className="w-4 h-4 text-[var(--accent)]" />
-          <span className="text-xs font-bold text-[var(--text-primary)]">
-            代码编辑器字体与字号 (Typography)
-          </span>
-        </div>
-
-        {/* Font Family Selection Cards */}
-        <div>
-          <label className="text-xs font-medium text-[var(--text-secondary)] block mb-2">
-            选择编辑器等宽字体族 (Font Family)
-          </label>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-            {CODE_FONTS.map((font) => {
-              const isSelected = (form.fontFamily || 'Cascadia Mono') === font.id;
-              return (
-                <div
-                  key={font.id}
-                  onClick={() => updateField('fontFamily', font.id)}
-                  className={
-                    'p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ' +
-                    (isSelected
-                      ? 'border-[var(--accent)] bg-[var(--accent-subtle)] ring-1 ring-[var(--accent)] shadow-xs'
-                      : 'border-[var(--border)] bg-[var(--bg-elevated)] hover:border-[var(--text-tertiary)]')
-                  }
+            </Row>
+            <Row label="编辑器字体">
+              <div className="relative max-w-[280px]">
+                <Type className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] pointer-events-none" />
+                <select
+                  value={form.fontFamily || 'Cascadia Mono'}
+                  onChange={(e) => updateField('fontFamily', e.target.value)}
+                  className="w-full appearance-none bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] rounded-md pl-8 pr-8 py-1.5 text-xs outline-none focus:border-[var(--accent)] cursor-pointer"
+                  style={{ fontFamily: (form.fontFamily || 'Cascadia Mono') + ', monospace' }}
                 >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span
-                      className="text-xs font-bold text-[var(--text-primary)]"
-                      style={{ fontFamily: font.id + ', monospace' }}
-                    >
-                      {font.name}
-                    </span>
-                    {isSelected && (
-                      <Check className="w-3.5 h-3.5 text-[var(--accent)]" />
-                    )}
-                  </div>
-                  <span
-                    className="text-[11px] text-[var(--text-secondary)] truncate font-mono py-1 px-1.5 rounded bg-black/15 my-1"
-                    style={{ fontFamily: font.id + ', monospace' }}
-                  >
-                    for (int i = 0; i &lt; n; ++i)
-                  </span>
-                  <span className="text-[10px] text-[var(--text-tertiary)] line-clamp-1">
-                    {font.desc}
-                  </span>
+                  {CODE_FONTS.map((f) => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+              </div>
+            </Row>
+            <Row label="字号" hint="范围 10 – 36 px">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] overflow-hidden">
+                  <button type="button" onClick={() => handleFontSizeStep(-1)} className="px-2 py-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/10 transition-colors cursor-pointer" title="减小字号">
+                    <Minus className="w-3 h-3" />
+                  </button>
+                  <input
+                    type="text"
+                    value={fontSizeInput}
+                    onChange={(e) => handleFontSizeChange(e.target.value)}
+                    onBlur={() => {
+                      if (fontSizeInput === '' || parseInt(fontSizeInput, 10) < 10) {
+                        setFontSizeInput('14');
+                        updateField('fontSize', 14);
+                      }
+                    }}
+                    className="w-10 text-center text-xs font-mono bg-transparent text-[var(--text-primary)] outline-none py-1 border-x border-[var(--border)]"
+                  />
+                  <button type="button" onClick={() => handleFontSizeStep(1)} className="px-2 py-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/10 transition-colors cursor-pointer" title="增大字号">
+                    <Plus className="w-3 h-3" />
+                  </button>
                 </div>
-              );
-            })}
-          </div>
+                <div className="flex items-center gap-1">
+                  {FONT_SIZE_PRESETS.map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => { setFontSizeInput(String(size)); updateField('fontSize', size); }}
+                      className={
+                        'px-1.5 py-0.5 rounded text-[11px] font-mono transition-colors cursor-pointer border ' +
+                        ((form.fontSize || 14) === size
+                          ? 'border-[var(--accent)] text-[var(--accent)]'
+                          : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]')
+                      }
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </Row>
+            <Row label="实时预览">
+              <div className="rounded-md border border-[var(--border)] bg-[var(--bg-base)] p-3 overflow-x-auto">
+                <pre
+                  className="font-mono text-[var(--text-primary)] leading-relaxed select-text"
+                  style={{ fontFamily: (form.fontFamily || 'Cascadia Mono') + ', monospace', fontSize: (form.fontSize || 14) + 'px' }}
+                >{`int main() {
+    ios::sync_with_stdio(false);
+    cout << "Olympia IDE" << '\\n';
+    return 0;
+}`}</pre>
+              </div>
+            </Row>
+          </Section>
         </div>
 
-        {/* Font Size Configuration with Stepper & Presets */}
-        <div className="pt-2 border-t border-[var(--border)] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div>
-            <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
-              编辑器字号大小 (Font Size)
-            </label>
-            <div className="flex items-center gap-2">
-              {/* Stepper Controls */}
-              <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] overflow-hidden shadow-xs">
-                <button
-                  type="button"
-                  onClick={() => handleFontSizeStep(-1)}
-                  className="px-2.5 py-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/15 transition-colors cursor-pointer"
-                  title="减小字号"
-                >
-                  <Minus className="w-3.5 h-3.5" />
-                </button>
+        {/* 编译器 */}
+        <div className="border-t border-[var(--border)] pt-2 mt-6">
+          <Section icon={<Terminal className="w-4 h-4" />} title="编译器">
+            <Row label="编译器路径" hint={detectMsg ?? '评测与语法检查均使用此 g++'}>
+              <div className="flex items-center gap-2">
                 <input
                   type="text"
-                  value={fontSizeInput}
-                  onChange={(e) => handleFontSizeChange(e.target.value)}
-                  onBlur={() => {
-                    if (fontSizeInput === '' || parseInt(fontSizeInput, 10) < 10) {
-                      setFontSizeInput('14');
-                      updateField('fontSize', 14);
-                    }
-                  }}
-                  className="w-12 text-center text-xs font-mono font-bold bg-transparent text-[var(--text-primary)] outline-none py-1.5 border-x border-[var(--border)]"
+                  value={form.compilerPath}
+                  onChange={(e) => updateField('compilerPath', e.target.value)}
+                  placeholder="g++ 或完整路径 g++.exe"
+                  className="flex-1 bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-xs font-mono outline-none focus:border-[var(--accent)]"
                 />
                 <button
                   type="button"
-                  onClick={() => handleFontSizeStep(1)}
-                  className="px-2.5 py-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/15 transition-colors cursor-pointer"
-                  title="增大字号"
+                  onClick={handleDetectCompiler}
+                  disabled={detecting}
+                  className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-[var(--bg-elevated)] border border-[var(--border)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Wand2 className="w-3 h-3" />
+                  {detecting ? '检测中' : '自动检测'}
                 </button>
               </div>
-              <span className="text-xs text-[var(--text-tertiary)] font-mono">px (范围 10~36)</span>
-            </div>
-          </div>
-
-          {/* Font Size Quick Presets */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] text-[var(--text-tertiary)] mr-1">常用预设:</span>
-            {FONT_SIZE_PRESETS.map((size) => (
-              <button
-                key={size}
-                type="button"
-                onClick={() => handleSelectFontSizePreset(size)}
-                className={
-                  'px-2.5 py-1 rounded-lg text-xs font-mono transition-all cursor-pointer border ' +
-                  ((form.fontSize || 14) === size
-                    ? 'border-[var(--accent)] bg-[var(--accent)] text-white font-bold shadow-xs'
-                    : 'border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--text-tertiary)]')
-                }
-              >
-                {size}px
-              </button>
-            ))}
-          </div>
+            </Row>
+            <Row label="编译参数" hint="空格分隔，留空使用默认 -O2 -std=c++17 -Wall -Wextra">
+              <input
+                type="text"
+                value={flagsInput}
+                onChange={(e) => {
+                  setFlagsInput(e.target.value);
+                  updateField('compilerFlags', e.target.value.split(/\s+/).filter(Boolean));
+                }}
+                onBlur={() => setFlagsInput((prev) => prev.trim())}
+                placeholder="-O2 -std=c++17 -Wall"
+                className="w-full bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-xs font-mono outline-none focus:border-[var(--accent)]"
+              />
+            </Row>
+          </Section>
         </div>
 
-        {/* Live Typography Preview Box */}
-        <div className="mt-1 p-3.5 rounded-xl border border-[var(--border)] bg-[var(--bg-base)] space-y-1.5 shadow-inner">
-          <div className="flex items-center justify-between text-[11px] text-[var(--text-tertiary)] select-none">
-            <span>实时效果预览</span>
-            <span className="font-mono">{form.fontFamily || 'Cascadia Mono'} · {form.fontSize || 14}px</span>
-          </div>
-          <pre
-            className="font-mono text-[var(--text-primary)] leading-relaxed overflow-x-auto select-text p-1"
-            style={{
-              fontFamily: (form.fontFamily || 'Cascadia Mono') + ', Consolas, monospace',
-              fontSize: (form.fontSize || 14) + 'px',
-            }}
-          >
-{`#include <iostream>
-#include <vector>
-#include <algorithm>
-using namespace std;
+        {/* 缺省源 */}
+        <div className="border-t border-[var(--border)] pt-2 mt-6">
+          <Section icon={<Code2 className="w-4 h-4" />} title="缺省源">
+            <Row label="新建文件模板" hint="开启后，每次新建代码标签页自动填入下方模板">
+              <Switch checked={form.enableCodeTemplate} onChange={(v) => updateField('enableCodeTemplate', v)} />
+            </Row>
+            {form.enableCodeTemplate && (
+              <div className="h-40 rounded-md border border-[var(--border)] overflow-hidden">
+                <Editor
+                  height="100%"
+                  language="cpp"
+                  value={form.codeTemplate}
+                  theme={isLight ? 'oler-light-theme' : 'oler-dark-theme'}
+                  beforeMount={registerMonacoThemes}
+                  onChange={(v) => updateField('codeTemplate', v || '')}
+                  options={{
+                    fontSize: 13,
+                    fontFamily: (form.fontFamily || 'Cascadia Mono') + ', Consolas, monospace',
+                    minimap: { enabled: false },
+                    automaticLayout: true,
+                    tabSize: 4,
+                    scrollBeyondLastLine: false,
+                    lineNumbers: 'on',
+                  }}
+                />
+              </div>
+            )}
+          </Section>
+        </div>
 
-int main() {
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
-    cout << "Olympia IDE - 专为 OI 选手打造" << '\\n';
-    return 0;
-}`}
-          </pre>
+        {/* 比赛模式 */}
+        <div className="border-t border-[var(--border)] pt-2 mt-6">
+          <Section icon={<Trophy className="w-4 h-4" />} title="比赛模式">
+            <Row
+              label="模拟比赛"
+              hint={isContestActive
+                ? `进行中，结束于 ${new Date(contestEndTime).toLocaleTimeString()}，期间 AI 教练锁定`
+                : '开始后倒计时并锁定 AI 教练，到时自动恢复'}
+            >
+              {isContestActive ? (
+                <button
+                  type="button"
+                  onClick={() => setContestEndTime(null)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#ff453a] hover:brightness-110 text-white text-xs font-medium transition-all cursor-pointer"
+                >
+                  <LogOut className="w-3 h-3" />
+                  提前结束比赛
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {[
+                    { mins: 90, label: '1.5 小时' },
+                    { mins: 210, label: '3.5 小时' },
+                    { mins: 240, label: '4 小时' },
+                    { mins: 300, label: '5 小时' },
+                  ].map((p) => (
+                    <button
+                      key={p.mins}
+                      type="button"
+                      onClick={() => setContestEndTime(Date.now() + p.mins * 60_000)}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[var(--bg-elevated)] border border-[var(--border)] hover:border-[var(--accent)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                    >
+                      <Clock className="w-3 h-3 text-[var(--accent)]" />
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Row>
+          </Section>
+        </div>
+
+        {/* AI 助手 */}
+        <div className="border-t border-[var(--border)] pt-2 mt-6">
+          <Section icon={<Sparkles className="w-4 h-4" />} title="AI 助手">
+            <Row label="API 地址" hint="任何兼容 OpenAI 接口的服务；Key 只保存在本机">
+              <input
+                type="text"
+                value={form.aiBaseUrl}
+                onChange={(e) => updateField('aiBaseUrl', e.target.value)}
+                placeholder="https://api.deepseek.com/v1"
+                className="w-full bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-xs font-mono outline-none focus:border-[var(--accent)]"
+              />
+            </Row>
+            <Row label="API Key">
+              <input
+                type="password"
+                value={form.aiApiKey}
+                onChange={(e) => updateField('aiApiKey', e.target.value)}
+                placeholder="sk-..."
+                className="w-full bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-xs font-mono outline-none focus:border-[var(--accent)]"
+              />
+            </Row>
+            <Row label="模型">
+              <input
+                type="text"
+                value={form.aiModel}
+                onChange={(e) => updateField('aiModel', e.target.value)}
+                placeholder="deepseek-chat 或 gpt-4o-mini"
+                className="w-full bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-xs font-mono outline-none focus:border-[var(--accent)]"
+              />
+            </Row>
+          </Section>
+        </div>
+
+        {/* 快捷键 */}
+        <div className="border-t border-[var(--border)] pt-2 mt-6">
+          <Section icon={<Keyboard className="w-4 h-4" />} title="快捷键">
+            <div className="rounded-md border border-[var(--border)] overflow-hidden">
+              {SHORTCUTS.map(([key, desc], i) => (
+                <div
+                  key={key}
+                  className={'flex items-center justify-between px-3 py-1.5 text-xs ' + (i % 2 === 0 ? 'bg-[var(--bg-surface)]' : 'bg-[var(--bg-elevated)]')}
+                >
+                  <span className="text-[var(--text-secondary)]">{desc}</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-overlay)] border border-[var(--border)] font-mono text-[10px] text-[var(--text-secondary)]">
+                    {key}
+                  </kbd>
+                </div>
+              ))}
+            </div>
+          </Section>
+        </div>
+
+        {/* 关于 */}
+        <div className="border-t border-[var(--border)] pt-2 mt-6 mb-4">
+          <Section icon={<Info className="w-4 h-4" />} title="关于">
+            <p className="text-[11px] text-[var(--text-tertiary)] leading-relaxed">
+              Olympia IDE v0.1.0 · MIT License ·{' '}
+              <button
+                type="button"
+                onClick={() => tauriApi.openUrl('https://github.com/yuandd0412/olympia-ide')}
+                className="text-[var(--accent)] hover:underline cursor-pointer"
+              >
+                GitHub 仓库
+              </button>
+              {' · '}
+              <button
+                type="button"
+                onClick={() => tauriApi.openUrl('https://olympia.dpdns.org')}
+                className="text-[var(--accent)] hover:underline cursor-pointer"
+              >
+                官网
+              </button>
+            </p>
+            <p className="text-[11px] text-[var(--text-tertiary)] leading-relaxed">
+              洛谷题面通过公开接口拉取并缓存到本地 <code className="font-mono">~/.oleride/problems.json</code>，不登录、不上传、不采集任何账号信息。
+            </p>
+          </Section>
         </div>
       </div>
     </div>

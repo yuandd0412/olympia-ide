@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import {
     Download,
   ArrowRight,
+  Code2,
   Filter,
   Loader2,
 } from 'lucide-react';
@@ -21,6 +22,7 @@ export const ProblemsPage: React.FC = () => {
     modalProblem,
     closeProblemModal,
     fetchOnlineProblem,
+    openNewTab,
   } = useAppStore();
 
   const [isFetching, setIsFetching] = useState(false);
@@ -92,13 +94,23 @@ export const ProblemsPage: React.FC = () => {
               查看本地记录与最近访问的题目
             </p>
           </div>
-          <button
-            onClick={() => setShowFetchDialog(true)}
-            className="flex items-center gap-2 bg-[var(--accent)] hover:brightness-110 active:scale-95 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm"
-          >
-            <Download className="w-4 h-4" />
-            <span>获取在线题目</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => openNewTab()}
+              className="flex items-center gap-2 bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] border border-[var(--border)] hover:border-[var(--accent)] text-[var(--text-primary)] px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm"
+              title="不绑定题目，开一个空白标签页自由写代码"
+            >
+              <Code2 className="w-4 h-4 text-[var(--accent)]" />
+              <span>自由练习</span>
+            </button>
+            <button
+              onClick={() => setShowFetchDialog(true)}
+              className="flex items-center gap-2 bg-[var(--accent)] hover:brightness-110 active:scale-95 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm"
+            >
+              <Download className="w-4 h-4" />
+              <span>获取在线题目</span>
+            </button>
+          </div>
         </div>
       </div>
 

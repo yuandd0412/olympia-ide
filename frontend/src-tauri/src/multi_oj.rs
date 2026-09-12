@@ -135,10 +135,33 @@ fn browser_ua() -> reqwest::header::HeaderValue {
     )
 }
 
-/// Codeforces problem import. The statement page often 403s non-browser
-/// clients; when that happens we still return metadata from the official
-/// API (title / rating / tags) plus a source link, degrading gracefully.
+/// Codeforces import, three-tier:
+/// 1. Luogu mirror (`CF{index}`) - full statement, often with Chinese
+///    translation; remote submission there is dead, so oj/source_url are
+///    patched back to the ORIGINAL Codeforces links.
+/// 2. Statement scrape from codeforces.com (frequently 403 behind anti-bot).
+/// 3. Official API metadata only (title/rating/tags + source link).
 async fn fetch_codeforces_problem(index: String) -> Result<Problem, String> {
+    let index = index.to_uppercase();
+    match crate::ingest::fetch_luogu_problem(format!("CF{index}")).await {
+        Ok(mut mirror) if mirror.description_md.len() > 120 => {
+            // Normalize back to the original OJ identity.
+            mirror.oj = "Codeforces".to_string();
+            mirror.id = format!("CF{index}");
+            mirror.source_url = format!(
+                "https://codeforces.com/problemset/problem/{}/{}",
+                &index[..index.rfind(|c: char| c.is_ascii_alphabetic()).unwrap_or(index.len())],
+                &index[index.rfind(|c: char| c.is_ascii_alphabetic()).unwrap_or(index.len())..]
+            );
+            return Ok(mirror);
+        }
+        _ => {} // mirror missing / thin content / blocked: fall through
+    }
+    fetch_codeforces_original(index).await
+}
+
+/// Tiers 2+3: direct scrape attempt, then API-metadata-only degradation.
+async fn fetch_codeforces_original(index: String) -> Result<Problem, String> {
     // Normalize the letter case ("1900a" -> "1900A") so the API lookup matches.
     let index = index.to_uppercase();
     // `1900A` -> contest `1900`, index `A`

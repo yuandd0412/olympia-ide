@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { save as saveFileDialogApi } from '@tauri-apps/plugin-dialog';
-import { writeTextFile } from '@tauri-apps/plugin-fs';
+import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
 import type {
   AppSettings,
   ChatMessage,
@@ -194,6 +194,10 @@ export const tauriApi = {
 
   async writeFile(path: string, contents: string): Promise<void> {
     await writeTextFile(path, contents);
+  },
+
+  async readFile(path: string): Promise<string> {
+    return await readTextFile(path);
   },
 
   /** Downloads (with CN mirror fallback), verifies and extracts the pinned MinGW toolchain. */

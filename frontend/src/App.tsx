@@ -20,7 +20,10 @@ import { OnboardingWizard } from './components/common/OnboardingWizard';
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle, useDefaultLayout } from 'react-resizable-panels';
 
 export const App: React.FC = () => {
-  const { activeNav, setActiveNav, loadInitialData, runCodeAction, settings, hydrated } = useAppStore();
+  const { activeNav, setActiveNav, loadInitialData, runCodeAction, settings, hydrated, tabs, activeTabId } = useAppStore();
+  // 左栏题面阅读器只在绑定了题目的标签页上启用；自由练习标签页不显示
+  const activeTabForViewer = tabs.find((t) => t.id === activeTabId);
+  const viewerAvailable = !!activeTabForViewer?.problemId;
   const viewerRef = useRef<{ collapse: () => void; expand: () => void } | null>(null);
   const [viewerCollapsed, setViewerCollapsed] = useState(false);
   const collapseViewer = () => {
@@ -149,7 +152,7 @@ export const App: React.FC = () => {
                   >
                     <ProblemViewerPanel onClose={collapseViewer} />
                   </Panel>
-                  {!viewerCollapsed && (
+                  {viewerAvailable && !viewerCollapsed && (
                     <PanelResizeHandle className="w-1 bg-[var(--border)] hover:bg-[var(--accent)] transition-all cursor-col-resize z-50 relative group flex items-center justify-center">
                       <div className="w-0.5 h-8 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover:opacity-100 group-hover:bg-[var(--accent)]" />
                     </PanelResizeHandle>
@@ -158,7 +161,7 @@ export const App: React.FC = () => {
                   <Panel id="editor-main" minSize="30%" className="h-full flex flex-col min-w-0">
                     {/* Editor Top Bar */}
                     <div className="flex items-center w-full relative">
-                      {viewerCollapsed && (
+                      {viewerAvailable && viewerCollapsed && (
                         <button
                           onClick={expandViewer}
                           className="absolute left-1 top-1/2 -translate-y-1/2 z-10 p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] cursor-pointer"

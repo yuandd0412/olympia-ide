@@ -9,7 +9,7 @@ pub mod toolchain;
 
 use models::{
     AppSettings, Problem, RunResult, SolveRecord, StressTestResult, TestCaseInput,
-    TrainingSession, TerminalCommandResult
+    TrainingSession
 };
 
 #[tauri::command]

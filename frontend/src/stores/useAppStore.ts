@@ -13,7 +13,25 @@ import type {
 } from '../types';
 import type { ExtractedProblem } from '../services/pdfExtract';
 
+type ProblemFileMap = Record<string, string>;
+
 const RECORDS_KEY = 'olympia-practice-records';
+const PROBLEM_FILES_KEY = 'olympia-problem-files';
+
+/** 题目 → 该题最近一次保存的文件路径（题目与文件绑定） */
+const loadProblemFiles = (): Record<string, string> => {
+  try {
+    return JSON.parse(localStorage.getItem(PROBLEM_FILES_KEY) || '{}');
+  } catch {
+    return {};
+  }
+};
+
+const persistProblemFiles = (m: Record<string, string>) => {
+  try {
+    localStorage.setItem(PROBLEM_FILES_KEY, JSON.stringify(m));
+  } catch {}
+};
 const ACTIVE_RECORD_KEY = 'olympia-active-record';
 
 const loadRecords = (): PracticeRecord[] => {
@@ -106,7 +124,7 @@ interface AppState {
   updateSettings: (settings: Partial<AppSettings>) => Promise<void>;
   
   // Tab Actions
-  openNewTab: (title?: string, code?: string, problemId?: string, testcases?: TestCaseInput[]) => string;
+  openNewTab: (title?: string, code?: string, problemId?: string, testcases?: TestCaseInput[], filePath?: string) => string;
   closeTab: (tabId: string) => void;
   closeAllTabs: () => void;
   saveActiveTab: () => Promise<boolean>;
@@ -129,7 +147,7 @@ interface AppState {
   importStressFailToRunner: () => void;
 
   // Problem & Viewer Actions
-  setActiveProblem: (problem: Problem) => void;
+  setActiveProblem: (problem: Problem) => Promise<void>;
   toggleFavorite: (problemId: string) => Promise<void>;
   fetchOnlineProblem: (problemId: string) => Promise<Problem>;
   openProblemModal: (problem: Problem) => void;
@@ -148,6 +166,10 @@ interface AppState {
   updatePracticeProblem: (recordId: string, problemId: string, patch: Partial<PracticeProblem>) => void;
   removePracticeProblem: (recordId: string, problemId: string) => void;
   importPdfProblems: (record: PracticeRecord, extracted: ExtractedProblem[]) => Promise<void>;
+
+  // 题目与文件绑定：打开题目时优先拉取上次写过的文件
+  problemFiles: ProblemFileMap;
+  bindProblemFile: (problemId: string, path: string) => void;
 
   // Filters
   setSearchQuery: (q: string) => void;
@@ -216,6 +238,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   isDetailModalOpen: false,
   modalProblem: null,
+
+  problemFiles: loadProblemFiles(),
+
+  bindProblemFile: (problemId, path) => {
+    const m = { ...get().problemFiles, [problemId]: path };
+    persistProblemFiles(m);
+    set({ problemFiles: m });
+  },
+
 
   practiceRecords: loadRecords(),
   activeRecordId: localStorage.getItem(ACTIVE_RECORD_KEY) || null,
@@ -381,7 +412,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await tauriApi.updateSettings(updated);
   },
 
-  openNewTab: (title, code, problemId, testcases) => {
+  openNewTab: (title, code, problemId, testcases, filePath) => {
     const currentTabs = get().tabs;
     const nextNum = currentTabs.length + 1;
     const tabId = 'tab-' + crypto.randomUUID();
@@ -392,6 +423,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       title: title || ('solution_' + nextNum + '.cpp'),
       code: code !== undefined ? code : defaultContent,
       isModified: false,
+      filePath,
       problemId,
       testcases: testcases || [{ id: 1, input: '', expectedOutput: '' }],
       runResult: null,
@@ -400,6 +432,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       tabs: [...currentTabs, newTab],
       activeTabId: tabId,
       activeNav: 'editor',
+      // 未绑定题目的标签页 = 自由练习，不继承上一个题目
+      ...(problemId === undefined ? { activeProblem: null } : {}),
     });
     return tabId;
   },
@@ -452,6 +486,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         t.id === activeTabId ? { ...t, isModified: false, filePath: savedPath, title: fileName } : t
       );
       set({ tabs: updated });
+      // 题目与文件绑定：下次打开这道题直接拉取这个文件
+      if (activeTab.problemId) {
+        get().bindProblemFile(activeTab.problemId, savedPath);
+      }
       return true;
     } catch (err) {
       console.error('Failed to save file:', err);
@@ -648,7 +686,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ tabs: updatedTabs, activeNav: 'editor' });
   },
 
-  setActiveProblem: (problem) => {
+  setActiveProblem: async (problem) => {
     const testcases = problem.samples.map((s, idx) => ({
       id: idx + 1,
       input: s.input,
@@ -663,6 +701,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (existing) {
       setActiveTabId(existing.id);
     } else {
+      // 题目与文件绑定：这道题之前写过 → 直接从磁盘拉取那个文件
+      const boundPath = get().problemFiles[problem.id];
+      if (boundPath) {
+        try {
+          const code = await tauriApi.readFile(boundPath);
+          const fileName = boundPath.split(/[\\/]/).pop() || problem.id + '.cpp';
+          openNewTab(fileName, code, problem.id, testcases, boundPath);
+          set({
+            activeProblem: problem,
+            viewerProblem: problem,
+            activeNav: 'editor',
+          });
+          return;
+        } catch {
+          // 文件已不存在（被移动/删除）→ 继续走新建流程
+        }
+      }
       const template = get().settings.enableCodeTemplate ? (get().settings.codeTemplate || '') : '';
       openNewTab(problem.id + '.cpp', template, problem.id, testcases);
     }

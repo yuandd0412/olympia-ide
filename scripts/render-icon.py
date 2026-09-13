@@ -16,7 +16,7 @@ RING_A, RING_B = (62, 166, 232), (0, 122, 204) # ring gradient
 GREEN = (52, 199, 89)
 GAP_LO, GAP_HI = 15.0, 75.0                    # ring gap (degrees)
 R, TH = 150.0, 64.0                            # ring radius / stroke
-RX = 0.0                                       # full-bleed square (taskbar legibility)
+RX = 120.0                                     # ZCode-style corner radius (~23%)
 CHECK = [(178.0, 262.0), (243.0, 330.0), (344.0, 208.0)]
 CHECK_TH = 56.0
 

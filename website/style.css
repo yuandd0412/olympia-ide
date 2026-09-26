@@ -626,3 +626,287 @@ body {
   .section { padding-top: 66px; }
   .dl-variants { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   动态增强（D1–D6）— vanilla JS + CSS，无框架
+   动效 token：cubic-bezier(.2,.8,.2,1) · 0.3–0.5s · reveal 55ms 错开
+   ============================================================ */
+
+:root { --ease: cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+.section, .stats { scroll-margin-top: 76px; }
+
+/* ---------- D6 · reveal 分组错开（无 JS 时不受影响） ---------- */
+
+.js .reveal { transition-delay: var(--reveal-delay, 0ms); }
+
+/* ---------- D1 · 导航：滚动加深 + 当前分区高亮 ---------- */
+
+.nav {
+  transition: background 0.3s var(--ease), box-shadow 0.3s var(--ease);
+}
+
+.nav.scrolled {
+  background: rgba(24, 24, 25, 0.94);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+}
+
+.nav-links a.active { color: var(--text-1); }
+
+.nav-links a.active:not(.nav-cta)::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -7px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.nav-links a { position: relative; }
+
+/* ---------- D5 · 数据一览 ---------- */
+
+.stats { max-width: 1080px; margin: -18px auto 0; padding: 0 24px; position: relative; z-index: 1; }
+
+.stats-inner {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 18px;
+  text-align: center;
+}
+
+.stat-num {
+  display: block;
+  font-size: 34px;
+  font-weight: 700;
+  color: #3ea6e8;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.stat-label { font-size: 12.5px; color: var(--text-2); }
+
+/* ---------- D2 · 仿真编辑器演示模式 ---------- */
+
+.tab-demo {
+  margin-left: auto;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.tab-demo:hover { color: #fff; border-color: var(--accent); }
+.tab-demo:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
+
+.tab-run { margin-left: 0; }
+
+.runner-cases { display: flex; flex-direction: column; gap: 7px; }
+
+.case.pop { animation: casePop 0.32s var(--ease) both; }
+
+@keyframes casePop {
+  from { opacity: 0; transform: translateY(7px); }
+}
+
+/* ---------- D3 · 能力切换（Harness 式 tab） ---------- */
+
+.caps {
+  margin-top: 64px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 18px 18px 8px;
+}
+
+.cap-tabs { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+.cap-tab {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 18px;
+  cursor: pointer;
+  transition: color 0.25s var(--ease), border-color 0.25s var(--ease), background 0.25s var(--ease);
+}
+
+.cap-tab:hover { color: var(--text-1); }
+
+.cap-tab.active { color: #fff; background: var(--accent); border-color: var(--accent); }
+
+.cap-tab:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
+
+.cap-panel {
+  padding: 30px 14px 26px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  align-items: center;
+}
+
+/* 无 JS 时全部面板平铺可见（渐进增强）；有 JS 只显示激活面板 */
+.cap-panel { display: grid; }
+.js .cap-panel:not(.active) { display: none; }
+.js .cap-panel.active { animation: capIn 0.35s var(--ease); }
+
+@keyframes capIn {
+  from { opacity: 0; transform: translateY(8px); }
+}
+
+.cap-copy h3 { font-size: 16px; margin-bottom: 8px; }
+.cap-copy p { font-size: 13.5px; color: var(--text-2); }
+
+.cap-demo {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+}
+
+.mini-runner, .mini-chat, .mini-contest {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.verdict.wa { background: var(--wa); color: #2a0705; }
+.verdict.tle { background: var(--tle); color: #2a1503; }
+
+.mini-duel { width: 100%; display: flex; align-items: center; gap: 12px; }
+
+.duel-col { flex: 1; text-align: center; }
+
+.duel-head {
+  font-size: 11px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.duel-out {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 8px;
+  color: var(--ac);
+}
+
+.duel-out.bad { color: var(--wa); }
+
+.duel-vs { font-size: 11px; color: var(--tle); text-align: center; line-height: 1.5; flex-shrink: 0; }
+
+.contest-clock {
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--tle);
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+
+.contest-bar { height: 6px; border-radius: 3px; background: var(--elevated); overflow: hidden; }
+
+.contest-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--tle)); }
+
+.contest-locked {
+  font-size: 12px;
+  color: var(--text-2);
+  text-align: center;
+  background: rgba(255, 69, 58, 0.08);
+  border: 1px solid rgba(255, 69, 58, 0.25);
+  border-radius: 9px;
+  padding: 8px 10px;
+}
+
+.bubble {
+  max-width: 92%;
+  font-size: 12.5px;
+  border-radius: 12px;
+  padding: 9px 12px;
+  line-height: 1.55;
+}
+
+.bubble.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+
+.bubble.coach {
+  align-self: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-1);
+  border-bottom-left-radius: 4px;
+}
+
+.chat-chip {
+  align-self: center;
+  font-size: 10.5px;
+  color: #3ea6e8;
+  background: var(--accent-subtle);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+/* ---------- D4 · 下载按钮徽章与提示 ---------- */
+
+.dl-badge {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-ui);
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 999px;
+  padding: 3px 9px;
+  margin-left: 2px;
+}
+
+.dl-toast {
+  margin: 14px auto 0;
+  font-size: 12.5px;
+  color: var(--ac);
+  min-height: 1.4em;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.3s var(--ease), transform 0.3s var(--ease);
+}
+
+.dl-toast.show { opacity: 1; transform: none; }
+
+/* ---------- 移动端补充 ---------- */
+
+@media (max-width: 720px) {
+  .stats-inner { grid-template-columns: 1fr; gap: 10px; }
+  .cap-panel { grid-template-columns: 1fr; gap: 18px; padding-top: 24px; }
+}
+
+/* ---------- 减少动态效果：全部新增强制即时 ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .js .reveal { transition-delay: 0ms; }
+  .case.pop, .js .cap-panel.active { animation: none; }
+  .nav, .cap-tab, .dl-toast { transition: none; }
+}

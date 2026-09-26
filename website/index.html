@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Olympia IDE — 为 OI 而生的竞赛编程 IDE</title>
-  <meta name="description" content="Olympia IDE 是一款面向 OI / ACM 竞赛选手的桌面编程 IDE：内置编译评测、自动化对拍、题库训练错题本、真实比赛模式与 AI 竞赛教练，一站式本地闭环。" />
+  <meta name="description" content="Olympia IDE 是一款面向 OI / ACM 竞赛选手的桌面编程 IDE：内置编译评测、自动化对拍、洛谷 / Codeforces / AtCoder 一键导入、真实比赛模式与 AI 竞赛教练，一站式本地闭环。" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath d='M 294.8 111.1 A 150 150 0 1 0 400.9 217.2' fill='none' stroke='%232f9ce8' stroke-width='56' stroke-linecap='round'/%3E%3Cpath d='M 170 266 L 243 340 L 350 205' fill='none' stroke='%2334c759' stroke-width='56' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="style.css" />
   <script>document.documentElement.classList.add('js');</script>
@@ -48,7 +48,7 @@
       <p class="hero-note">中文安装器 · 全中文界面 · 支持 Windows 10 / 11</p>
 
       <!-- 仿真编辑器窗口 -->
-      <div class="window" id="showcase" role="img" aria-label="Olympia IDE 界面预览：左侧代码编辑器正在编辑 C++ 代码，下方评测面板显示 AC">
+      <div class="window" id="showcase">
         <div class="window-titlebar">
           <span class="win-logo">O</span>
           <span class="win-title">Olympia IDE</span>
@@ -57,11 +57,12 @@
         <div class="window-tabbar">
           <span class="tab active">P1001.cpp</span>
           <span class="tab">brute.cpp</span>
+          <button class="tab-demo" id="demo-btn" type="button" aria-pressed="false">▶ 看演示</button>
           <span class="tab-run">▶ 运行评测 <kbd>Ctrl+R</kbd></span>
         </div>
         <div class="window-body">
           <div class="editor">
-            <ol>
+            <ol id="editor-code">
               <li><span class="k">#include</span> <span class="str">&lt;bits/stdc++.h&gt;</span></li>
               <li><span class="k">using namespace</span> std;</li>
               <li></li>
@@ -79,20 +80,31 @@
               <li>}</li>
             </ol>
           </div>
-          <div class="runner">
+          <div class="runner" id="runner">
             <div class="runner-head">测试结果</div>
-            <div class="case pass"><span class="verdict">AC</span> 样例 1 · 2 ms</div>
-            <div class="case pass"><span class="verdict">AC</span> 样例 2 · 3 ms</div>
-            <div class="case pass"><span class="verdict">AC</span> 样例 3 · 2 ms</div>
+            <div class="runner-cases">
+              <div class="case pass"><span class="verdict">AC</span> 样例 1 · 2 ms</div>
+              <div class="case pass"><span class="verdict">AC</span> 样例 2 · 3 ms</div>
+              <div class="case pass"><span class="verdict">AC</span> 样例 3 · 2 ms</div>
+            </div>
             <div class="runner-foot">✔ 全部通过 · 最长 3 ms / 1.8 MB</div>
           </div>
         </div>
         <div class="window-status">
           <span class="st-ok">MinGW 13.1.0 (x64) · C++17</span>
           <span>P1001 · 1s / 256MB</span>
-          <span class="st-run">就绪 (Ctrl+R 运行评测)</span>
+          <span class="st-run" id="st-run">就绪 (Ctrl+R 运行评测)</span>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ======= 数据一览 ======= -->
+  <section class="stats" aria-label="关键数据">
+    <div class="stats-inner">
+      <div class="stat reveal"><span class="stat-num" data-count="49" data-suffix=" MB">49 MB</span><span class="stat-label">安装包 · 内置工具链</span></div>
+      <div class="stat reveal"><span class="stat-num" data-count="3">3</span><span class="stat-label">OJ 一键导入（洛谷 / CF / AtCoder）</span></div>
+      <div class="stat reveal"><span class="stat-num" data-count="0">0</span><span class="stat-label">配置 · 工具链离线可用</span></div>
     </div>
   </section>
 
@@ -104,7 +116,7 @@
       <article class="card reveal">
         <div class="card-icon i-ac">✔</div>
         <h3>内置极速评测</h3>
-        <p>多样例毫秒级比对，自动判定 AC / WA / TLE / MLE / RE，逐字符 diff 定位第一个不一致的输出。评测全程静默无黑窗；也可切到终端优先模式，像 Dev-C++ 一样弹出 CMD 交互运行。</p>
+        <p>多样例毫秒级比对，自动判定 AC / WA / TLE / RE，每个样例展示真实耗时与峰值内存占用，逐字符 diff 定位第一个不一致的输出。评测全程静默无黑窗；也可切到终端优先模式，像 Dev-C++ 一样弹出 CMD 交互运行。</p>
       </article>
       <article class="card reveal">
         <div class="card-icon i-warn">⚔</div>
@@ -113,8 +125,8 @@
       </article>
       <article class="card reveal">
         <div class="card-icon i-accent">📚</div>
-        <h3>题库 · 训练 · 错题本</h3>
-        <p>本地题库沉淀题目与样例，训练计划追踪连续打卡，错题本按判定结果归档，赛后复盘有迹可循。</p>
+        <h3>题库 · 一键导入</h3>
+        <p>本地题库沉淀题目与样例，洛谷 / Codeforces / AtCoder 一键导入，AI 自动补全缺失的样例与输入输出格式；题目与源码文件自动绑定，练习文件夹里写过的代码再次打开直接加载。</p>
       </article>
       <article class="card reveal">
         <div class="card-icon i-warn">🏆</div>
@@ -132,6 +144,70 @@
         <p>One Dark Pro 深色沉浸，GitHub Light 清爽明快；安装器与界面全中文，键盘快捷键开箱即用。</p>
       </article>
     </div>
+
+    <!-- D3 · Harness 式能力切换 -->
+    <div class="caps reveal">
+      <div class="cap-tabs" role="tablist" aria-label="核心能力切换">
+        <button class="cap-tab" id="cap-tab-0" type="button" role="tab" aria-selected="true" aria-controls="cap-panel-0">⚡ 评测</button>
+        <button class="cap-tab" id="cap-tab-1" type="button" role="tab" aria-selected="false" aria-controls="cap-panel-1" tabindex="-1">⚔ 对拍</button>
+        <button class="cap-tab" id="cap-tab-2" type="button" role="tab" aria-selected="false" aria-controls="cap-panel-2" tabindex="-1">🏆 比赛模式</button>
+        <button class="cap-tab" id="cap-tab-3" type="button" role="tab" aria-selected="false" aria-controls="cap-panel-3" tabindex="-1">🤖 AI 教练</button>
+      </div>
+      <div class="cap-panels">
+        <div class="cap-panel active" id="cap-panel-0" role="tabpanel" aria-labelledby="cap-tab-0">
+          <div class="cap-copy">
+            <h3>内置极速评测</h3>
+            <p>多样例自动比对，逐字符 diff 定位第一个不一致的输出；每个样例给出真实耗时与峰值内存，全程静默无黑窗。</p>
+          </div>
+          <div class="cap-demo">
+            <div class="mini-runner">
+              <div class="case pass"><span class="verdict">AC</span> 样例 1 · 2 ms · 1.6 MB</div>
+              <div class="case pass"><span class="verdict">AC</span> 样例 2 · 3 ms · 1.8 MB</div>
+              <div class="case tle"><span class="verdict tle">TLE</span> 样例 3 · 超过 1000 ms</div>
+            </div>
+          </div>
+        </div>
+        <div class="cap-panel" id="cap-panel-1" role="tabpanel" aria-labelledby="cap-tab-1">
+          <div class="cap-copy">
+            <h3>自动化对拍器</h3>
+            <p>内置随机数据生成器，批量对比待测解法与暴力正解；拍出反例后一键导入评测复现，构造数据不再靠运气。</p>
+          </div>
+          <div class="cap-demo">
+            <div class="mini-duel">
+              <div class="duel-col"><div class="duel-head">暴力正解</div><div class="duel-out">6</div></div>
+              <div class="duel-vs">Round 42<br><b>答案不一致</b></div>
+              <div class="duel-col"><div class="duel-head">待测解法</div><div class="duel-out bad">0</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="cap-panel" id="cap-panel-2" role="tabpanel" aria-labelledby="cap-tab-2">
+          <div class="cap-copy">
+            <h3>真实比赛模式</h3>
+            <p>NOIP / CSP 式倒计时，比赛期间 AI 教练自动锁定、归零自动解锁；导入 PDF 试卷一键创建比赛，全程存入练习记录。</p>
+          </div>
+          <div class="cap-demo">
+            <div class="mini-contest">
+              <div class="contest-clock">01:59:32</div>
+              <div class="contest-bar"><i style="width: 33%"></i></div>
+              <div class="contest-locked">🔒 AI 教练已锁定 · 倒计时结束自动解除</div>
+            </div>
+          </div>
+        </div>
+        <div class="cap-panel" id="cap-panel-3" role="tabpanel" aria-labelledby="cap-tab-3">
+          <div class="cap-copy">
+            <h3>AI 竞赛教练</h3>
+            <p>接入你自己的大模型 API：防剧透的分阶段思路提示、时空复杂度分析、边界 Bug 排查；比赛期间懂得闭嘴。</p>
+          </div>
+          <div class="cap-demo">
+            <div class="mini-chat">
+              <div class="bubble user">这题 n 到 1e18，暴力会不会超时？</div>
+              <div class="bubble coach">提示阶段 1：注意「因数成对出现」的性质——只枚举到 √n 就能拿到所有因子，想想怎么把 O(n) 压到 O(√n)。</div>
+              <div class="chat-chip">防剧透模式 · 分阶段提示</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- ======= 下载 ======= -->
@@ -139,18 +215,18 @@
     <div class="dl-card reveal">
       <h2>下载 Olympia IDE</h2>
       <p class="dl-meta">v0.1.0 · Windows 10 / 11 · x64 · 中文安装器</p>
-      <!-- 精简版随 Pages 静态发布;完整版 (~105 MB) 超出 Pages 25MiB 单文件上限,走 R2(见 DEPLOY.md) -->
-      <p class="dl-meta">v0.1.0 · Windows 10 / 11 · x64 · 中文安装器</p>
       <!-- 精简/完整双版本已合并：唯一版本内置 MinGW 工具链，随 Pages 静态发布 -->
       <div class="dl-variants">
         <div class="variant v-hot" style="grid-column: 1 / -1; max-width: 480px; margin: 0 auto;">
           <h3>Olympia IDE <span class="v-badge">内置工具链</span></h3>
           <p class="v-size">约 49 MB</p>
           <p class="v-desc">内置 MinGW 13.1.0 编译工具链，安装即用、离线可用，零配置。国内直连快（Gitee）；GitHub 亦有同版备份。</p>
-          <a class="btn btn-primary" href="https://gitee.com/yuanddMSK/olympia-ide/releases/download/v0.1.0/Olympia%20IDE_0.1.0_x64-setup.exe">
+          <a class="btn btn-primary btn-lg" id="dl-btn" href="https://gitee.com/yuanddMSK/olympia-ide/releases/download/v0.1.0/Olympia%20IDE_0.1.0_x64-setup.exe">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 1v8.5L4.8 6.3 3.7 7.4 8 11.7l4.3-4.3-1.1-1.1L8 9.5V1H7v8.5L3.8 6.3 2.7 7.4 7 11.7V15h2v-3.3l4.3-4.3-1.1-1.1L9 9.5V1H8z"/></svg>
             下载 Windows 安装包
+            <span class="dl-badge">49 MB</span>
           </a>
+          <p class="dl-toast" id="dl-toast" role="status" aria-live="polite"></p>
         </div>
       </div>
       <p class="dl-note">安装需要管理员权限（全机安装），自动创建开始菜单与桌面快捷方式。</p>
@@ -170,6 +246,7 @@
         <div class="tl-item done reveal"><span class="tl-tag">已完成</span>OJ 题目一键导入（洛谷 / Codeforces / AtCoder）</div>
         <div class="tl-item done reveal"><span class="tl-tag">已完成</span>中文安装器（内置工具链）· 双主题 · 题目与文件绑定 · 自由练习</div>
         <div class="tl-item reveal"><span class="tl-tag next">计划中</span>OJ 凭据管理与一键提交</div>
+        <div class="tl-item reveal"><span class="tl-tag next">计划中</span>训练打卡 · 错题本（按判定归档复盘）</div>
         <div class="tl-item reveal"><span class="tl-tag plan">远期</span>更多主题 · 训练数据统计报表</div>
       </div>
   </section>
@@ -186,20 +263,6 @@
     </div>
   </footer>
 
-  <script>
-    // 滚动淡入：渐进增强（无 JS 时内容始终可见），遵循系统"减少动态效果"设置
-    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const els = document.querySelectorAll('.reveal');
-    if (reduced || !('IntersectionObserver' in window)) {
-      els.forEach(el => el.classList.add('in'));
-    } else {
-      const io = new IntersectionObserver(entries => {
-        entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
-      }, { threshold: 0.12, rootMargin: '0px 0px -5% 0px' });
-      els.forEach(el => io.observe(el));
-      // 兜底：3 秒后仍未入场的元素直接显示，避免任何环境下内容丢失
-      setTimeout(() => els.forEach(el => el.classList.add('in')), 3000);
-    }
-  </script>
+  <script src="main.js"></script>
 </body>
 </html>

@@ -22,6 +22,13 @@ _deps/
 # Vendored third-party (re-cloneable)
 third_party/
 
+# Vendored VS Code fork that the Olympia product is compiled from (checkout, not authored here)
+/oss/
+
+# Unpacked product tree emitted by build/oss-package.ps1; the scripts under build/ are tracked
+# deliberately even though this directory stays ignored for the Qt-era artifacts.
+/VSCode-win32-x64/
+
 # Downloaded toolchain used by the "full" installer build (frontend/src-tauri)
 frontend/src-tauri/vendor/
 

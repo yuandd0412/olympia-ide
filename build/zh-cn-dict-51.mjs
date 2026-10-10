@@ -1,0 +1,60 @@
+// zh-cn dictionary batch 51 -- menu contribution ids and schema descriptions
+export default {
+	// ---- schema validation ----
+	'property `{0}` is mandatory and must be of type `string`': '属性 `{0}` 是必需的，且必须为 `string` 类型',
+	'property `{0}` can be omitted or must be of type `string`': '属性 `{0}` 可以省略，或必须为 `string` 类型',
+
+	// ---- well-known menu ids ----
+	'The Command Palette': '命令面板',
+	'The touch bar (macOS only)': '触控栏（仅 macOS）',
+	'The editor title menu': '编辑器标题栏菜单',
+	'The editor title menu in the modal editor': '模态编辑器中的编辑器标题栏菜单',
+	"Run submenu inside the editor title menu": '编辑器标题栏菜单内的「运行」子菜单',
+	'The editor context menu': '编辑器上下文菜单',
+	"'Copy as' submenu in the editor context menu": '编辑器上下文菜单中的「复制为」子菜单',
+	"'Share' submenu in the editor context menu": '编辑器上下文菜单中的「共享」子菜单',
+	"'Copy as' submenu in the top level Edit menu": '顶级「编辑」菜单中的「复制为」子菜单',
+	'The file explorer context menu': '文件资源管理器上下文菜单',
+	"'Share' submenu in the file explorer context menu": '文件资源管理器上下文菜单中的「共享」子菜单',
+	'The editor tabs context menu': '编辑器标签页上下文菜单',
+	"'Share' submenu inside the editor title context menu": '编辑器标题栏上下文菜单内的「共享」子菜单',
+	'The debug callstack view context menu': '调试调用堆栈视图上下文菜单',
+	'The debug variables view context menu': '调试变量视图上下文菜单',
+	'The debug watch view context menu': '调试监视视图上下文菜单',
+	'The debug toolbar menu': '调试工具栏菜单',
+	'The debug create configuration menu': '调试创建配置菜单',
+	'The notebook variables view context menu': '笔记本变量视图上下文菜单',
+	'The home indicator context menu (web only)': '主页指示器上下文菜单（仅 Web）',
+	'The status indicator area at the rightmost end of the toolbar shown beneath the chat input':
+		'显示在对话输入框下方工具栏最右端的状态指示区域',
+	'The Source Control title menu': '源代码管理标题栏菜单',
+	'The Source Control menu': '源代码管理菜单',
+	'The Source Control Repositories title menu': '源代码管理仓库标题栏菜单',
+	'The Source Control repository menu': '源代码管理仓库菜单',
+	'The Source Control resource state context menu': '源代码管理资源状态上下文菜单',
+	'The Source Control resource folder context menu': '源代码管理资源文件夹上下文菜单',
+	'The Source Control resource group context menu': '源代码管理资源分组上下文菜单',
+	'The Source Control inline change menu': '源代码管理行内更改菜单',
+	'The Source Control input box menu': '源代码管理输入框菜单',
+	'The Source Control History title menu': '源代码管理历史标题栏菜单',
+	'The Source Control history item context menu': '源代码管理历史项上下文菜单',
+	'The Source Control history item reference context menu': '源代码管理历史项引用上下文菜单',
+	'The Source Control artifact group context menu': '源代码管理构建产物分组上下文菜单',
+	'The Source Control artifact context menu': '源代码管理构建产物上下文菜单',
+	'The remote indicator menu in the status bar': '状态栏中的远程指示器菜单',
+	'The terminal context menu': '终端上下文菜单',
+	'The terminal tabs context menu': '终端标签页上下文菜单',
+	'The contributed view title menu': '扩展贡献的视图标题栏菜单',
+	'The contributed view container title menu': '扩展贡献的视图容器标题栏菜单',
+	'The contributed view item context menu': '扩展贡献的视图项上下文菜单',
+	'The contributed comment editor actions': '扩展贡献的评论编辑器操作',
+	'The contributed comment thread title menu': '扩展贡献的评论会话标题栏菜单',
+	'The gutter toolbar in the diff editor': '差异编辑器中的装订线工具栏',
+	'The contributed comment thread context menu, rendered as buttons below the comment editor':
+		'扩展贡献的评论会话上下文菜单，以按钮形式显示在评论编辑器下方',
+	"The contributed comment thread title's peek context menu, rendered as a right click menu on the comment thread's peek title.":
+		'扩展贡献的评论会话标题的速览上下文菜单，以右键菜单形式显示在评论会话的速览标题上。',
+
+	// ---- errors ----
+	'Unexpected exception while executing command.': '执行命令时发生意外异常。',
+};

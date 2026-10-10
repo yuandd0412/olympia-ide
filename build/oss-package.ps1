@@ -3,7 +3,7 @@
     Produces the Windows installer, with the bundled C++ toolchain included.
 
 .DESCRIPTION
-    Three stages, in order:
+    Four stages, in order:
 
       1. bundle     — `build/next/index.ts bundle` emits `out-vscode/`, the tree the packaging
                       task consumes. Also runs NLS extraction, so the Chinese localisation generated
@@ -11,6 +11,10 @@
       2. toolchain  — assembles MinGW-w64 into `.build/toolchain/` unless it is already staged.
                       Skipped when present, because the download is the slow part.
       3. package    — `gulp vscode-win32-x64-ci` writes the unpacked product and the installer.
+      4. cache      — launches the packaged app once in generation mode to emit the Node.js compile
+                      cache under `resources/app/node-compile-cache`, cutting module compile cost on
+                      every later start. Upstream folds this into stage 3, but gates it on
+                      `product.quality`, which this fork does not set.
 
     The toolchain stage is skipped, not failed, when no toolchain is staged: the packaging task
     only copies `.build/toolchain/**` if that directory exists, so a source-only build still
@@ -84,12 +88,12 @@ Set-Location $Oss
 # ---------------------------------------------------------------- 1. bundle
 
 if ($SkipBundle) {
-    Write-Output "=== STAGE 1/3 bundle SKIPPED (reusing out-vscode) ==="
+    Write-Output "=== STAGE 1/4 bundle SKIPPED (reusing out-vscode) ==="
 } else {
-    Write-Output ("=== STAGE 1/3 bundle START " + (& $stamp) + " ===")
+    Write-Output ("=== STAGE 1/4 bundle START " + (& $stamp) + " ===")
     node --experimental-strip-types --max-old-space-size=8192 build/next/index.ts bundle --nls
     $rc = $LASTEXITCODE
-    Write-Output ("=== STAGE 1/3 bundle EXITCODE=$rc  " + (& $stamp) + " ===")
+    Write-Output ("=== STAGE 1/4 bundle EXITCODE=$rc  " + (& $stamp) + " ===")
     if ($rc -ne 0) { exit $rc }
 }
 
@@ -97,35 +101,44 @@ if ($SkipBundle) {
 
 $haveToolchain = (Test-Path (Join-Path $Toolchain 'mingw64\bin\g++.exe'))
 if ($SkipToolchain) {
-    Write-Output '=== STAGE 2/3 toolchain SKIPPED (-SkipToolchain) ==='
+    Write-Output '=== STAGE 2/4 toolchain SKIPPED (-SkipToolchain) ==='
 } elseif ($haveToolchain) {
-    Write-Output '=== STAGE 2/3 toolchain already staged ==='
+    Write-Output '=== STAGE 2/4 toolchain already staged ==='
 } else {
-    Write-Output ("=== STAGE 2/3 toolchain START " + (& $stamp) + " ===")
+    Write-Output ("=== STAGE 2/4 toolchain START " + (& $stamp) + " ===")
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'D:\oler-ide-v2\build\fetch-toolchain.ps1'
     $rc = $LASTEXITCODE
-    Write-Output ("=== STAGE 2/3 toolchain EXITCODE=$rc  " + (& $stamp) + " ===")
+    Write-Output ("=== STAGE 2/4 toolchain EXITCODE=$rc  " + (& $stamp) + " ===")
     if ($rc -ne 0) {
         Write-Output '工具链组装失败，打包继续但产物不含编译器。' -ForegroundColor Yellow
     }
 }
 
 if ($SkipPackage) {
-    Write-Output '=== STAGE 3/3 package SKIPPED (-SkipPackage) ==='
+    Write-Output '=== STAGE 3/4 package SKIPPED (-SkipPackage) ==='
     exit 0
 }
 
 # ---------------------------------------------------------------- 3. package
 
-Write-Output ("=== STAGE 3/3 package START " + (& $stamp) + " ===")
+Write-Output ("=== STAGE 3/4 package START " + (& $stamp) + " ===")
 node node_modules/gulp/bin/gulp.js vscode-win32-x64-ci
 $rc = $LASTEXITCODE
-Write-Output ("=== STAGE 3/3 package EXITCODE=$rc  " + (& $stamp) + " ===")
+Write-Output ("=== STAGE 3/4 package EXITCODE=$rc  " + (& $stamp) + " ===")
+if ($rc -ne 0) { exit $rc }
+
+$dist = Join-Path (Split-Path $Oss -Parent) 'VSCode-win32-x64'
+
+# ---------------------------------------------------------------- 4. compile cache
+
+Write-Output ("=== STAGE 4/4 node-compile-cache START " + (& $stamp) + " ===")
+node 'D:\oler-ide-v2\build\gen-node-compile-cache.mjs' $dist
+$rc = $LASTEXITCODE
+Write-Output ("=== STAGE 4/4 node-compile-cache EXITCODE=$rc  " + (& $stamp) + " ===")
 if ($rc -ne 0) { exit $rc }
 
 # ---------------------------------------------------------------- report
 
-$dist = Join-Path (Split-Path $Oss -Parent) 'VSCode-win32-x64'
 Write-Output ''
 Write-Output '=== 产物 ==='
 if (Test-Path $dist) {

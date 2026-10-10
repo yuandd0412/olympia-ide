@@ -76,8 +76,9 @@ the file to disk.
 - Timeout is a 1000 ms `tokio::time::timeout` (`frontend/src-tauri/src/runner.rs:155,198`).
 - ~~`memory_kb` is hard-coded `1024`~~ superseded: `runner.rs` now reads the child's
   `PeakWorkingSetSize`, so `max_memory_kb` reports a measured value. There is still no `MLE` verdict.
-- On timeout the case is dropped **without killing the child process**: there is no
-  `Child::kill` and no job object anywhere in `runner.rs`.
+- Timeout kills the case's child now: `kill_on_drop(true)` on every run plus an explicit
+  `child.kill()` in the TLE branch (`runner.rs:242`, `:368`). There is still no job object, so a
+  program that spawns its own children can leave those behind.
 - No computed diff — the panel shows raw expected/actual panes.
 
 **Acceptance:** `cd frontend/src-tauri && cargo test --lib` passes; `Ctrl+R` on a real `main.cpp`
@@ -226,9 +227,8 @@ six steps render content.
 | --- | --- | --- |
 | ~~`submit_problem`~~ | was `frontend/src-tauri/src/lib.rs` | removed: the placeholder always reported success and had no caller |
 | `runner::run_in_console` | `frontend/src-tauri/src/runner.rs:101-125` | parked on purpose: `useAppStore.runCodeAction` keeps terminal mode hidden until the focus/interaction defects are fixed |
-| `toggle_favorite_problem` | `frontend/src-tauri/src/lib.rs:39-47`, store `useAppStore.ts:739` | no UI caller |
-| `get_sessions` / `save_sessions_list` | `frontend/src-tauri/src/lib.rs:63-68`, store `useAppStore.ts:88,92` | callerless (`training` tab is unbuilt) |
-| `triggerTerminalRun` | `frontend/src/stores/useAppStore.ts:663` | absent from `AppState`, never called |
+| `toggle_favorite_problem` | `frontend/src-tauri/src/lib.rs:39-47`, store `useAppStore.ts:180,859` | store action exists, no component calls it; `Problem` has no `favorite` field yet |
+| `get_sessions` / `save_sessions_list` | `frontend/src-tauri/src/lib.rs:63-68`, wrappers at `services/tauriApi.ts:97,100` | callerless (`training` tab is unbuilt) |
 
 `grep -r "TODO\|FIXME\|unimplemented!()" frontend/src-tauri/src` returns nothing: the only known
 placeholder left is the comment at `frontend/src-tauri/src/ingest.rs:66`.

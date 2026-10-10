@@ -28,9 +28,9 @@
 | G | AI coach | Partial — no streaming, no persistence, no context injection |
 | H | Settings | Implemented |
 | I | Persistence | Implemented |
-| J | Contest mode | Partial + **defect** (deadline not rehydrated) |
+| J | Contest mode | Partial — deadline rehydration **fixed 2026-09-13** (pending manual acceptance) |
 | K | OJ submission | **Absent** |
-| L | Onboarding & toolchain | Partial + **defect** (step 3 renders empty) |
+| L | Onboarding & toolchain | Partial — step 3 empty-render **fixed 2026-09-13** (pending manual acceptance) |
 
 ---
 
@@ -74,8 +74,8 @@ the file to disk.
 - Verdicts are bare `String` literals — `"CE"` `:148`, `"RE"` `:179`, `"AC"` `:231`,
   `"WA"` `:237`, `"TLE"` `:273`. There is **no `MLE`** and no enum.
 - Timeout is a 1000 ms `tokio::time::timeout` (`frontend/src-tauri/src/runner.rs:155,198`).
-- `memory_kb` is hard-coded `1024` (`:215`, `:247`, and `max_mem = max_mem.max(1024)` at `:282`),
-  so `max_memory_kb` is always 1024 — memory is never measured.
+- ~~`memory_kb` is hard-coded `1024`~~ superseded: `runner.rs` now reads the child's
+  `PeakWorkingSetSize`, so `max_memory_kb` reports a measured value. There is still no `MLE` verdict.
 - On timeout the case is dropped **without killing the child process**: there is no
   `Child::kill` and no job object anywhere in `runner.rs`.
 - No computed diff — the panel shows raw expected/actual panes.
@@ -117,7 +117,8 @@ counterexample input with both outputs.
 
 ## F — Problem library, Luogu ingest, PDF import · Partial
 
-Seed and store in `frontend/src-tauri/src/storage.rs:38-79` (`problems.json`, seeded with P1001);
+Seed and store in `frontend/src-tauri/src/storage.rs:38-79` (`problems.json` ships an empty library;
+the editor opens an unbound `main.cpp` tab rather than faking a P1001 binding);
 Luogu fetch in `frontend/src-tauri/src/ingest.rs:28-157` behind `fetch_problem_online`
 (`frontend/src-tauri/src/lib.rs:34-37`); favourite toggle at `frontend/src-tauri/src/lib.rs:39-47`;
 Markdown + KaTeX rendering and PDF import in
@@ -174,17 +175,20 @@ the panel layout keys `olympia-layout-*` (`frontend/src/App.tsx:35-36`).
 
 **Acceptance:** delete `~/.oleride/settings.json`, restart → defaults are recreated without a crash.
 
-## J — Contest mode · Partial — **verified defect**
+## J — Contest mode · Partial — defect fixed 2026-09-13, pending manual acceptance
 
 `frontend/src/components/common/ContestBar.tsx:11-30` (1 s countdown, auto-clear on expiry; label
-`:63`; end-only `:159-162`); store field `frontend/src/stores/useAppStore.ts:176-177`; type
-`frontend/src/types/index.ts:147`. It really gates the AI coach
+`:63`; end-only `:159-162`); store field `frontend/src/stores/useAppStore.ts` (`contestEndTime`);
+type `frontend/src/types/index.ts:147`. It really gates the AI coach
 (`frontend/src/components/ai/AiCoachPage.tsx:44`) and a rail button
 (`frontend/src/components/common/ActivityBar.tsx:16`).
 
-- **Defect:** the deadline lives in memory only. It is never rehydrated at startup, even though
-  `PracticeRecord.contestEndTime` is persisted (`frontend/src/components/viewer/ProblemViewerPanel.tsx:110-114`)
-  — so restarting the app mid-contest hides the countdown bar and **unlocks the AI coach**.
+- **Was a defect:** the deadline lived in memory only, so restarting mid-contest hid the
+  countdown bar and unlocked the AI coach. **Fixed:** `setContestEndTime` now persists to the
+  `olympia-contest-end-time` localStorage key; store init rehydrates it (falling back to a
+  still-running `PracticeRecord.contestEndTime` for contests created before the key existed);
+  clearing the deadline also nulls `contestEndTime` on every persisted practice record so a
+  voluntary early exit cannot resurrect the contest on next launch.
 
 **Acceptance:** start a 1.5 h contest → AI locks and the bar counts down; restart the app → the
 contest is still running and the AI is still locked.
@@ -201,33 +205,33 @@ unconditionally. There is no frontend call path at all — no wrapper in
 **Acceptance (when built):** submit a real solution to Luogu with stored credentials and read the
 verdict back.
 
-## L — Onboarding & toolchain · Partial — **verified defect**
+## L — Onboarding & toolchain · Partial — defect fixed 2026-09-13, pending manual acceptance
 
 `frontend/src/components/common/OnboardingWizard.tsx:37-44` (detect), `:52,229-234` (one-click
-install), five steps `:66-99`. Rust side: MinGW 13.1.0 pinned with sha256 and TUNA → download.qt.io
-mirrors (`frontend/src-tauri/src/toolchain.rs:11-18`), probe order
-bundled → appdata → configured → PATH → none (`:75-94`), extraction to `~/.oleride/mingw64`
+install), six steps `:66-99`. Rust side: MinGW 13.1.0 pinned with sha256 and TUNA → download.qt.io
+mirrors (`frontend/src-tauri/src/toolchain.rs:11-18`), one shared probe order in `first_compiler`:
+explicit configured path → bundled → appdata → PATH → none, extraction to `~/.oleride/mingw64`
 (`:199-210`).
 
-- **Defect:** the theme block and the boilerplate block are both gated on `step === 2`
-  (`OnboardingWizard.tsx:250,285`), so **step 3 renders empty** on a fresh install.
+- **Was a defect:** the theme block and the boilerplate block were both gated on `step === 2`,
+  so step 3 rendered empty (and step 2 stacked both blocks). **Fixed:** the boilerplate block is
+  now gated on `step === 3` (`OnboardingWizard.tsx:285`).
 
 **Acceptance:** on a machine with no MinGW, the wizard downloads and verifies the toolchain, and all
-five steps render content.
+six steps render content.
 
 ## Unwired commands (verified)
 
 | Command | Evidence | State |
 | --- | --- | --- |
-| `submit_problem` | `frontend/src-tauri/src/lib.rs:166-171` | placeholder |
-| `runner::run_in_console` | `frontend/src-tauri/src/runner.rs:101-125` | no caller |
+| ~~`submit_problem`~~ | was `frontend/src-tauri/src/lib.rs` | removed: the placeholder always reported success and had no caller |
+| `runner::run_in_console` | `frontend/src-tauri/src/runner.rs:101-125` | parked on purpose: `useAppStore.runCodeAction` keeps terminal mode hidden until the focus/interaction defects are fixed |
 | `toggle_favorite_problem` | `frontend/src-tauri/src/lib.rs:39-47`, store `useAppStore.ts:739` | no UI caller |
 | `get_sessions` / `save_sessions_list` | `frontend/src-tauri/src/lib.rs:63-68`, store `useAppStore.ts:88,92` | callerless (`training` tab is unbuilt) |
 | `triggerTerminalRun` | `frontend/src/stores/useAppStore.ts:663` | absent from `AppState`, never called |
 
 `grep -r "TODO\|FIXME\|unimplemented!()" frontend/src-tauri/src` returns nothing: the only known
-placeholders are the two explicit comments at `frontend/src-tauri/src/lib.rs:168-169` and
-`frontend/src-tauri/src/ingest.rs:66`.
+placeholder left is the comment at `frontend/src-tauri/src/ingest.rs:66`.
 
 ## Cross-Cutting Rules
 

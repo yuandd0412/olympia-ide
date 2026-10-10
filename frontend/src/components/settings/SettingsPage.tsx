@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import Editor from '@monaco-editor/react';
+import { CodeEditor } from '../../ports/editor';
 import {
   Palette,
   Terminal,
@@ -19,7 +19,6 @@ import {
   Check,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
-import { registerMonacoThemes } from '../../services/monacoTheme';
 import { tauriApi } from '../../services/tauriApi';
 import type { AppSettings, ThemeType } from '../../types';
 
@@ -36,6 +35,7 @@ const FONT_SIZE_PRESETS = [12, 13, 14, 15, 16, 18, 20];
 
 const SHORTCUTS: Array<[string, string]> = [
   ['Ctrl+R', '编译并评测当前代码'],
+  ['F9 / Ctrl+Enter', '编译并评测当前代码'],
   ['Ctrl+S', '保存当前文件'],
   ['Ctrl+N', '新建代码标签页'],
   ['Ctrl+W', '关闭当前标签页'],
@@ -111,20 +111,61 @@ export const SettingsPage: React.FC = () => {
   const [flagsInput, setFlagsInput] = useState<string>(form.compilerFlags.join(' '));
   const [detecting, setDetecting] = useState(false);
   const [detectMsg, setDetectMsg] = useState<string | null>(null);
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [aiProbe, setAiProbe] = useState<string | null>(null);
+  const [aiProbing, setAiProbing] = useState(false);
+
+  React.useEffect(() => {
+    let alive = true;
+    const load = (base?: string) => {
+      tauriApi.listOllamaModels(base).then((m) => {
+        if (alive) setOllamaModels(m);
+      });
+    };
+    load(form.aiBaseUrl);
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Keep local form in sync with global store changes
   React.useEffect(() => {
-    setForm(settings);
+    // 本地已编辑但尚未持久化的字段以本地值为准，防 store 回写抖掉输入
+    setForm({ ...settings, ...pendingPersist.current });
     setFontSizeInput(String(settings.fontSize || 14));
     const joined = settings.compilerFlags.join(' ');
     // 输入中的原始串（含末尾空格）不被 store 往回写打掉
     setFlagsInput((prev) => (prev.trim() === joined ? prev : joined));
   }, [settings]);
 
+  // 持久化防抖：表单本地 state 立即更新，写盘合并到 300ms 后一次性提交
+  const pendingPersist = React.useRef<Partial<AppSettings>>({});
+  const persistTimer = React.useRef<number | null>(null);
+
+  const flushPendingPersist = React.useCallback(() => {
+    if (persistTimer.current !== null) {
+      window.clearTimeout(persistTimer.current);
+      persistTimer.current = null;
+    }
+    if (Object.keys(pendingPersist.current).length > 0) {
+      const pending = pendingPersist.current;
+      pendingPersist.current = {};
+      updateSettings(pending);
+    }
+  }, [updateSettings]);
+
   const updateField = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
-    updateSettings({ [key]: value });
+    pendingPersist.current = { ...pendingPersist.current, [key]: value };
+    if (persistTimer.current !== null) window.clearTimeout(persistTimer.current);
+    persistTimer.current = window.setTimeout(flushPendingPersist, 300);
   };
+
+  // 卸载时把尚未落盘的编辑立即持久化
+  React.useEffect(() => {
+    return () => flushPendingPersist();
+  }, [flushPendingPersist]);
 
   const handleDetectCompiler = async () => {
     setDetecting(true);
@@ -149,6 +190,17 @@ export const SettingsPage: React.FC = () => {
     setFontSizeInput(cleaned);
     const parsed = parseInt(cleaned, 10);
     if (!isNaN(parsed) && parsed >= 10 && parsed <= 36) updateField('fontSize', parsed);
+  };
+
+  const handlePickPracticeFolder = async () => {
+    const picked = await tauriApi.pickPracticeFolder();
+    if (!picked) return;
+    try {
+      await tauriApi.setPracticeFolder(picked);
+      updateField('practiceRoot', picked);
+    } catch (e) {
+      window.alert('设置练习文件夹失败：' + String(e));
+    }
   };
 
   const handleFontSizeStep = (delta: number) => {
@@ -260,6 +312,33 @@ export const SettingsPage: React.FC = () => {
         {/* 编译器 */}
         <div className="border-t border-[var(--border)] pt-2 mt-6">
           <Section icon={<Terminal className="w-4 h-4" />} title="编译器">
+            <Row label="练习文件夹" hint="打开题目时自动读取此目录下的 {题号}.cpp；保存默认写回这里">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={form.practiceRoot || ''}
+                  placeholder="未设置 — 打开/保存题目将弹文件对话框"
+                  className="flex-1 bg-[var(--bg-base)] text-[var(--text-secondary)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-xs font-mono outline-none cursor-default truncate"
+                />
+                <button
+                  type="button"
+                  onClick={handlePickPracticeFolder}
+                  className="shrink-0 px-2.5 py-1.5 rounded-md bg-[var(--bg-elevated)] border border-[var(--border)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors cursor-pointer"
+                >
+                  选择…
+                </button>
+                <button
+                  type="button"
+                  onClick={() => form.practiceRoot && tauriApi.openUrl(form.practiceRoot)}
+                  disabled={!form.practiceRoot}
+                  title="在资源管理器打开练习文件夹"
+                  className="shrink-0 px-2.5 py-1.5 rounded-md bg-[var(--bg-elevated)] border border-[var(--border)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  打开
+                </button>
+              </div>
+            </Row>
             <Row label="编译器路径" hint={detectMsg ?? '评测与语法检查均使用此 g++'}>
               <div className="flex items-center gap-2">
                 <input
@@ -304,22 +383,14 @@ export const SettingsPage: React.FC = () => {
             </Row>
             {form.enableCodeTemplate && (
               <div className="h-40 rounded-md border border-[var(--border)] overflow-hidden">
-                <Editor
-                  height="100%"
-                  language="cpp"
+                <CodeEditor
                   value={form.codeTemplate}
-                  theme={isLight ? 'oler-light-theme' : 'oler-dark-theme'}
-                  beforeMount={registerMonacoThemes}
+                  language="cpp"
+                  themeName={isLight ? 'oler-light-theme' : 'oler-dark-theme'}
+                  fontSize={13}
+                  fontFamily={(form.fontFamily || 'Cascadia Mono')}
+                  tabSize={4}
                   onChange={(v) => updateField('codeTemplate', v || '')}
-                  options={{
-                    fontSize: 13,
-                    fontFamily: (form.fontFamily || 'Cascadia Mono') + ', Consolas, monospace',
-                    minimap: { enabled: false },
-                    automaticLayout: true,
-                    tabSize: 4,
-                    scrollBeyondLastLine: false,
-                    lineNumbers: 'on',
-                  }}
                 />
               </div>
             )}
@@ -371,32 +442,121 @@ export const SettingsPage: React.FC = () => {
         {/* AI 助手 */}
         <div className="border-t border-[var(--border)] pt-2 mt-6">
           <Section icon={<Sparkles className="w-4 h-4" />} title="AI 助手">
-            <Row label="API 地址" hint="任何兼容 OpenAI 接口的服务；Key 只保存在本机">
-              <input
-                type="text"
-                value={form.aiBaseUrl}
-                onChange={(e) => updateField('aiBaseUrl', e.target.value)}
-                placeholder="https://api.deepseek.com/v1"
-                className="w-full bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-xs font-mono outline-none focus:border-[var(--accent)]"
-              />
+            <Row
+              label="API 地址"
+              hint="OpenAI 兼容；本机 Ollama 用 127.0.0.1:11434/v1，云端用 https://api.deepseek.com/v1"
+            >
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={form.aiBaseUrl}
+                    onChange={(e) => updateField('aiBaseUrl', e.target.value)}
+                    placeholder="https://api.deepseek.com/v1 或 http://127.0.0.1:11434/v1"
+                    className="flex-1 min-w-0 bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-xs font-mono outline-none focus:border-[var(--accent)]"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateField('aiBaseUrl', 'http://127.0.0.1:11434/v1');
+                      if (!form.aiApiKey) {
+                        updateField('aiApiKey', 'ollama');
+                      }
+                    }}
+                    className={'px-2.5 py-1.5 rounded-md text-[11px] font-medium border transition-colors cursor-pointer ' +
+                      (form.aiBaseUrl.includes('11434')
+                        ? 'border-[var(--accent)] bg-[var(--accent-subtle)] text-[var(--accent)]'
+                        : 'border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)]')}
+                    title="切到本机服务"
+                  >
+                    本机
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateField('aiBaseUrl', 'https://api.deepseek.com/v1');
+                      // 只切地址；模型由用户自行填写或「刷新模型」
+                      if (!form.aiApiKey || form.aiApiKey === 'ollama') {
+                        updateField('aiApiKey', '');
+                      }
+                    }}
+                    className={'px-2.5 py-1.5 rounded-md text-[11px] font-medium border transition-colors cursor-pointer ' +
+                      (!form.aiBaseUrl.includes('11434')
+                        ? 'border-[var(--accent)] bg-[var(--accent-subtle)] text-[var(--accent)]'
+                        : 'border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)]')}
+                    title="切到云端 OpenAI 兼容接口"
+                  >
+                    云端
+                  </button>
+                </div>
+              </div>
             </Row>
-            <Row label="API Key">
+            <Row label="API Key" hint="Ollama 可填任意非空占位，如 ollama">
               <input
                 type="password"
                 value={form.aiApiKey}
                 onChange={(e) => updateField('aiApiKey', e.target.value)}
-                placeholder="sk-..."
+                placeholder="sk-... 或 ollama"
                 className="w-full bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-xs font-mono outline-none focus:border-[var(--accent)]"
               />
             </Row>
-            <Row label="模型">
-              <input
-                type="text"
-                value={form.aiModel}
-                onChange={(e) => updateField('aiModel', e.target.value)}
-                placeholder="deepseek-chat 或 gpt-4o-mini"
-                className="w-full bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-xs font-mono outline-none focus:border-[var(--accent)]"
-              />
+            <Row label="模型" hint="可手动输入；点「刷新模型」可从本机 Ollama 拉取列表">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  list="ollama-model-list"
+                  value={form.aiModel}
+                  onChange={(e) => updateField('aiModel', e.target.value)}
+                  placeholder="deepseek-chat / gemma4:12b"
+                  className="flex-1 min-w-0 bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-xs font-mono outline-none focus:border-[var(--accent)]"
+                />
+                <datalist id="ollama-model-list">
+                  {ollamaModels.map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+                <button
+                  type="button"
+                  onClick={() => tauriApi.listOllamaModels(form.aiBaseUrl).then(setOllamaModels)}
+                  className="shrink-0 px-2.5 py-1.5 rounded-md text-[11px] font-medium border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors cursor-pointer"
+                >
+                  刷新模型
+                </button>
+              </div>
+            </Row>
+            <Row label="连接" hint="极小请求测试地址/Key/模型是否可用">
+              <div className="flex gap-2 items-center">
+                <button
+                  type="button"
+                  disabled={aiProbing}
+                  onClick={async () => {
+                    setAiProbing(true);
+                    setAiProbe(null);
+                    try {
+                      const r = await tauriApi.probeAiEndpoint(
+                        form.aiBaseUrl,
+                        form.aiApiKey,
+                        form.aiModel
+                      );
+                      setAiProbe(r);
+                    } catch (e: any) {
+                      setAiProbe(String(e?.message || e));
+                    } finally {
+                      setAiProbing(false);
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-md text-[11px] font-semibold border border-[var(--accent)]/40 bg-[var(--accent-subtle)] text-[var(--accent)] hover:brightness-110 transition cursor-pointer disabled:opacity-50"
+                >
+                  {aiProbing ? '测试中…' : '测试连接'}
+                </button>
+                {aiProbe && (
+                  <span className={'text-[11px] ' + (aiProbe === 'ok' ? 'text-[#34c759]' : 'text-[#ff453a]')}>
+                    {aiProbe === 'ok' ? '连接正常' : aiProbe.slice(0, 80)}
+                  </span>
+                )}
+              </div>
             </Row>
           </Section>
         </div>
@@ -417,6 +577,13 @@ export const SettingsPage: React.FC = () => {
                 </div>
               ))}
             </div>
+            <button
+              type="button"
+              onClick={() => updateSettings({ isFirstRun: true })}
+              className="mt-3 text-xs text-[var(--accent)] hover:underline"
+            >
+              重新打开新手向导
+            </button>
           </Section>
         </div>
 

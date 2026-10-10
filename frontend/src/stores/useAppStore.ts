@@ -11,7 +11,7 @@ import type {
   StressTestResult,
   TestCaseInput,
 } from '../types';
-import type { ExtractedProblem } from '../services/pdfExtract';
+import type { ExtractedProblem } from '../ports/document';
 
 type ProblemFileMap = Record<string, string>;
 
@@ -33,6 +33,7 @@ const persistProblemFiles = (m: Record<string, string>) => {
   } catch {}
 };
 const ACTIVE_RECORD_KEY = 'olympia-active-record';
+const CONTEST_END_KEY = 'olympia-contest-end-time';
 
 const loadRecords = (): PracticeRecord[] => {
   try {
@@ -47,6 +48,34 @@ const persistRecords = (records: PracticeRecord[]) => {
   try {
     localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
   } catch {}
+};
+
+/**
+ * Rehydrate the contest deadline after a restart.
+ * Primary source: the dedicated localStorage key (covers contests started
+ * from Settings, which have no PracticeRecord). Fallback: any still-running
+ * contest record persisted before that key existed.
+ */
+const loadContestEndTime = (records: PracticeRecord[]): number | null => {
+  try {
+    const raw = localStorage.getItem(CONTEST_END_KEY);
+    if (raw) {
+      const t = Number(raw);
+      if (Number.isFinite(t) && t > Date.now()) return t;
+      localStorage.removeItem(CONTEST_END_KEY);
+    }
+  } catch {}
+  const activeId = localStorage.getItem(ACTIVE_RECORD_KEY);
+  const ordered = [
+    ...records.filter((r) => r.id === activeId),
+    ...records.filter((r) => r.id !== activeId),
+  ];
+  for (const r of ordered) {
+    if (r.type === 'contest' && typeof r.contestEndTime === 'number' && r.contestEndTime > Date.now()) {
+      return r.contestEndTime;
+    }
+  }
+  return null;
 };
 
 const DEFAULT_BRUTE_CPP = `#include <iostream>
@@ -171,6 +200,11 @@ interface AppState {
   problemFiles: ProblemFileMap;
   bindProblemFile: (problemId: string, path: string) => void;
 
+  // 瞬时 UI 状态：在线抓题期间（题面侧栏显示骨架）；保存成功提示（状态栏）
+  importingProblem: boolean;
+  saveHint: string | null;
+  setSaveHint: (msg: string | null) => void;
+
   // Filters
   setSearchQuery: (q: string) => void;
   setSelectedDifficulty: (d: string) => void;
@@ -185,9 +219,31 @@ const getSavedTheme = (): import('../types').ThemeType => {
   return 'OneDarkPro';
 };
 
+// Set when the user changes settings while loadInitialData is still in flight
+// (settings UI is not hydration-gated). The backend snapshot that hydration
+// resolves with can predate that change, so it must not clobber it.
+let settingsTouchedDuringHydration = false;
+
+const initialRecords = loadRecords();
+
 export const useAppStore = create<AppState>((set, get) => ({
-  contestEndTime: null,
-  setContestEndTime: (timeMs) => set({ contestEndTime: timeMs }),
+  contestEndTime: loadContestEndTime(initialRecords),
+  setContestEndTime: (timeMs) => {
+    try {
+      if (timeMs === null) localStorage.removeItem(CONTEST_END_KEY);
+      else localStorage.setItem(CONTEST_END_KEY, String(timeMs));
+    } catch {}
+    // Clearing must also wipe persisted record deadlines, otherwise a
+    // voluntary early exit would resurrect the contest on next launch.
+    const records = get().practiceRecords;
+    if (timeMs === null && records.some((r) => r.contestEndTime)) {
+      const updated = records.map((r) => (r.contestEndTime ? { ...r, contestEndTime: null } : r));
+      persistRecords(updated);
+      set({ contestEndTime: null, practiceRecords: updated });
+      return;
+    }
+    set({ contestEndTime: timeMs });
+  },
   activeNav: 'editor',
   settings: {
     isFirstRun: true,
@@ -211,11 +267,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   tabs: [
     {
       id: 'tab-1',
-      title: 'P1001.cpp',
+      title: 'main.cpp',
       code: '',
       isModified: false,
-      problemId: 'P1001',
-      testcases: [{ id: 1, input: '20 30', expectedOutput: '50' }],
+      testcases: [],
       runResult: null,
     },
   ],
@@ -241,6 +296,18 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   problemFiles: loadProblemFiles(),
 
+  importingProblem: false,
+  saveHint: null,
+  setSaveHint: (msg) => {
+    set({ saveHint: msg });
+    if (msg) {
+      setTimeout(() => {
+        // 只清除自己设置的这条提示，避免误清新提示
+        if (get().saveHint === msg) set({ saveHint: null });
+      }, 3500);
+    }
+  },
+
   bindProblemFile: (problemId, path) => {
     const m = { ...get().problemFiles, [problemId]: path };
     persistProblemFiles(m);
@@ -248,7 +315,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
 
-  practiceRecords: loadRecords(),
+  practiceRecords: initialRecords,
   activeRecordId: localStorage.getItem(ACTIVE_RECORD_KEY) || null,
 
   createPracticeRecord: (rec) => {
@@ -352,11 +419,21 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   loadInitialData: async () => {
     try {
-      const [settings, problems, solves] = await Promise.all([
+      const [loadedSettings, problems, solves] = await Promise.all([
         tauriApi.getSettings(),
         tauriApi.getProblems(),
         tauriApi.getSolves(),
       ]);
+
+      // 水合期间用户可能已在设置页/向导里改过主题（设置页不受 hydrated 门控），
+      // 而 Promise.all 返回的后端快照可能是写入前的旧读数。此时以 localStorage
+      // 里更新的选择为准，避免旧快照把刚选的主题覆盖回深色（首次配置时
+      // “编辑器保持黑色”的根源）。
+      let settings = loadedSettings;
+      if (settingsTouchedDuringHydration) {
+        settingsTouchedDuringHydration = false;
+        settings = { ...loadedSettings, theme: getSavedTheme() };
+      }
 
       const activeP = problems[0] || null;
       // 全新安装不再预置任何示例数据，用例列表从空白开始
@@ -369,7 +446,25 @@ export const useAppStore = create<AppState>((set, get) => ({
         }));
       }
 
-      const initialCode = settings.enableCodeTemplate ? (settings.codeTemplate || '') : '';
+      // 启动首标签页也要磁盘优先：绑定/练习文件夹里已有该题的文件时读入。
+      // 否则首标签页无 filePath，Ctrl+R 的「编译=保存」会把模板覆盖写回
+      // 练习根目录里的 {题号}.cpp，毁掉用户真实解答（数据丢失）。
+      let initialCode = settings.enableCodeTemplate ? (settings.codeTemplate || '') : '';
+      let initialTitle = activeP ? activeP.id + '.cpp' : 'solution.cpp';
+      let initialFilePath: string | undefined;
+      if (activeP) {
+        const bound = get().problemFiles[activeP.id];
+        const diskPath = bound || (await tauriApi.resolveProblemFile(activeP.id).catch(() => null));
+        if (diskPath) {
+          try {
+            initialCode = await tauriApi.readFile(diskPath);
+            initialFilePath = diskPath;
+            initialTitle = diskPath.split(/[\\/]/).pop() || initialTitle;
+          } catch {
+            /* 文件不可读 → 退回模板 */
+          }
+        }
+      }
 
       set({
         settings,
@@ -378,9 +473,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         tabs: [
           {
             id: 'tab-1',
-            title: activeP ? (activeP.id + '.cpp') : 'solution.cpp',
+            title: initialTitle,
             code: initialCode,
             isModified: false,
+            filePath: initialFilePath,
             problemId: activeP ? activeP.id : undefined,
             testcases: initialTestcases,
             runResult: null,
@@ -403,6 +499,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateSettings: async (newSettings) => {
+    if (!get().hydrated) settingsTouchedDuringHydration = true;
     const updated = { ...get().settings, ...newSettings };
     set({ settings: updated });
     document.documentElement.setAttribute('data-theme', updated.theme);
@@ -472,17 +569,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!activeTab) return false;
 
     try {
-      // 首次保存（或未落盘过的标签页）：弹出系统对话框选择保存位置
+      // 首次保存（或未落盘过的标签页）：练习根目录已设置 → 直接写
+      // {root}/{题号}.cpp，不弹对话框；未设置根目录才弹系统保存对话框
       let path: string | null | undefined = activeTab.filePath;
       if (!path) {
-        path = await tauriApi.saveFileDialog(activeTab.title.endsWith('.cpp') ? activeTab.title : `${activeTab.title}.cpp`);
-        if (!path) return false; // 用户取消
+        const defaultPath = await tauriApi.defaultSavePath(activeTab.problemId || '', activeTab.title);
+        if (defaultPath) {
+          path = defaultPath;
+        } else {
+          path = await tauriApi.saveFileDialog(activeTab.title.endsWith('.cpp') ? activeTab.title : `${activeTab.title}.cpp`);
+          if (!path) return false; // 用户取消
+        }
       }
       await tauriApi.writeFile(path, activeTab.code);
 
       const fileName = path.split(/[\\/]/).pop() || activeTab.title;
       const savedPath = path;
-      const updated = tabs.map((t) =>
+      // 用保存期间最新的 tabs 快照（保存要跨多个 await，期间标签页可能被关闭，
+      // 旧快照会把已关闭的标签页“复活”）
+      const updated = get().tabs.map((t) =>
         t.id === activeTabId ? { ...t, isModified: false, filePath: savedPath, title: fileName } : t
       );
       set({ tabs: updated });
@@ -490,6 +595,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (activeTab.problemId) {
         get().bindProblemFile(activeTab.problemId, savedPath);
       }
+      // 状态栏瞬时提示保存路径（无全局 toast 系统，复用状态栏）
+      get().setSaveHint(`已保存：${savedPath}`);
       return true;
     } catch (err) {
       console.error('Failed to save file:', err);
@@ -574,7 +681,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         activeProblem ? activeProblem.timeLimitMs : 1000
       );
 
-      const updatedTabs = tabs.map((t) =>
+      // 评测耗时数秒，期间用户可能新开/关闭/编辑其它标签页——
+      // 必须基于最新 tabs 快照写回，否则那些变更会被整体回滚
+      const updatedTabs = get().tabs.map((t) =>
         t.id === activeTabId ? { ...t, runResult: res } : t
       );
       set({ tabs: updatedTabs, isRunning: false });
@@ -597,7 +706,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       }
     } catch (err) {
-      const updatedTabs = tabs.map((t) =>
+      const updatedTabs = get().tabs.map((t) =>
         t.id === activeTabId
           ? {
               ...t,
@@ -718,6 +827,24 @@ export const useAppStore = create<AppState>((set, get) => ({
           // 文件已不存在（被移动/删除）→ 继续走新建流程
         }
       }
+      // 练习根目录兜底：目录里已有该题号的文件（任意深度）→ 直接读入，不弹另存为
+      try {
+        const resolvedPath = await tauriApi.resolveProblemFile(problem.id);
+        if (resolvedPath) {
+          const code = await tauriApi.readFile(resolvedPath);
+          const fileName = resolvedPath.split(/[\\/]/).pop() || problem.id + '.cpp';
+          openNewTab(fileName, code, problem.id, testcases, resolvedPath);
+          get().bindProblemFile(problem.id, resolvedPath);
+          set({
+            activeProblem: problem,
+            viewerProblem: problem,
+            activeNav: 'editor',
+          });
+          return;
+        }
+      } catch {
+        // 读取失败（被移动/权限）→ 继续走新建流程
+      }
       const template = get().settings.enableCodeTemplate ? (get().settings.codeTemplate || '') : '';
       openNewTab(problem.id + '.cpp', template, problem.id, testcases);
     }
@@ -735,12 +862,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   fetchOnlineProblem: async (problemId) => {
-    const p = await tauriApi.fetchProblemOnline(problemId);
-    const existing = get().problems.filter((x) => x.id !== p.id);
-    const updated = [p, ...existing];
-    await tauriApi.saveProblemsList(updated);
-    set({ problems: updated });
-    return p;
+    set({ importingProblem: true });
+    try {
+      const p = await tauriApi.fetchProblemOnline(problemId);
+      const existing = get().problems.filter((x) => x.id !== p.id);
+      const updated = [p, ...existing];
+      await tauriApi.saveProblemsList(updated);
+      set({ problems: updated });
+      return p;
+    } finally {
+      set({ importingProblem: false });
+    }
   },
 
   openProblemModal: (problem) => set({ isDetailModalOpen: true, modalProblem: problem }),

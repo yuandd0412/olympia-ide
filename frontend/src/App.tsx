@@ -11,20 +11,27 @@ import { AiCoachPage } from './components/ai/AiCoachPage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { useAppStore } from './stores/useAppStore';
 import { PanelLeftOpen } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { tabFade } from './ports/motion';
 
 import { CustomTitleBar } from './components/common/CustomTitleBar';
 import { ContestBar } from './components/common/ContestBar';
 import { OnboardingWizard } from './components/common/OnboardingWizard';
 
-import { Group as PanelGroup, Panel, Separator as PanelResizeHandle, useDefaultLayout } from 'react-resizable-panels';
+import {
+  SplitGroup,
+  SplitPanel,
+  SplitSeparator,
+  useSplitLayout,
+  type SplitPanelHandle,
+  type SplitPanelSize,
+} from './ports/layout';
 
 export const App: React.FC = () => {
-  const { activeNav, setActiveNav, loadInitialData, runCodeAction, settings, hydrated, tabs, activeTabId } = useAppStore();
-  // 左栏题面阅读器只在绑定了题目的标签页上启用；自由练习标签页不显示
-  const activeTabForViewer = tabs.find((t) => t.id === activeTabId);
-  const viewerAvailable = !!activeTabForViewer?.problemId;
-  const viewerRef = useRef<{ collapse: () => void; expand: () => void } | null>(null);
+  const { activeNav, setActiveNav, loadInitialData, runCodeAction, settings, hydrated } = useAppStore();
+  const reduce = useReducedMotion();
+  const tabMotion = tabFade(!!reduce);
+  const viewerRef = useRef<SplitPanelHandle | null>(null);
   const [viewerCollapsed, setViewerCollapsed] = useState(false);
   const collapseViewer = () => {
     setViewerCollapsed(true);
@@ -34,9 +41,17 @@ export const App: React.FC = () => {
     setViewerCollapsed(false);
     viewerRef.current?.expand();
   };
+  // Keep React state in lockstep with the real panel: layout restore can
+  // remount the group as collapsed while useState re-initializes to false,
+  // which previously hid the expand button and stranded the sidebar.
+  // ResizeObserver-backed onResize fires on mount, so this also rehydrates.
+  const handleViewerResize = (size: SplitPanelSize) => {
+    const collapsed = size.pixels <= 1 || size.percentage < 0.5;
+    setViewerCollapsed((prev) => (prev === collapsed ? prev : collapsed));
+  };
 
-  const horizontalLayout = useDefaultLayout({ id: 'olympia-layout-horizontal', storage: localStorage });
-  const verticalLayout = useDefaultLayout({ id: 'olympia-layout-vertical', storage: localStorage });
+  const horizontalLayout = useSplitLayout('olympia-layout-horizontal', localStorage);
+  const verticalLayout = useSplitLayout('olympia-layout-vertical', localStorage);
 
   useEffect(() => {
     loadInitialData();
@@ -53,12 +68,17 @@ export const App: React.FC = () => {
         e.preventDefault();
         runCodeAction();
       }
+      // F9 / Ctrl+Enter -> Run Code, the two chords students expect from Dev-C++ and OJ clients
+      if (e.key === 'F9' || (e.ctrlKey && e.key === 'Enter')) {
+        e.preventDefault();
+        runCodeAction();
+      }
       // Ctrl+K -> Toggle Problems Tab
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setActiveNav(useAppStore.getState().activeNav === 'problems' ? 'editor' : 'problems');
       }
-      // Ctrl+E -> Toggle Editor Tab
+      // Ctrl+E -> Back to the editor
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
         e.preventDefault();
         setActiveNav('editor');
@@ -127,41 +147,45 @@ export const App: React.FC = () => {
             {activeNav === 'editor' && (
               <motion.div
                 key="editor"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                {...tabMotion}
                 className="w-full h-full"
               >
-                <PanelGroup 
-                  id="olympia-layout-horizontal" 
-                  defaultLayout={horizontalLayout.defaultLayout}
-                  onLayoutChanged={horizontalLayout.onLayoutChanged}
-                  orientation="horizontal" 
+                <SplitGroup
+                  id="olympia-layout-horizontal"
+                  orientation="horizontal"
+                  layoutBinding={horizontalLayout}
                   className="w-full h-full"
                 >
-                  <Panel
+                  <SplitPanel
                     id="problem-viewer"
-                    panelRef={viewerRef as never}
+                    handle={viewerRef}
                     defaultSize="35%"
                     minSize="20%"
                     maxSize="60%"
                     collapsible
                     collapsedSize="0"
                     className="h-full"
+                    onResize={handleViewerResize}
                   >
                     <ProblemViewerPanel onClose={collapseViewer} />
-                  </Panel>
-                  {viewerAvailable && !viewerCollapsed && (
-                    <PanelResizeHandle className="w-1 bg-[var(--border)] hover:bg-[var(--accent)] transition-all cursor-col-resize z-50 relative group flex items-center justify-center">
-                      <div className="w-0.5 h-8 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover:opacity-100 group-hover:bg-[var(--accent)]" />
-                    </PanelResizeHandle>
-                  )}
+                  </SplitPanel>
+                  {/* Always keep the separator mounted — conditional unmount
+                      desyncs the group layout and blocks expand(). */}
+                  <SplitSeparator
+                    className={
+                      'w-1 transition-all cursor-col-resize z-50 relative group flex items-center justify-center ' +
+                      (viewerCollapsed
+                        ? 'bg-transparent hover:bg-[var(--accent)]'
+                        : 'bg-[var(--border)] hover:bg-[var(--accent)]')
+                    }
+                  >
+                    <div className="w-0.5 h-8 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover:opacity-100 group-hover:bg-[var(--accent)]" />
+                  </SplitSeparator>
 
-                  <Panel id="editor-main" minSize="30%" className="h-full flex flex-col min-w-0">
+                  <SplitPanel id="editor-main" minSize="30%" className="h-full flex flex-col min-w-0">
                     {/* Editor Top Bar */}
                     <div className="flex items-center w-full relative">
-                      {viewerAvailable && viewerCollapsed && (
+                      {viewerCollapsed && (
                         <button
                           onClick={expandViewer}
                           className="absolute left-1 top-1/2 -translate-y-1/2 z-10 p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] cursor-pointer"
@@ -176,76 +200,47 @@ export const App: React.FC = () => {
                     </div>
 
                     {/* Vertical Split for Editor and Runner */}
-                    <PanelGroup 
-                      id="olympia-layout-vertical" 
-                      defaultLayout={verticalLayout.defaultLayout}
-                      onLayoutChanged={verticalLayout.onLayoutChanged}
-                      orientation="vertical" 
+                    <SplitGroup
+                      id="olympia-layout-vertical"
+                      orientation="vertical"
+                      layoutBinding={verticalLayout}
                       className="flex-1 min-h-0"
                     >
-                      <Panel id="code-editor" defaultSize="60%" minSize="20%" maxSize="85%" className="relative">
+                      <SplitPanel id="code-editor" defaultSize="60%" minSize="20%" maxSize="85%" className="relative">
                         <MonacoCodeEditor />
-                      </Panel>
-                      <PanelResizeHandle className="h-1 bg-[var(--border)] hover:bg-[var(--accent)] transition-all cursor-row-resize z-50 relative group flex items-center justify-center">
+                      </SplitPanel>
+                      <SplitSeparator className="h-1 bg-[var(--border)] hover:bg-[var(--accent)] transition-all cursor-row-resize z-50 relative group flex items-center justify-center">
                         <div className="h-0.5 w-8 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover:opacity-100 group-hover:bg-[var(--accent)]" />
-                      </PanelResizeHandle>
-                      <Panel id="code-runner" defaultSize="40%" minSize="15%" maxSize="80%" className="relative">
+                      </SplitSeparator>
+                      <SplitPanel id="code-runner" defaultSize="40%" minSize="15%" maxSize="80%" className="relative">
                         <RunnerPanel />
-                      </Panel>
-                    </PanelGroup>
-                  </Panel>
-                </PanelGroup>
+                      </SplitPanel>
+                    </SplitGroup>
+                  </SplitPanel>
+                </SplitGroup>
               </motion.div>
             )}
 
             {activeNav === 'stress' && (
-              <motion.div
-                key="stress"
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-                className="w-full h-full"
-              >
+              <motion.div key="stress" {...tabMotion} className="w-full h-full">
                 <StressTesterPage />
               </motion.div>
             )}
 
             {activeNav === 'problems' && (
-              <motion.div
-                key="problems"
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-                className="w-full h-full"
-              >
+              <motion.div key="problems" {...tabMotion} className="w-full h-full">
                 <ProblemsPage />
               </motion.div>
             )}
 
             {activeNav === 'ai' && (
-              <motion.div
-                key="ai"
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-                className="w-full h-full"
-              >
+              <motion.div key="ai" {...tabMotion} className="w-full h-full">
                 <AiCoachPage />
               </motion.div>
             )}
 
             {activeNav === 'settings' && (
-              <motion.div
-                key="settings"
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-                className="w-full h-full"
-              >
+              <motion.div key="settings" {...tabMotion} className="w-full h-full">
                 <SettingsPage />
               </motion.div>
             )}

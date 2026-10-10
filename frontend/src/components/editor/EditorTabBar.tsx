@@ -86,6 +86,14 @@ export const EditorTabBar: React.FC = () => {
                     <span className="truncate max-w-[120px]">{tab.title}</span>
                   )}
 
+                  {/* 有磁盘文件背书（绑定或练习文件夹命中）→ 绿点提示 */}
+                  {tab.filePath && (
+                    <span
+                      title="已加载磁盘文件"
+                      className="w-1.5 h-1.5 rounded-full bg-[#34c759] shrink-0 opacity-80"
+                    />
+                  )}
+
                   {tab.isModified && !isActive && (
                     <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
                   )}

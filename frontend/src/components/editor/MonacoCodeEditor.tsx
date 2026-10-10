@@ -1,69 +1,49 @@
-import React, { useRef, useEffect } from 'react';
-import Editor, { type OnMount, type BeforeMount } from '@monaco-editor/react';
+import React, { useRef } from 'react';
+import { CodeEditor, type CodeEditorHost } from '../../ports/editor';
 import { useAppStore } from '../../stores/useAppStore';
 import { tauriApi } from '../../services/tauriApi';
-import { registerMonacoThemes } from '../../services/monacoTheme';
-import { registerCppCompletion } from '../../services/monacoCpp';
 import { Code2, Plus, BookOpen, Loader2 } from 'lucide-react';
 
 export const MonacoCodeEditor: React.FC = () => {
   const { tabs, activeTabId, updateActiveCode, settings, openNewTab, setActiveNav, saveActiveTab } = useAppStore();
   const activeTab = tabs.find((t) => t.id === activeTabId);
-  const editorRef = useRef<any>(null);
-  const monacoRef = useRef<any>(null);
+  const hostRef = useRef<CodeEditorHost | null>(null);
   const syntaxCheckTimer = useRef<any>(null);
 
   const isLight = settings.theme === 'GitHubLight';
   const currentThemeName = isLight ? 'oler-light-theme' : 'oler-dark-theme';
 
-  const handleBeforeMount: BeforeMount = (monaco) => {
-    registerMonacoThemes(monaco);
-    registerCppCompletion(monaco);
-  };
+  const handleReady = (host: CodeEditorHost) => {
+    hostRef.current = host;
 
-  const handleEditorDidMount: OnMount = (editor, monaco) => {
-    editorRef.current = editor;
-    monacoRef.current = monaco;
-    registerMonacoThemes(monaco);
-    monaco.editor.setTheme(currentThemeName);
+    // Bind Ctrl+S / Cmd+S save command directly inside the editor.
+    host.addCommand('mod+s', () => saveActiveTab());
     runSyntaxCheck(activeTab?.code || '');
-
-    // Bind Ctrl+S / Cmd+S save command directly inside Monaco
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      saveActiveTab();
-    });
   };
-
-  useEffect(() => {
-    if (monacoRef.current) {
-      monacoRef.current.editor.setTheme(currentThemeName);
-    }
-  }, [currentThemeName]);
 
   const runSyntaxCheck = async (code: string) => {
-    if (!code.trim() || !monacoRef.current || !editorRef.current) return;
+    if (!code.trim() || !hostRef.current) return;
     try {
       const markers = await tauriApi.checkSyntax(code, settings.compilerPath, settings.compilerFlags);
-      const model = editorRef.current.getModel();
-      if (!model) return;
-      const monacoMarkers = markers.map((m: any) => ({
-        severity: m.severity === 'error' ? monacoRef.current.MarkerSeverity.Error : monacoRef.current.MarkerSeverity.Warning,
-        message: m.message,
-        startLineNumber: m.line,
-        startColumn: m.column,
-        endLineNumber: m.line,
-        endColumn: m.column + 5,
-      }));
-      monacoRef.current.editor.setModelMarkers(model, 'owner', monacoMarkers);
+      hostRef.current.setModelMarkers(
+        'owner',
+        markers.map((m: any) => ({
+          severity: m.severity === 'error' ? ('error' as const) : ('warning' as const),
+          message: m.message,
+          startLineNumber: m.line,
+          startColumn: m.column,
+          endLineNumber: m.line,
+          endColumn: m.column + 5,
+        })),
+      );
     } catch (e) {
       console.error('Syntax check failed:', e);
     }
   };
 
-  const handleEditorChange = (val: string | undefined) => {
-    const code = val || '';
+  const handleEditorChange = (code: string) => {
     updateActiveCode(code);
-    
+
     if (syntaxCheckTimer.current) {
       clearTimeout(syntaxCheckTimer.current);
     }
@@ -108,39 +88,22 @@ export const MonacoCodeEditor: React.FC = () => {
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-[var(--bg-base)]">
-      <Editor
-        height="100%"
+      <CodeEditor
+        value={activeTab?.code || ''}
+        language="cpp"
+        themeName={currentThemeName}
+        fontSize={settings.fontSize || 14}
+        fontFamily={settings.fontFamily || 'Cascadia Mono'}
+        tabSize={4}
+        minimap
+        onChange={handleEditorChange}
+        onReady={handleReady}
         loading={
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[var(--bg-base)] text-[var(--text-tertiary)] select-none">
             <Loader2 className="w-6 h-6 animate-spin text-[var(--accent)]" />
             <span className="text-xs">正在加载编辑器组件...</span>
           </div>
         }
-        defaultLanguage="cpp"
-        language="cpp"
-        value={activeTab?.code || ''}
-        theme={currentThemeName}
-        beforeMount={handleBeforeMount}
-        onChange={handleEditorChange}
-        onMount={handleEditorDidMount}
-        options={{
-          fontSize: settings.fontSize || 14,
-          fontFamily: (settings.fontFamily || 'Cascadia Mono') + ', Consolas, monospace',
-          fontLigatures: true,
-          minimap: { enabled: true, scale: 0.75 },
-          scrollBeyondLastLine: false,
-          automaticLayout: true,
-          tabSize: 4,
-          insertSpaces: true,
-          renderWhitespace: 'selection',
-          lineNumbers: 'on',
-          roundedSelection: true,
-          bracketPairColorization: { enabled: true },
-          cursorBlinking: 'smooth',
-          cursorSmoothCaretAnimation: 'on',
-          smoothScrolling: true,
-          padding: { top: 8, bottom: 8 },
-        }}
       />
     </div>
   );

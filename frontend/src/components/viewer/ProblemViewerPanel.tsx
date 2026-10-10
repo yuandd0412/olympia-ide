@@ -1,10 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { tauriApi } from '../../services/tauriApi';
 import React, { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
+import { Markdown, PdfViewer, extractPdf, type ExtractedProblem } from '../../ports/document';
 import {
   Upload,
   BookOpen,
@@ -21,10 +18,10 @@ import {
   ChevronRight,
   X,
   Swords,
-  Layers
+  Layers,
+  Loader2
 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
-import { extractPdfProblems, type ExtractedProblem } from '../../services/pdfExtract';
 import type { PracticeRecord } from '../../types';
 
 interface ProblemViewerPanelProps {
@@ -38,6 +35,7 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
     setViewerPdfUrl,
     problems,
     setActiveProblem,
+    importingProblem,
     practiceRecords,
     activeRecordId,
     createPracticeRecord,
@@ -65,13 +63,16 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
   const [extracted, setExtracted] = useState<ExtractedProblem[] | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [extractErr, setExtractErr] = useState<string | null>(null);
+  // Absolute path of the open PDF; extraction runs in Rust so it needs a
+  // real path (viewerPdfUrl is only the asset:// URL for the iframe).
+  const [pdfPath, setPdfPath] = useState<string | null>(null);
 
   const runExtraction = async () => {
-    if (!viewerPdfUrl) return;
+    if (!pdfPath) return;
     setExtracting(true);
     setExtractErr(null);
     try {
-      const { problems: ex } = await extractPdfProblems(viewerPdfUrl);
+      const ex = await extractPdf(pdfPath);
       setExtracted(ex);
     } catch (e: any) {
       setExtractErr(String(e?.message || e));
@@ -80,24 +81,25 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
     }
   };
 
-  const activeRecord = practiceRecords.find((r) => r.id === activeRecordId) || null;
-  const sortedProblems = activeRecord
-    ? [...activeRecord.problems].sort((a, b) => a.pageStart - b.pageStart)
-    : [];
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setViewerPdfUrl(URL.createObjectURL(file));
-    setImportedFileName(file.name.replace(/\.pdf$/i, ''));
-    setImportName(file.name.replace(/\.pdf$/i, ''));
+  const handlePickPdf = async () => {
+    const path = await tauriApi.pickPdfFile();
+    if (!path) return;
+    setPdfPath(path);
+    setViewerPdfUrl(tauriApi.pdfAssetUrl(path));
+    const base = path.split(/[\\/]/).pop()?.replace(/\.pdf$/i, '') || '';
+    setImportedFileName(base);
+    setImportName(base);
     setImportType('problem-set');
     setImportDuration(120);
     setExtracted(null);
     setExtractErr(null);
     setShowImportModal(true);
-    e.target.value = '';
   };
+
+  const activeRecord = practiceRecords.find((r) => r.id === activeRecordId) || null;
+  const sortedProblems = activeRecord
+    ? [...activeRecord.problems].sort((a, b) => a.pageStart - b.pageStart)
+    : [];
 
   const confirmImport = async () => {
     const rec: PracticeRecord = {
@@ -207,10 +209,13 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
             </select>
           )}
 
-          <label className="p-1 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] cursor-pointer" title="导入本地 PDF（可创建比赛或题集）">
+          <button
+            onClick={handlePickPdf}
+            className="p-1 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] cursor-pointer"
+            title="导入本地 PDF（可创建比赛或题集）"
+          >
             <Upload className="w-3.5 h-3.5" />
-            <input type="file" accept=".pdf" onChange={handleFileUpload} className="hidden" />
-          </label>
+          </button>
         </div>
       </div>
 
@@ -234,7 +239,16 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
           ))}
           {activeRecordId && (
             <button
-              onClick={() => deletePracticeRecord(activeRecordId)}
+              onClick={() => {
+                // 整条记录连同页码标记一次删光，误触即数据丢失 → 与关标签页
+                // 同样的 confirm 拦一道；无对应记录的残留 id 直接清掉即可。
+                if (
+                  !activeRecord ||
+                  window.confirm(`删除练习记录「${activeRecord.name}」？该记录下的题目标记也会一并移除。`)
+                ) {
+                  deletePracticeRecord(activeRecordId);
+                }
+              }}
               className="p-1 rounded text-[var(--text-tertiary)] hover:text-[#ff453a] cursor-pointer shrink-0"
               title="删除当前练习记录"
             >
@@ -246,7 +260,7 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto p-4 select-text space-y-4">
-        {pdfMode ? (
+        {pdfMode && viewerPdfUrl ? (
           <div className="w-full flex flex-col gap-3">
             {/* Problem chips for the active record */}
             {activeRecord && sortedProblems.length > 0 && (
@@ -288,17 +302,22 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
                 </button>
                 <span className="text-[var(--text-tertiary)]">页</span>
               </div>
-              <button onClick={() => setViewerPdfUrl(null)} className="text-[var(--accent)] hover:underline cursor-pointer">
+              <button
+                onClick={() => {
+                  setViewerPdfUrl(null);
+                  setPdfPath(null);
+                }}
+                className="text-[var(--accent)] hover:underline cursor-pointer"
+              >
                 关闭 PDF
               </button>
             </div>
 
-            {/* PDF iframe — #page=N jumps the embedded viewer */}
-            <iframe
-              key={`${viewerPdfUrl}#p${currentPage}`}
-              src={`${viewerPdfUrl}#page=${currentPage}`}
+            {/* PDF viewer — #page=N jumps the embedded viewer */}
+            <PdfViewer
+              path={viewerPdfUrl}
+              page={currentPage}
               className="w-full h-[700px] rounded border border-[var(--border)] bg-white"
-              title="PDF Viewer"
             />
 
             {/* Problem marking list */}
@@ -379,15 +398,39 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
               </p>
             )}
           </div>
+        ) : importingProblem ? (
+          /* 在线抓题（fetchOnlineProblem，含 AI 富化）期间的骨架占位 */
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2 text-[11px] text-[var(--text-tertiary)]">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" />
+              <span>正在抓取并解析题目（若配置了 AI 富化，可能需要数十秒）…</span>
+            </div>
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="p-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] animate-pulse"
+                style={{ animationDelay: `${i * 120}ms` }}
+              >
+                <div className="h-3 rounded bg-[var(--border)] w-1/3 mb-2" />
+                <div className="h-2.5 rounded bg-[var(--border)] w-full mb-1.5" />
+                <div className="h-2.5 rounded bg-[var(--border)] w-5/6" />
+              </div>
+            ))}
+          </div>
         ) : viewerProblem ? (
-          <div className="space-y-5">
+          <div className="space-y-3">
             <div className="flex flex-col gap-2 border-b border-[var(--border)] pb-3">
               <div className="flex items-center justify-between gap-2">
                 <h1 className="text-sm font-bold text-[var(--text-primary)] leading-tight flex-1">
                   {viewerProblem.title}
                 </h1>
                 <button
-                  onClick={() => tauriApi.openUrl("https://www.luogu.com.cn/problem/" + viewerProblem.id)}
+                  onClick={() =>
+                    tauriApi.openUrl(
+                      viewerProblem.sourceUrl?.trim() ||
+                        "https://www.luogu.com.cn/problem/" + viewerProblem.id
+                    )
+                  }
                   className="flex items-center gap-1 text-[10px] text-[var(--accent)] hover:underline shrink-0 px-2 py-0.5 rounded bg-[var(--accent-subtle)] cursor-pointer"
                   title="在系统默认浏览器中打开原题链接与提交"
                 >
@@ -404,9 +447,32 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
             <div>
               <h3 className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-tertiary)] mb-2 select-none">题目描述</h3>
               <div className="prose prose-invert max-w-none text-xs leading-relaxed text-[var(--text-primary)]">
-                <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{viewerProblem.descriptionMd || '暂无题目描述。'}</ReactMarkdown>
+                <Markdown>{viewerProblem.descriptionMd || '暂无题目描述。'}</Markdown>
               </div>
             </div>
+
+            {!!viewerProblem.inputFormat?.trim() && (
+              <div className="p-3 rounded-lg border bg-[var(--bg-elevated)] border-[var(--border)]">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)] mb-1 select-none">输入格式</div>
+                <Markdown className="text-xs leading-relaxed text-[var(--text-primary]">
+                  {viewerProblem.inputFormat}
+                </Markdown>
+              </div>
+            )}
+            {!!viewerProblem.outputFormat?.trim() && (
+              <div className="p-3 rounded-lg border bg-[var(--bg-elevated)] border-[var(--border)]">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)] mb-1 select-none">输出格式</div>
+                <Markdown className="text-xs leading-relaxed text-[var(--text-primary]">
+                  {viewerProblem.outputFormat}
+                </Markdown>
+              </div>
+            )}
+
+            {viewerProblem.samples.length === 0 && (
+              <div className="p-3 rounded-lg border border-dashed border-[var(--border)] text-[11px] text-[var(--text-tertiary)]">
+                暂无样例{viewerProblem.oj !== '洛谷' ? '；导入时若已配置 AI，会尝试自动补全' : ''}。
+              </div>
+            )}
 
             {viewerProblem.samples.map((s, idx) => (
               <div key={idx} className="flex flex-col gap-2 p-3 rounded-lg border bg-[var(--bg-elevated)] border-[var(--border)]">
@@ -430,6 +496,15 @@ export const ProblemViewerPanel: React.FC<ProblemViewerPanelProps> = ({ onClose 
                 </div>
               </div>
             ))}
+
+            {!!viewerProblem.hint?.trim() && (
+              <div className="p-3 rounded-lg border bg-[var(--accent-subtle)] border-[var(--accent)]/25">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent)] mb-1 select-none">提示 / Note</div>
+                <Markdown className="text-xs leading-relaxed text-[var(--text-secondary)]">
+                  {viewerProblem.hint}
+                </Markdown>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-[var(--text-tertiary)]">

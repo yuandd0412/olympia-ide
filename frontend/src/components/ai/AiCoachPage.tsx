@@ -1,10 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
+import { Markdown } from '../../ports/document';
 import {
-  Sparkles,
   Send,
   Loader2,
   Bot,
@@ -18,6 +14,13 @@ import { useAppStore } from '../../stores/useAppStore';
 import { tauriApi } from '../../services/tauriApi';
 import type { ChatMessage } from '../../types';
 
+// Module-level on purpose: static content, stable identity for effect deps.
+const WELCOME: ChatMessage = {
+  role: 'assistant',
+  content:
+    '👋 你好！我是你的 **AI 竞赛教练**。我可以为你提供：\n\n- 💡 **算法与数据结构思路指引**（可选择无剧透提示）\n- ⏱️ **时空复杂度精细化分析**（$\\mathcal{O}(N \\log N)$、常数优化）\n- 🐞 **边界特判与死循环 Bug 排查**\n- 📚 **经典题型与模板代码解读**\n\n请在下方输入你的问题，或直接点击预置快捷提示词！',
+};
+
 export const AiCoachPage: React.FC = () => {
   // Hooks MUST run before any early return: when the contest countdown
   // expires while this page stays mounted, the store flips contestEndTime
@@ -25,17 +28,29 @@ export const AiCoachPage: React.FC = () => {
   // hook order crashes React ("rendered more hooks than previous render").
   const contestEndTime = useAppStore((s) => s.contestEndTime);
   const { settings, activeProblem, tabs, activeTabId } = useAppStore();
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: 'assistant',
-      content:
-        '👋 你好！我是你的 **AI 竞赛教练**。我可以为你提供：\n\n- 💡 **算法与数据结构思路指引**（可选择无剧透提示）\n- ⏱️ **时空复杂度精细化分析**（$\\mathcal{O}(N \\log N)$、常数优化）\n- 🐞 **边界特判与死循环 Bug 排查**\n- 📚 **经典题型与模板代码解读**\n\n请在下方输入你的问题，或直接点击预置快捷提示词！',
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const loadedRef = useRef(false);
+
+  useEffect(() => {
+    if (loadedRef.current) return;
+    loadedRef.current = true;
+    let cancelled = false;
+    tauriApi.loadChats().then((saved) => {
+      if (!cancelled && saved && saved.length > 0) {
+        // 历史加载是异步的：若用户在加载完成前已开始新对话，则不覆盖
+        setMessages((prev) =>
+          prev.length === 1 && prev[0].content === WELCOME.content ? saved : prev
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -92,25 +107,74 @@ Your advice must be precise, helpful, and concise. Format mathematical formulas 
 Use clean Markdown code blocks with language identifiers. If the user asks for hints, avoid directly giving the complete solution code upfront; guide their algorithmic thinking step by step.`,
       };
 
+      const context = buildContext();
       const reply = await tauriApi.chatWithAi(
         [systemPrompt, ...newMsgs],
         settings.aiBaseUrl,
         settings.aiApiKey,
-        settings.aiModel
+        settings.aiModel,
+        context || undefined
       );
 
-      setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+      const withReply: ChatMessage[] = [
+        ...newMsgs,
+        { role: 'assistant', content: reply },
+      ];
+      setMessages(withReply);
+      void tauriApi.saveChats(withReply.filter((m) => m.role !== 'system'));
     } catch (err: any) {
-      setMessages((prev) => [
-        ...prev,
+      const withErr: ChatMessage[] = [
+        ...newMsgs,
         {
           role: 'assistant',
-          content: `❌ 请求出错: ${err.message || String(err)}\n\n请前往「设置」检查你的 AI API Key 和 Base URL 是否有效。`,
+          content: `❌ 请求出错: ${err.message || String(err)}\n\n请前往「设置」检查 AI 配置；本地 Ollama 可点「本机 Ollama」一键填入。`,
         },
-      ]);
+      ];
+      setMessages(withErr);
+      void tauriApi.saveChats(withErr.filter((m) => m.role !== 'system'));
     } finally {
       setIsLoading(false);
     }
+  };
+
+  /** 题目 / 代码 / 最近跑题结果 → 一段纯文本，供后端 context 字段拼接 */
+  const buildContext = (): string => {
+    const parts: string[] = [];
+    if (activeProblem) {
+      parts.push(
+        `题目: ${activeProblem.id} - ${activeProblem.title} (OJ=${activeProblem.oj}, 难度=${activeProblem.difficulty}, 时限=${activeProblem.timeLimitMs}ms, 内存限制=${activeProblem.memoryLimitKb}KB)`
+      );
+    }
+    if (currentCode.trim()) {
+      const code =
+        currentCode.length > 8000
+          ? currentCode.slice(0, 8000) + '\n// ...truncated'
+          : currentCode;
+      parts.push(`当前代码:\n\`\`\`cpp\n${code}\n\`\`\``);
+    }
+    const rr = activeTab?.runResult;
+    if (rr) {
+      parts.push(
+        `最近运行: overall=${rr.overallVerdict}, compileError=${rr.isCompilationError}, time=${rr.totalTimeMs}ms, mem=${rr.maxMemoryKb}KB`
+      );
+      if (rr.compilerOutput) {
+        parts.push(
+          `编译输出:\n${rr.compilerOutput.slice(0, 2000)}`
+        );
+      }
+      const failed = rr.testcases.filter((t) => t.verdict !== 'AC').slice(0, 3);
+      for (const t of failed) {
+        // MLE produces no comparable stdout; the measurement is the only signal worth sending.
+        const observed =
+          t.verdict === 'MLE'
+            ? `（内存超限：本例峰值 ${t.memoryKb}KB，输出未参与比对）`
+            : t.actualOutput || t.errorMessage || '';
+        parts.push(
+          `失败用例 #${t.id} verdict=${t.verdict}\n输入:\n${t.input.slice(0, 500)}\n期望:\n${t.expectedOutput.slice(0, 500)}\n实际:\n${observed.slice(0, 500)}`
+        );
+      }
+    }
+    return parts.join('\n\n');
   };
 
   const handleCopy = (codeText: string) => {
@@ -145,26 +209,29 @@ Use clean Markdown code blocks with language identifiers. If the user asks for h
         }}
       >
         <div className="flex items-center gap-2">
-          <div className="p-1 rounded-lg bg-[var(--accent-subtle)] text-[var(--accent)]">
-            <Sparkles className="w-4 h-4" />
-          </div>
-          <span className="text-xs font-bold text-[var(--text-primary)]">
-            AI 竞赛教练
+          {/* 与引导向导一致的徽章样式：pills + 模型 chip */}
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--border)] text-[10px] font-bold tracking-wide text-[var(--accent)] uppercase">
+            AI
           </span>
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--bg-elevated)] text-[var(--text-tertiary)] border border-[var(--border)]">
+          <span className="text-xs font-bold text-[var(--text-primary)]">
+            竞赛教练
+          </span>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[var(--bg-elevated)] text-[var(--text-tertiary)] border border-[var(--border)]">
             {settings.aiModel || 'gpt-4o-mini'}
           </span>
         </div>
 
         <button
-          onClick={() =>
-            setMessages([
+          onClick={() => {
+            const next: ChatMessage[] = [
               {
                 role: 'assistant',
                 content: '对话已重置。请问有什么算法问题需要探讨？',
               },
-            ])
-          }
+            ];
+            setMessages(next);
+            void tauriApi.saveChats(next);
+          }}
           className="flex items-center gap-1 text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] p-1 rounded transition-colors cursor-pointer"
         >
           <RotateCcw className="w-3.5 h-3.5" />
@@ -202,18 +269,15 @@ Use clean Markdown code blocks with language identifiers. If the user asks for h
                     : 'bg-[var(--bg-surface)] text-[var(--text-primary)] border-[var(--border)]'
                 }`}
               >
-                <ReactMarkdown
-                  remarkPlugins={[remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
+                <Markdown
                   components={{
-                    code({ className, children, ...props }) {
+                    code({ className, children }) {
                       const isInline = !className;
                       const codeContent = String(children).replace(/\n$/, '');
                       if (isInline) {
                         return (
                           <code
                             className="font-mono bg-black/20 px-1 py-0.5 rounded text-[11px]"
-                            {...props}
                           >
                             {children}
                           </code>
@@ -249,7 +313,7 @@ Use clean Markdown code blocks with language identifiers. If the user asks for h
                   }}
                 >
                   {m.content}
-                </ReactMarkdown>
+                </Markdown>
               </div>
             </div>
           );

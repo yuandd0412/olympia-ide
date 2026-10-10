@@ -68,18 +68,6 @@ sevenz-rust、futures-util、tauri-plugin-shell / fs / dialog / log 等。
 @jridgewell/trace-mapping@0.3.31 | MIT
 @monaco-editor/loader@1.7.0 | MIT
 @monaco-editor/react@4.7.0 | MIT
-@napi-rs/canvas@1.0.8 | MIT
-@napi-rs/canvas-android-arm64@1.0.8 | MIT
-@napi-rs/canvas-darwin-arm64@1.0.8 | MIT
-@napi-rs/canvas-darwin-x64@1.0.8 | MIT
-@napi-rs/canvas-linux-arm-gnueabihf@1.0.8 | MIT
-@napi-rs/canvas-linux-arm64-gnu@1.0.8 | MIT
-@napi-rs/canvas-linux-arm64-musl@1.0.8 | MIT
-@napi-rs/canvas-linux-riscv64-gnu@1.0.8 | MIT
-@napi-rs/canvas-linux-x64-gnu@1.0.8 | MIT
-@napi-rs/canvas-linux-x64-musl@1.0.8 | MIT
-@napi-rs/canvas-win32-arm64-msvc@1.0.8 | MIT
-@napi-rs/canvas-win32-x64-msvc@1.0.8 | MIT
 @oxc-project/types@0.146.0 | MIT
 @oxlint/binding-android-arm-eabi@1.80.0 | MIT
 @oxlint/binding-android-arm64@1.80.0 | MIT
@@ -146,7 +134,6 @@ sevenz-rust、futures-util、tauri-plugin-shell / fs / dialog / log 等。
 @tauri-apps/cli-win32-x64-msvc@2.11.4 | Apache-2.0 OR MIT
 @tauri-apps/plugin-dialog@2.7.2 | MIT OR Apache-2.0
 @tauri-apps/plugin-fs@2.5.1 | MIT OR Apache-2.0
-@tauri-apps/plugin-shell@2.3.5 | MIT OR Apache-2.0
 @types/debug@4.1.13 | MIT
 @types/estree@1.0.9 | MIT
 @types/estree-jsx@1.0.5 | MIT
@@ -162,15 +149,12 @@ sevenz-rust、futures-util、tauri-plugin-shell / fs / dialog / log 等。
 @types/unist@3.0.3 | MIT
 @ungap/structured-clone@1.3.3 | ISC
 @vitejs/plugin-react@6.1.0 | MIT
-@xterm/addon-fit@0.11.0 | MIT
-@xterm/xterm@6.0.0 | MIT
 bail@2.0.2 | MIT
 ccount@2.0.1 | MIT
 character-entities@2.0.2 | MIT
 character-entities-html4@2.1.0 | MIT
 character-entities-legacy@3.0.0 | MIT
 character-reference-invalid@2.0.1 | MIT
-clsx@2.1.1 | MIT
 comma-separated-tokens@2.0.3 | MIT
 commander@8.3.0 | MIT
 csstype@3.2.3 | MIT
@@ -276,7 +260,6 @@ nanoid@3.3.18 | MIT
 oxlint@1.80.0 | MIT
 parse-entities@4.0.2 | MIT
 parse5@7.3.0 | MIT
-pdfjs-dist@6.3.289 | Apache-2.0
 picocolors@1.1.1 | ISC
 picomatch@4.0.7 | MIT
 postcss@8.5.26 | MIT
@@ -297,7 +280,6 @@ state-local@1.0.7 | MIT
 stringify-entities@4.0.4 | MIT
 style-to-js@1.1.21 | MIT
 style-to-object@1.0.14 | MIT
-tailwind-merge@3.6.0 | MIT
 tailwindcss@4.3.3 | MIT
 tapable@2.3.3 | MIT
 tinyglobby@0.2.17 | MIT

@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Trophy, Clock, LogOut, ShieldAlert } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
+import { EASE_MODAL, modalCard, modalShell } from '../../ports/motion';
+import { OButton, OCard, O_CARD_FRAME } from '../../lib/design';
+import { bg, fg, line, tint, verdict } from '../../lib/design';
 
 export const ContestBar: React.FC = () => {
   const { contestEndTime, setContestEndTime, tabs } = useAppStore();
   const [timeLeftMs, setTimeLeftMs] = useState<number>(0);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const reduce = useReducedMotion();
 
   useEffect(() => {
     if (!contestEndTime) {
@@ -36,24 +40,30 @@ export const ContestBar: React.FC = () => {
   const formatNum = (n: number) => n.toString().padStart(2, '0');
   const isUrgent = timeLeftMs < 15 * 60 * 1000; // < 15 mins
 
+  const digitBoxStyle = {
+    backgroundColor: bg.elevated,
+    borderColor: isUrgent ? tint.waLineStrong : line.border,
+    color: isUrgent ? verdict.wa : fg.primary,
+  };
+
   return (
     <>
       <motion.div
         initial={{ height: 0, opacity: 0 }}
         animate={{ height: 'auto', opacity: 1 }}
         exit={{ height: 0, opacity: 0 }}
-        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: 0.18, ease: EASE_MODAL }}
         className="w-full border-b shrink-0 px-4 py-1.5 flex items-center justify-between text-xs select-none z-30 shadow-sm"
         style={{
-          backgroundColor: isUrgent ? 'rgba(255, 69, 58, 0.12)' : 'rgba(255, 159, 10, 0.08)',
-          borderColor: isUrgent ? 'rgba(255, 69, 58, 0.35)' : 'rgba(255, 159, 10, 0.25)',
+          backgroundColor: isUrgent ? tint.waSoft : tint.tleSoft,
+          borderColor: isUrgent ? tint.waLine : tint.tleLine,
         }}
       >
         {/* Left: Badge & Live Status */}
         <div className="flex items-center gap-2.5">
           <div
             className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[11px] shadow-xs text-white"
-            style={{ backgroundColor: isUrgent ? '#ff453a' : '#ff9f0a' }}
+            style={{ backgroundColor: isUrgent ? verdict.wa : verdict.tle }}
           >
             <Trophy className="w-3 h-3" />
             <span>比赛模式进行中</span>
@@ -66,39 +76,20 @@ export const ContestBar: React.FC = () => {
 
         {/* Center: High-contrast Countdown Timer */}
         <div className="flex items-center gap-2">
-          <Clock className={'w-3.5 h-3.5 ' + (isUrgent ? 'text-[#ff453a] animate-pulse' : 'text-[#ff9f0a]')} />
-          <span className="text-[11px] font-medium text-[var(--text-tertiary)]">剩余时间:</span>
+          <Clock
+            className={'w-3.5 h-3.5 ' + (isUrgent ? 'text-[var(--color-wa)] animate-pulse' : 'text-[var(--color-tle)]')}
+          />
+          <span className="text-[11px] text-[var(--text-tertiary)]">剩余时间:</span>
           <div className="flex items-center gap-1 font-mono font-bold text-sm tracking-wider">
-            <span
-              className="px-1.5 py-0.5 rounded border"
-              style={{
-                backgroundColor: 'var(--bg-elevated)',
-                borderColor: isUrgent ? 'rgba(255, 69, 58, 0.4)' : 'var(--border)',
-                color: isUrgent ? '#ff453a' : 'var(--text-primary)',
-              }}
-            >
+            <span className="px-1.5 py-0.5 rounded border" style={digitBoxStyle}>
               {formatNum(hours)}
             </span>
             <span className="text-[var(--text-tertiary)]">:</span>
-            <span
-              className="px-1.5 py-0.5 rounded border"
-              style={{
-                backgroundColor: 'var(--bg-elevated)',
-                borderColor: isUrgent ? 'rgba(255, 69, 58, 0.4)' : 'var(--border)',
-                color: isUrgent ? '#ff453a' : 'var(--text-primary)',
-              }}
-            >
+            <span className="px-1.5 py-0.5 rounded border" style={digitBoxStyle}>
               {formatNum(minutes)}
             </span>
             <span className="text-[var(--text-tertiary)]">:</span>
-            <span
-              className="px-1.5 py-0.5 rounded border"
-              style={{
-                backgroundColor: 'var(--bg-elevated)',
-                borderColor: isUrgent ? 'rgba(255, 69, 58, 0.4)' : 'var(--border)',
-                color: isUrgent ? '#ff453a' : 'var(--text-primary)',
-              }}
-            >
+            <span className="px-1.5 py-0.5 rounded border" style={digitBoxStyle}>
               {formatNum(seconds)}
             </span>
           </div>
@@ -106,29 +97,30 @@ export const ContestBar: React.FC = () => {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-3">
-          <button
+          <OButton
+            variant="dangerOutline"
+            size="sm"
             onClick={() => setShowExitConfirm(true)}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold text-[#ff453a] hover:bg-[#ff453a]/15 transition-all cursor-pointer border border-[#ff453a]/30"
           >
             <LogOut className="w-3 h-3" />
             <span>提前交卷 / 退出</span>
-          </button>
+          </OButton>
         </div>
       </motion.div>
 
       {/* Exit Confirmation Modal */}
       <AnimatePresence>
         {showExitConfirm && (
-          <div className="fixed inset-0 z-[10001] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <motion.div
+            {...modalShell(!!reduce)}
+            className="fixed inset-0 z-[10001] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          >
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-              className="w-full max-w-sm p-6 rounded-2xl border bg-[var(--bg-surface)] border-[var(--border)] shadow-2xl space-y-4"
+              {...modalCard(!!reduce)}
+              className={`w-full max-w-sm p-6 shadow-2xl space-y-4 ${O_CARD_FRAME} bg-[var(--bg-surface)]`}
             >
-              <div className="flex items-center gap-3 text-[#ff453a]">
-                <div className="p-2 rounded-xl bg-[#ff453a]/15">
+              <div className="flex items-center gap-3 text-[var(--color-wa)]">
+                <div className="p-2 rounded-xl" style={{ backgroundColor: tint.waHover }}>
                   <ShieldAlert className="w-6 h-6" />
                 </div>
                 <div>
@@ -137,7 +129,7 @@ export const ContestBar: React.FC = () => {
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border)] text-xs text-[var(--text-secondary)] space-y-1.5">
+              <OCard tone="elevated" className="p-3 text-xs text-[var(--text-secondary)] space-y-1.5">
                 <div className="flex justify-between">
                   <span>当前倒计时:</span>
                   <span className="font-mono font-bold">{formatNum(hours)}:{formatNum(minutes)}:{formatNum(seconds)}</span>
@@ -146,27 +138,25 @@ export const ContestBar: React.FC = () => {
                   <span>代码标签页:</span>
                   <span className="font-mono">{tabs.length} 个</span>
                 </div>
-              </div>
+              </OCard>
 
               <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  onClick={() => setShowExitConfirm(false)}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-medium border border-[var(--border)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] cursor-pointer"
-                >
+                <OButton variant="outline" size="md" onClick={() => setShowExitConfirm(false)}>
                   继续比赛
-                </button>
-                <button
+                </OButton>
+                <OButton
+                  variant="danger"
+                  size="md"
                   onClick={() => {
                     setContestEndTime(null);
                     setShowExitConfirm(false);
                   }}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#ff453a] hover:brightness-110 text-white cursor-pointer shadow-xs"
                 >
                   确认交卷退出
-                </button>
+                </OButton>
               </div>
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </>

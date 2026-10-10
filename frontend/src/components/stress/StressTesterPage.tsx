@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import React, { useState } from 'react';
-import Editor from '@monaco-editor/react';
+import { CodeEditor } from '../../ports/editor';
+import { SplitGroup, SplitPanel, SplitSeparator, useSplitLayout } from '../../ports/layout';
 import {
   Swords,
   Play,
@@ -12,11 +13,10 @@ import {
   AlertTriangle,
   Copy,
   Check,
+  Cpu,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
-import { registerMonacoThemes } from '../../services/monacoTheme';
-import { registerCppCompletion } from '../../services/monacoCpp';
-import { Group as PanelGroup, Panel, Separator as PanelResizeHandle, useDefaultLayout } from 'react-resizable-panels';
+import { memoryLabel } from '../../lib/design';
 
 export const StressTesterPage: React.FC = () => {
   const {
@@ -33,6 +33,7 @@ export const StressTesterPage: React.FC = () => {
     runStressAction,
     importStressFailToRunner,
     settings,
+    activeProblem,
   } = useAppStore();
 
   const [activeCodeTab, setActiveCodeTab] = useState<'sol' | 'brute' | 'gen'>('sol');
@@ -44,7 +45,7 @@ export const StressTesterPage: React.FC = () => {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const stressLayout = useDefaultLayout({ id: 'olympia-layout-stress', storage: localStorage });
+  const stressLayout = useSplitLayout('olympia-layout-stress', localStorage);
   const isLight = settings.theme === 'GitHubLight';
 
   return (
@@ -108,10 +109,10 @@ export const StressTesterPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Split Layout with react-resizable-panels */}
-      <PanelGroup id="olympia-layout-stress" defaultLayout={stressLayout.defaultLayout} onLayoutChanged={stressLayout.onLayoutChanged} orientation="vertical" className="flex-1 min-h-0">
+      {/* Main Split Layout */}
+      <SplitGroup id="olympia-layout-stress" orientation="vertical" layoutBinding={stressLayout} className="flex-1 min-h-0">
         {/* Top 3 Code Editors */}
-        <Panel id="stress-code-editors" defaultSize="55%" minSize="25%" maxSize="80%" className="min-h-0 flex flex-col border-b border-[var(--border)]">
+        <SplitPanel id="stress-code-editors" defaultSize="55%" minSize="25%" maxSize="80%" className="min-h-0 flex flex-col border-b border-[var(--border)]">
           {/* Sub-tab switcher */}
           <div
             className="h-8 px-3 border-b flex items-center justify-between text-xs shrink-0"
@@ -162,76 +163,52 @@ export const StressTesterPage: React.FC = () => {
             </span>
           </div>
 
-          {/* Monaco Editor Component */}
+          {/* Code Editor Component */}
           <div className="flex-1 w-full h-full relative">
             {activeCodeTab === 'sol' && (
-              <Editor
-                height="100%"
-                language="cpp"
+              <CodeEditor
                 value={stressSolCode}
-                theme={isLight ? 'oler-light-theme' : 'oler-dark-theme'}
-                beforeMount={(m) => { registerMonacoThemes(m); registerCppCompletion(m); }}
+                language="cpp"
+                themeName={isLight ? 'oler-light-theme' : 'oler-dark-theme'}
+                fontSize={13}
+                fontFamily="Cascadia Mono"
+                tabSize={4}
                 onChange={(v) => setStressSolCode(v || '')}
-                options={{
-                  fontSize: 13,
-                  fontFamily: 'Cascadia Mono, Consolas, monospace',
-                  minimap: { enabled: false },
-                  automaticLayout: true,
-                  tabSize: 4,
-                  scrollBeyondLastLine: false,
-                  lineNumbers: 'on',
-                }}
               />
             )}
 
             {activeCodeTab === 'brute' && (
-              <Editor
-                height="100%"
-                language="cpp"
+              <CodeEditor
                 value={stressBruteCode}
-                theme={isLight ? 'oler-light-theme' : 'oler-dark-theme'}
-                beforeMount={(m) => { registerMonacoThemes(m); registerCppCompletion(m); }}
+                language="cpp"
+                themeName={isLight ? 'oler-light-theme' : 'oler-dark-theme'}
+                fontSize={13}
+                fontFamily="Cascadia Mono"
+                tabSize={4}
                 onChange={(v) => setStressBruteCode(v || '')}
-                options={{
-                  fontSize: 13,
-                  fontFamily: 'Cascadia Mono, Consolas, monospace',
-                  minimap: { enabled: false },
-                  automaticLayout: true,
-                  tabSize: 4,
-                  scrollBeyondLastLine: false,
-                  lineNumbers: 'on',
-                }}
               />
             )}
 
             {activeCodeTab === 'gen' && (
-              <Editor
-                height="100%"
-                language="cpp"
+              <CodeEditor
                 value={stressGenCode}
-                theme={isLight ? 'oler-light-theme' : 'oler-dark-theme'}
-                beforeMount={(m) => { registerMonacoThemes(m); registerCppCompletion(m); }}
+                language="cpp"
+                themeName={isLight ? 'oler-light-theme' : 'oler-dark-theme'}
+                fontSize={13}
+                fontFamily="Cascadia Mono"
+                tabSize={4}
                 onChange={(v) => setStressGenCode(v || '')}
-                options={{
-                  fontSize: 13,
-                  fontFamily: 'Cascadia Mono, Consolas, monospace',
-                  minimap: { enabled: false },
-                  automaticLayout: true,
-                  tabSize: 4,
-                  scrollBeyondLastLine: false,
-                  lineNumbers: 'on',
-                }}
               />
             )}
           </div>
-        </Panel>
+        </SplitPanel>
 
-        <PanelResizeHandle className="h-1 bg-[var(--border)] hover:bg-[var(--accent)] transition-all cursor-row-resize z-50 relative group flex items-center justify-center">
+        <SplitSeparator className="h-1 bg-[var(--border)] hover:bg-[var(--accent)] transition-all cursor-row-resize z-50 relative group flex items-center justify-center">
           <div className="h-0.5 w-8 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover:opacity-100 group-hover:bg-[var(--accent)]" />
-        </PanelResizeHandle>
+        </SplitSeparator>
 
         {/* Bottom Results Pane */}
-        <Panel id="stress-results" defaultSize="45%" minSize="20%" maxSize="75%" className="min-h-0 flex flex-col p-4 overflow-y-auto text-xs" style={{ backgroundColor: 'var(--bg-surface)' }}>
+        <SplitPanel id="stress-results" defaultSize="45%" minSize="20%" maxSize="75%" className="min-h-0 flex flex-col p-4 overflow-y-auto text-xs" style={{ backgroundColor: 'var(--bg-surface)' }}>
           {stressResult ? (
             <div className="space-y-3">
               {/* Status Banner */}
@@ -266,6 +243,22 @@ export const StressTesterPage: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Memory profile: matched output is not the only way an OJ rejects a solution */}
+              {stressResult.maxSolMemoryKb != null && (
+                <div className="flex items-center gap-2 text-[11px] text-[var(--text-tertiary)]">
+                  <Cpu className="w-3 h-3" />
+                  <span>
+                    待测程序峰值内存 {memoryLabel(stressResult.maxSolMemoryKb)}
+                    {activeProblem ? ` / 本题限制 ${memoryLabel(activeProblem.memoryLimitKb)}` : ''}
+                  </span>
+                  {activeProblem && stressResult.maxSolMemoryKb > activeProblem.memoryLimitKb && (
+                    <span className="text-[var(--color-mle)] font-semibold">
+                      已超过本题内存限制：对拍输出一致，交上去仍是 MLE
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Compilation Error Details */}
               {stressResult.isCompilationError && (
@@ -305,9 +298,16 @@ export const StressTesterPage: React.FC = () => {
 
                   {/* Solution Output (Wrong) */}
                   <div className="flex flex-col gap-1.5">
-                    <span className="font-semibold text-[#ff453a]">
-                      待测程序输出 (Solution Output)
-                    </span>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-[#ff453a]">
+                        待测程序输出 (Solution Output)
+                      </span>
+                      {stressResult.failedRound.solMemoryKb != null && (
+                        <span className="text-[10px] text-[var(--text-tertiary)] font-mono">
+                          峰值 {memoryLabel(stressResult.failedRound.solMemoryKb)}
+                        </span>
+                      )}
+                    </div>
                     <pre className="p-2.5 rounded-lg border font-mono text-xs overflow-auto h-32 bg-[#ff453a]/5 border-[#ff453a]/30 text-[var(--text-primary)]">
                       {stressResult.failedRound.solOutput || '(无输出或运行崩溃)'}
                     </pre>
@@ -336,8 +336,8 @@ export const StressTesterPage: React.FC = () => {
               </p>
             </div>
           )}
-        </Panel>
-      </PanelGroup>
+        </SplitPanel>
+      </SplitGroup>
     </div>
   );
 };

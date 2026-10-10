@@ -44,6 +44,43 @@ fn html_decode(s: &str) -> String {
         .replace("&amp;", "&")
 }
 
+/// Extract the full HTML of the first `<div class="NAME..."` block using a
+/// naive depth counter (good enough for CF/AtCoder statement markup).
+fn extract_div_class(html: &str, class_name: &str) -> Option<String> {
+    let needle = format!("class=\"{}", class_name);
+    let start_in_tag = html.find(&needle)?;
+    let open = html[..start_in_tag].rfind("<div")?;
+    let mut depth = 0usize;
+    let bytes = html.as_bytes();
+    let mut i = open;
+    while i + 4 <= bytes.len() {
+        if bytes[i..].starts_with(b"</div>") {
+            depth = depth.saturating_sub(1);
+            if depth == 0 {
+                return Some(html[open..i + 6].to_string());
+            }
+            i += 6;
+            continue;
+        }
+        if bytes[i..].starts_with(b"<div") {
+            depth += 1;
+            i += 4;
+            continue;
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Pull text of a titled CF section (`input-spec`, `output-spec`, `note`).
+fn cf_section_text(statement_html: &str, class_name: &str) -> String {
+    extract_div_class(statement_html, class_name)
+        .map(|block| html_to_text(&block))
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
 /// Map a Codeforces rating to the Luogu-style difficulty vocabulary.
 fn cf_difficulty(rating: Option<i64>) -> String {
     match rating {
@@ -217,78 +254,127 @@ async fn fetch_codeforces_original(index: String) -> Result<Problem, String> {
     }
 
     // Statement HTML (may 403 behind anti-bot; degrade to metadata only).
-    let mut statement = String::new();
+    // Try the primary host first, then the public mirror — structure is identical.
     let mut time_ms: u64 = 2000;
     let mut mem_kb: u64 = 262_144;
     let mut samples: Vec<Sample> = Vec::new();
+    let mut input_format = String::new();
+    let mut output_format = String::new();
+    let mut hint = String::new();
+    let mut statement = String::new();
     let mut statement_ok = false;
 
-    let html_fetch: Result<String, String> = async {
-        let client = browser_client()?;
-        let resp = client
-            .get(&url)
-            .header(reqwest::header::USER_AGENT, browser_ua())
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("HTTP {}", resp.status()));
+    let mut html_fetch: Result<String, String> = Err("skipped".into());
+    for candidate in [
+        url.clone(),
+        format!(
+            "https://mirror.codeforces.com/problemset/problem/{}/{}",
+            contest_id, letter
+        ),
+    ] {
+        let got: Result<String, String> = async {
+            let client = browser_client()?;
+            let resp = client
+                .get(&candidate)
+                .header(reqwest::header::USER_AGENT, browser_ua())
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
+            if !resp.status().is_success() {
+                return Err(format!("HTTP {}", resp.status()));
+            }
+            resp.text().await.map_err(|e| e.to_string())
         }
-        resp.text().await.map_err(|e| e.to_string())
+        .await;
+        if got.is_ok() {
+            html_fetch = got;
+            break;
+        }
+        html_fetch = got;
     }
-    .await;
 
     if let Ok(html) = html_fetch {
-        if let Some(start) = html.find("problem-statement") {
-            let rest = &html[start..];
-            let end = rest.find("<script").unwrap_or(rest.len());
-            let chunk = &rest[..end];
-            statement = html_to_text(chunk);
+        // Prefer the statement root; fall back to the class-only match.
+        let statement_html = html
+            .find(r#"class="problem-statement""#)
+            .map(|i| {
+                let open = html[..i].rfind('<').unwrap_or(i);
+                let rest = &html[open..];
+                let end = rest.find("<script").unwrap_or(rest.len());
+                rest[..end].to_string()
+            })
+            .unwrap_or_default();
+
+        if !statement_html.is_empty() {
+            // Structured sections (do not rely on a single fixed substring cut).
+            input_format = cf_section_text(&statement_html, "input-spec");
+            output_format = cf_section_text(&statement_html, "output-spec");
+            hint = cf_section_text(&statement_html, "note");
+
+            // Description: drop header / I-O spec / sample-test / note blocks.
+            let mut desc_html = statement_html.clone();
+            for cls in [
+                "header",
+                "input-spec",
+                "output-spec",
+                "sample-test",
+                "note",
+                "tagged",
+            ] {
+                if let Some(block) = extract_div_class(&desc_html, cls) {
+                    // remove first occurrence of the block content
+                    if let Some(pos) = desc_html.find(&block) {
+                        desc_html.replace_range(pos..pos + block.len(), "");
+                    }
+                }
+            }
+            statement = html_to_text(&desc_html);
             statement_ok = !statement.trim().is_empty();
 
+            // Limits from the header text (before heavy body).
+            let header = extract_div_class(&statement_html, "header").unwrap_or_default();
             let lim_re = regex::Regex::new(
-                r"time limit per test:\s*(\d+)\s*second|memory limit per test:\s*(\d+)\s*megabyte",
+                r"(?i)time limit per test:\s*([\d.]+)\s*second|memory limit per test:\s*([\d.]+)\s*megabyte",
             )
             .unwrap();
             let mut seen_time = false;
-            for cap in lim_re.captures_iter(&statement) {
+            let hay = if header.is_empty() {
+                statement_html.clone()
+            } else {
+                header
+            };
+            for cap in lim_re.captures_iter(&hay) {
                 if let Some(t) = cap.get(1) {
                     if !seen_time {
-                        time_ms = t.as_str().parse::<u64>().unwrap_or(2) * 1000;
+                        let secs: f64 = t.as_str().parse().unwrap_or(2.0);
+                        time_ms = (secs * 1000.0).round() as u64;
                         seen_time = true;
                     }
                 }
                 if let Some(m) = cap.get(2) {
-                    mem_kb = m.as_str().parse::<u64>().unwrap_or(256) * 1024;
+                    let mibs: f64 = m.as_str().parse().unwrap_or(256.0);
+                    mem_kb = (mibs * 1024.0).round() as u64;
                 }
             }
 
-            // Samples: paired input/output pre blocks inside sample-test.
-            if let Some(si) = chunk.find("sample-test") {
-                let scope = &chunk[si..];
-                let in_re =
-                    regex::Regex::new(r#"<div class="input">.*?<pre>(?s)(.*?)</pre>"#).unwrap();
-                let out_re =
-                    regex::Regex::new(r#"<div class="output">.*?<pre>(?s)(.*?)</pre>"#).unwrap();
-                let inputs: Vec<String> =
-                    in_re.captures_iter(scope).map(|c| html_decode(&c[1])).collect();
-                let outputs: Vec<String> =
-                    out_re.captures_iter(scope).map(|c| html_decode(&c[1])).collect();
-                for i in 0..inputs.len().max(outputs.len()) {
-                    samples.push(Sample {
-                        input: inputs.get(i).cloned().unwrap_or_default(),
-                        output: outputs.get(i).cloned().unwrap_or_default(),
-                    });
-                }
+            // Samples: inside sample-test, pair every input/output pre block.
+            if let Some(scope) = extract_div_class(&statement_html, "sample-test") {
+                samples = extract_pre_pairs(&scope);
+            }
+            if samples.is_empty() {
+                // Fallback: any input/output class pair in the whole statement.
+                samples = extract_pre_pairs(&statement_html);
+            }
+            if samples.is_empty() {
+                // Last resort: consecutive <pre> blocks.
+                samples = extract_pre_pairs_loose(&statement_html);
             }
         }
     }
 
     if statement_ok {
-        // Trim the duplicated sample section out of the statement text.
-        if let Some(pos) = statement.find("standard input") {
-            statement = statement[..pos].to_string();
-        }
+        // Normalize description: prefer keeping prose only (I-O already split out).
+        let _ = statement;
     } else {
         statement = format!(
             "未能抓取题面（Codeforces 对非浏览器客户端返回 403）。\n\n请在浏览器中打开原题查看题面：{url}\n\n名称、难度与标签已通过官方 API 导入。"
@@ -305,14 +391,71 @@ async fn fetch_codeforces_original(index: String) -> Result<Problem, String> {
         time_limit_ms: time_ms,
         memory_limit_kb: mem_kb,
         description_md: statement,
-        input_format: String::new(),
-        output_format: String::new(),
+        input_format,
+        output_format,
         samples,
-        hint: String::new(),
+        hint,
         source_url: url,
         is_favorite: false,
         last_practiced: None,
     })
+}
+
+/// Pair `<div class="input">…<pre>in</pre>` with matching output blocks.
+fn extract_pre_pairs(scope: &str) -> Vec<Sample> {
+    let in_re =
+        regex::Regex::new(r#"(?is)<div[^>]*class="[^"]*input[^"]*"[^>]*>.*?<pre[^>]*>(.*?)</pre>"#)
+            .unwrap();
+    let out_re =
+        regex::Regex::new(r#"(?is)<div[^>]*class="[^"]*output[^"]*"[^>]*>.*?<pre[^>]*>(.*?)</pre>"#)
+            .unwrap();
+    let inputs: Vec<String> = in_re
+        .captures_iter(scope)
+        .map(|c| decode_pre(&c[1]))
+        .collect();
+    let outputs: Vec<String> = out_re
+        .captures_iter(scope)
+        .map(|c| decode_pre(&c[1]))
+        .collect();
+    let n = inputs.len().max(outputs.len());
+    (0..n)
+        .map(|i| Sample {
+            input: inputs.get(i).cloned().unwrap_or_default(),
+            output: outputs.get(i).cloned().unwrap_or_default(),
+        })
+        .filter(|s| !s.input.trim().is_empty() || !s.output.trim().is_empty())
+        .collect()
+}
+
+/// Consecutive `<pre>` blocks: odd→input, even→output (0-based pairs).
+fn extract_pre_pairs_loose(html: &str) -> Vec<Sample> {
+    let re = regex::Regex::new(r"(?is)<pre[^>]*>(.*?)</pre>").unwrap();
+    let pres: Vec<String> = re
+        .captures_iter(html)
+        .map(|c| decode_pre(&c[1]))
+        .collect();
+    pres.chunks(2)
+        .map(|chunk| Sample {
+            input: chunk.first().cloned().unwrap_or_default(),
+            output: chunk.get(1).cloned().unwrap_or_default(),
+        })
+        .filter(|s| !s.input.trim().is_empty() || !s.output.trim().is_empty())
+        .collect()
+}
+
+fn decode_pre(raw: &str) -> String {
+    let s = html_decode(raw);
+    // CF often wraps sample lines; keep content, trim outer blanks only.
+    let lines: Vec<&str> = s.lines().collect();
+    let mut start = 0;
+    let mut end = lines.len();
+    while start < end && lines[start].trim().is_empty() {
+        start += 1;
+    }
+    while end > start && lines[end - 1].trim().is_empty() {
+        end -= 1;
+    }
+    lines[start..end].join("\n")
 }
 
 /// AtCoder task page: public, stable structure, scrapeable end to end.
@@ -424,6 +567,29 @@ async fn fetch_atcoder_problem(task_id: String) -> Result<Problem, String> {
         .collect();
     let description_md = lines.join("\n\n");
 
+    // I/O format & note sections (AtCoder English + Japanese headers).
+    let mut input_format = String::new();
+    let mut output_format = String::new();
+    let mut hint = String::new();
+    if let Some(html) = extract_between_id(&statement_html, "io-format") {
+        input_format = section_after_title(&html, &["入力", "Input"]);
+        output_format = section_after_title(&html, &["出力", "Output"]);
+    }
+    if let Some(html) = extract_between_id(&statement_html, "task-statement-note")
+        .or_else(|| extract_section_by_title(&statement_html, &["注意", "Note", "Explanation"]))
+    {
+        hint = html_to_text(&html);
+    }
+    // Fallback: last h3 titled Note/注意 near the end of the statement.
+    if hint.is_empty() {
+        if let Some(h) = statement_html.rfind("Note").map(|i| &statement_html[i..]) {
+            let t = html_to_text(h);
+            if t.len() < 800 {
+                hint = t;
+            }
+        }
+    }
+
     let upper_id = task_id.to_uppercase().replace('_', "");
 
     Ok(Problem {
@@ -435,19 +601,75 @@ async fn fetch_atcoder_problem(task_id: String) -> Result<Problem, String> {
         time_limit_ms: time_ms,
         memory_limit_kb: mem_kb,
         description_md,
-        input_format: String::new(),
-        output_format: String::new(),
+        input_format,
+        output_format,
         samples,
-        hint: String::new(),
+        hint,
         source_url: url,
         is_favorite: false,
         last_practiced: None,
     })
 }
 
+/// Extract inner HTML of an element with `id="..."` (balanced div only when possible).
+fn extract_between_id(html: &str, id: &str) -> Option<String> {
+    let needle = format!("id=\"{}\"", id);
+    let start = html.find(&needle)?;
+    let open = html[..start].rfind('<')?;
+    let tag_end = html[open..].find('>').map(|i| open + i)?;
+    if html[open..tag_end].starts_with("<div") || html[open..tag_end].starts_with("<section") {
+        let close = format!("</{}>", &html[open + 1..tag_end].split_whitespace().next()?);
+        let end = html[tag_end + 1..].find(&close)? + tag_end + 1;
+        return Some(html[tag_end + 1..end].to_string());
+    }
+    // Inline tag: until next `<`
+    let end = html[tag_end + 1..].find('<').map(|i| tag_end + 1 + i)?;
+    Some(html[tag_end + 1..end].to_string())
+}
+
+/// Largest index <= n that is a char boundary: fixed byte caps must never
+/// slice into a multi-byte char (CJK HTML makes this a real crash).
+fn floor_char_boundary(s: &str, n: usize) -> usize {
+    let mut i = n.min(s.len());
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
+fn section_after_title(html: &str, titles: &[&str]) -> String {
+    for t in titles {
+        if let Some(pos) = html.find(t) {
+            let rest = &html[pos + t.len()..];
+            let end = rest.find("<h3").unwrap_or(floor_char_boundary(rest, 4000));
+            return html_to_text(&rest[..end]);
+        }
+    }
+    String::new()
+}
+
+fn extract_section_by_title(html: &str, titles: &[&str]) -> Option<String> {
+    for t in titles {
+        if let Some(pos) = html.find(t) {
+            let open = html[..pos].rfind("<h3")?;
+            let end = html[pos..].find("</section>")
+                .map(|i| pos + i)
+                .or_else(|| html[pos..].find("</div>").map(|i| pos + i))?;
+            return Some(html[open..end].to_string());
+        }
+    }
+    None
+}
+
 /// One-click import dispatcher: accepts a bare id or a full URL for any of
-/// Luogu / Codeforces / AtCoder and routes to the right scraper.
+/// Luogu / Codeforces / AtCoder and routes to the right scraper, then runs a
+/// best-effort AI pass to fill samples / I-O specs / notes the scraper missed.
 pub async fn fetch_problem_auto(input: String) -> Result<Problem, String> {
+    let p = fetch_problem_raw(input).await?;
+    Ok(crate::enrich::enrich_problem(p).await)
+}
+
+async fn fetch_problem_raw(input: String) -> Result<Problem, String> {
     let t = input.trim();
     if t.is_empty() {
         return Err("请输入题目编号或链接".to_string());
@@ -534,5 +756,54 @@ mod tests {
         assert_eq!(normalize_atcoder_id("ABC300A"), "abc300_a");
         assert_eq!(normalize_atcoder_id("abc300_a"), "abc300_a");
         assert_eq!(normalize_atcoder_id("typical90_az"), "typical90_az");
+    }
+
+    #[test]
+    fn extract_div_class_finds_nested_block() {
+        let html = r#"<div class="problem-statement"><div class="note"><p>Note</p><div>keep</div></div><div class="footer">x</div></div>"#;
+        let block = extract_div_class(html, "note").unwrap();
+        assert!(block.contains("Note"));
+        assert!(block.contains("keep"));
+        assert!(!block.contains("footer"));
+    }
+
+    #[test]
+    fn extract_pre_pairs_matches_input_output() {
+        let scope = r#"
+          <div class="input"><div class="title">Input</div><pre>1 2
+</pre></div>
+          <div class="output"><div class="title">Output</div><pre>3
+</pre></div>
+          <div class="input"><pre>4 5</pre></div>
+          <div class="output"><pre>9</pre></div>
+        "#;
+        let pairs = extract_pre_pairs(scope);
+        assert_eq!(pairs.len(), 2);
+        assert_eq!(pairs[0].input, "1 2");
+        assert_eq!(pairs[0].output, "3");
+        assert_eq!(pairs[1].input, "4 5");
+        assert_eq!(pairs[1].output, "9");
+    }
+
+    #[test]
+    fn extract_pre_pairs_loose_pairs_consecutive_pres() {
+        let html = "<pre>a</pre><pre>b</pre><pre>c</pre><pre>d</pre>";
+        let pairs = extract_pre_pairs_loose(html);
+        assert_eq!(pairs.len(), 2);
+        assert_eq!(pairs[0].input, "a");
+        assert_eq!(pairs[0].output, "b");
+    }
+
+    #[test]
+    fn section_after_title_caps_at_char_boundary() {
+        // 3 + 1334*3 + 4 bytes after the title: byte offset 4000 lands inside
+        // a multi-byte char, which used to panic the whole import command.
+        let html = format!("入力<p>{}</p>", "あ".repeat(1334));
+        assert!(html.len() > 4000);
+        let text = section_after_title(&html, &["入力"]);
+        assert!(!text.is_empty());
+        // No cap needed when a following <h3 exists - still parses.
+        let html2 = format!("出力{}<h3>次</h3>", "x".repeat(5000));
+        assert_eq!(section_after_title(&html2, &["出力"]), "x".repeat(5000));
     }
 }

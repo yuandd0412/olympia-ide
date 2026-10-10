@@ -90,8 +90,9 @@ async fn run_code(
     compiler_path: Option<String>,
     flags: Option<Vec<String>>,
     time_limit_ms: Option<u64>,
+    memory_limit_kb: Option<u64>,
 ) -> Result<RunResult, String> {
-    runner::execute_code(source_code, testcases, compiler_path, flags, time_limit_ms).await
+    runner::execute_code(source_code, testcases, compiler_path, flags, time_limit_ms, memory_limit_kb).await
 }
 
 #[tauri::command]

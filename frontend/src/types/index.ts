@@ -26,7 +26,7 @@ export interface Mistake {
   problemId: string;
   oj: string;
   title: string;
-  verdict: 'AC' | 'WA' | 'TLE' | 'RE' | 'CE' | string;
+  verdict: 'AC' | 'WA' | 'MLE' | 'TLE' | 'RE' | 'CE' | string;
   when: string;
   code: string;
   userNotes: string;
@@ -70,6 +70,8 @@ export interface AppSettings {
   autoSave: boolean;
   fontSize: number;
   fontFamily: string;
+  /** 练习根目录；设置后打开题目自动读取目录里的 {题号}.cpp，保存默认写回 */
+  practiceRoot?: string;
 }
 
 export interface TerminalCommandResult {
@@ -90,7 +92,7 @@ export interface TestCaseResult {
   input: string;
   expectedOutput: string;
   actualOutput: string;
-  verdict: 'AC' | 'WA' | 'TLE' | 'RE' | 'CE' | string;
+  verdict: 'AC' | 'WA' | 'MLE' | 'TLE' | 'RE' | 'CE' | string;
   timeMs: number;
   memoryKb: number;
   errorMessage?: string;
@@ -144,6 +146,8 @@ export interface StressRoundResult {
   solOutput: string;
   bruteOutput: string;
   errorMsg?: string;
+  /** solution 进程的峰值内存 (KB, Windows 实测)；未测到时不传 */
+  solMemoryKb?: number;
 }
 
 export interface StressTestResult {
@@ -153,11 +157,15 @@ export interface StressTestResult {
   isCompilationError: boolean;
   compilerOutput: string;
   failedRound?: StressRoundResult | null;
+  /** 待测程序在所有轮次里的峰值内存 (KB)；未采样时不传 */
+  maxSolMemoryKb?: number | null;
 }
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  /** epoch ms；仅本地持久化用，可不传 */
+  ts?: number;
 }
 
 export type NavTab = 'editor' | 'problems' | 'ai' | 'settings' | 'stress';

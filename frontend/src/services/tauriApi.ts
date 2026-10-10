@@ -1,6 +1,6 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { save as saveFileDialogApi } from '@tauri-apps/plugin-dialog';
+import { open as openFileDialogApi, save as saveFileDialogApi } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
 import type {
   AppSettings,
@@ -19,6 +19,14 @@ export interface ToolchainStatus {
   variant: string;
   gppPath: string | null;
   version: string | null;
+}
+
+/** Mirrors the Rust `pdf_extract::ExtractedProblem` (camelCase serde). */
+export interface ExtractedProblem {
+  title: string;
+  pageStart: number;
+  pageEnd: number;
+  text: string;
 }
 
 export interface ToolchainProgress {
@@ -98,7 +106,8 @@ export const tauriApi = {
     testcases: TestCaseInput[],
     compilerPath?: string,
     flags?: string[],
-    timeLimitMs?: number
+    timeLimitMs?: number,
+    memoryLimitKb?: number
   ): Promise<RunResult> {
     return await invoke<RunResult>('run_code', {
       sourceCode,
@@ -106,6 +115,7 @@ export const tauriApi = {
       compilerPath,
       flags,
       timeLimitMs,
+      memoryLimitKb,
     });
   },
 
@@ -129,12 +139,15 @@ export const tauriApi = {
     });
   },
 
-  async writeTempCode(code: string, extension: string): Promise<{ srcPath: string, exePath: string }> {
-    return await invoke('write_temp_code', { code, extension });
+  /** Rust write_temp_code 只收 source_code，返回 (srcPath, exePath) 二元组 */
+  async writeTempCode(code: string): Promise<{ srcPath: string, exePath: string }> {
+    const [srcPath, exePath] = await invoke<[string, string]>('write_temp_code', { sourceCode: code });
+    return { srcPath, exePath };
   },
 
+  /** Rust 端参数名为 source_code / flags，invoke 键须用 camelCase: sourceCode / flags */
   async checkSyntax(code: string, compilerPath: string, compilerFlags: string[]): Promise<any[]> {
-    return await invoke('check_syntax', { code, compilerPath, compilerFlags });
+    return await invoke('check_syntax', { sourceCode: code, compilerPath, flags: compilerFlags });
   },
 
   async openUrl(url: string): Promise<void> {
@@ -146,28 +159,51 @@ export const tauriApi = {
     }
   },
 
-  async runTerminalCommand(
-    command: string,
-    cwd?: string
-  ): Promise<{ exitCode: number; stdout: string; stderr: string; durationMs: number }> {
-    return await invoke('run_terminal_command', {
-      command,
-      cwd,
-    });
-  },
-
   async chatWithAi(
     messages: ChatMessage[],
     baseUrl?: string,
     apiKey?: string,
-    model?: string
+    model?: string,
+    context?: string
   ): Promise<string> {
     return await invoke<string>('chat_with_ai', {
       messages,
       baseUrl,
       apiKey,
       model,
+      context,
     });
+  },
+
+  /** 后端 chats.json；命令未实现时返回 null（前端降级为仅内存） */
+  async loadChats(): Promise<ChatMessage[] | null> {
+    try {
+      return await invoke<ChatMessage[]>('load_chats');
+    } catch {
+      return null;
+    }
+  },
+
+  async saveChats(messages: ChatMessage[]): Promise<void> {
+    try {
+      await invoke('save_chats', { messages });
+    } catch {
+      /* backend not ready yet */
+    }
+  },
+
+  /** List local Ollama models; empty array if unreachable. */
+  async listOllamaModels(baseUrl?: string): Promise<string[]> {
+    try {
+      return await invoke<string[]>('list_ollama_models', { baseUrl });
+    } catch {
+      return [];
+    }
+  },
+
+  /** Tiny completion probe; returns ok or a short error. */
+  async probeAiEndpoint(baseUrl: string, apiKey: string, model: string): Promise<string> {
+    return await invoke<string>('probe_ai_endpoint', { baseUrl, apiKey, model });
   },
 
   async detectToolchain(): Promise<ToolchainStatus> {
@@ -200,9 +236,72 @@ export const tauriApi = {
     return await readTextFile(path);
   },
 
+  /** 练习文件夹：系统目录选择对话框；取消返回 null */
+  async pickPracticeFolder(): Promise<string | null> {
+    try {
+      return (await invoke<string | null>('pick_practice_folder')) ?? null;
+    } catch {
+      return null;
+    }
+  },
+
+  async getPracticeFolder(): Promise<string | null> {
+    try {
+      return (await invoke<string | null>('get_practice_folder')) ?? null;
+    } catch {
+      return null;
+    }
+  },
+
+  async setPracticeFolder(path: string): Promise<void> {
+    await invoke('set_practice_folder', { path });
+  },
+
+  /** 练习根目录下递归找 {题号}.cpp 等；未设置根目录或无命中返回 null */
+  async resolveProblemFile(problemId: string): Promise<string | null> {
+    try {
+      return (await invoke<string | null>('resolve_problem_file', { problemId })) ?? null;
+    } catch {
+      return null;
+    }
+  },
+
+  /** 默认保存路径 {practiceRoot}/{题号}.cpp；未设置根目录返回空串 */
+  async defaultSavePath(problemId: string, title: string): Promise<string> {
+    try {
+      return await invoke<string>('default_save_path', { problemId, title });
+    } catch {
+      return '';
+    }
+  },
+
   /** Downloads (with CN mirror fallback), verifies and extracts the pinned MinGW toolchain. */
   async installToolchain(): Promise<ToolchainStatus> {
     return await invoke<ToolchainStatus>('install_toolchain');
+  },
+
+  /** 弹出系统"打开文件"对话框选 PDF；返回绝对路径,取消返回 null */
+  async pickPdfFile(): Promise<string | null> {
+    try {
+      return (
+        (await openFileDialogApi({
+          multiple: false,
+          filters: [{ name: 'PDF 文件', extensions: ['pdf'] }],
+        })) ?? null
+      );
+    } catch {
+      return null;
+    }
+  },
+
+  /** 本地 PDF 的 iframe 预览地址（asset 协议）；仅可用于已选定的磁盘文件 */
+  pdfAssetUrl(path: string): string {
+    return convertFileSrc(path);
+  },
+
+  /** PDF 题目抽取（Rust pdf-extract,见 src-tauri/src/pdf_extract.rs）；失败抛中文错误 */
+  async extractPdfProblems(path: string): Promise<ExtractedProblem[]> {
+    return await invoke<ExtractedProblem[]>('extract_pdf_problems', { path });
   },
 };
 

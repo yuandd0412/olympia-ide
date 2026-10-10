@@ -232,7 +232,7 @@ export const OnboardingWizard: React.FC = () => {
                 <div className="flex-1 flex flex-col gap-5">
                   <div className="grid grid-cols-3 gap-3.5 w-full">
                     {[
-                      { icon: <Code2 className="w-5 h-5" />, color: 'var(--accent)', sub: 'bg-[var(--accent-subtle)]', title: '内置极速评测', desc: '多样例毫秒级比对，逐个标出 AC / WA。' },
+                      { icon: <Code2 className="w-5 h-5" />, color: 'var(--accent)', sub: 'bg-[var(--accent-subtle)]', title: '内置极速评测', desc: '多样例毫秒级比对，逐个标出 AC / WA / MLE / TLE / RE。' },
                       { icon: <Swords className="w-5 h-5" />, color: '#ff9f0a', sub: 'bg-[#ff9f0a]/15', title: '自动化对拍', desc: '随机数据生成，极速比对暴力与正解。' },
                       { icon: <Flame className="w-5 h-5" />, color: '#34c759', sub: 'bg-[#34c759]/15', title: '真实比赛模式', desc: '倒计时锁定 AI，沉浸式实战模拟。' },
                     ].map((f, i) => (

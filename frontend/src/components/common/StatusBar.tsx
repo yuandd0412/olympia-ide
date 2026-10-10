@@ -9,6 +9,8 @@ import {
   Code2,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
+import { OButton } from '../../lib/design';
+import { fg, line, memoryLabel, statusSurface, themeIcon, verdict, verdictColor } from '../../lib/design';
 
 export const StatusBar: React.FC = () => {
   const {
@@ -18,6 +20,7 @@ export const StatusBar: React.FC = () => {
     activeTabId,
     isRunning,
     activeProblem,
+    saveHint,
   } = useAppStore();
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -28,15 +31,13 @@ export const StatusBar: React.FC = () => {
     updateSettings({ theme: next });
   };
 
-  const isLight = settings.theme === 'GitHubLight';
-
   return (
     <footer
       className="h-6 px-3 border-t flex items-center justify-between text-[11px] font-mono select-none shrink-0 z-10"
       style={{
-        backgroundColor: isLight ? '#f6f8fa' : '#181818',
-        borderColor: isLight ? '#d0d7de' : '#2b2b2b',
-        color: isLight ? '#57606a' : '#8b949e',
+        backgroundColor: statusSurface(settings.theme),
+        borderColor: line.border,
+        color: fg.secondary,
       }}
     >
       {/* Left Section: Toolchain & Limits */}
@@ -46,7 +47,7 @@ export const StatusBar: React.FC = () => {
           title={`当前 C++ 编译器：${settings.compilerPath}，参数：${settings.compilerFlags.join(' ')}`}
           className="flex items-center gap-1.5 hover:text-[var(--text-primary)] cursor-pointer"
         >
-          <span className="w-2 h-2 rounded-full bg-[#34c759] shadow-xs shrink-0" />
+          <span className="w-2 h-2 rounded-full bg-[var(--color-ac)] shadow-xs shrink-0" />
           <span className="font-semibold">MinGW 13.1.0 (x64)</span>
           <span className="opacity-60 text-[10px]">C++17</span>
         </div>
@@ -74,21 +75,32 @@ export const StatusBar: React.FC = () => {
           </div>
         ) : runResult ? (
           runResult.isCompilationError ? (
-            <div className="soft-fade-in flex items-center gap-1 text-[#ff9f0a] font-semibold">
+            <div className="soft-fade-in flex items-center gap-1 font-semibold" style={{ color: verdict.ce }}>
               <XCircle className="w-3 h-3" />
               <span>Compilation Error</span>
             </div>
           ) : runResult.overallVerdict === 'AC' ? (
-            <div className="soft-fade-in flex items-center gap-1 text-[#34c759] font-semibold">
+            <div className="soft-fade-in flex items-center gap-1 text-[var(--color-ac)] font-semibold">
               <CheckCircle2 className="w-3 h-3" />
-              <span>AC 全样例通过 ({runResult.totalTimeMs}ms · {runResult.maxMemoryKb}KB)</span>
+              <span>AC 全样例通过 ({runResult.totalTimeMs}ms · {memoryLabel(runResult.maxMemoryKb)})</span>
             </div>
           ) : (
-            <div className="soft-fade-in flex items-center gap-1 text-[#ff453a] font-semibold">
+            <div
+              className="soft-fade-in flex items-center gap-1 font-semibold"
+              style={{ color: verdictColor(runResult.overallVerdict) }}
+            >
               <XCircle className="w-3 h-3" />
-              <span>{runResult.overallVerdict} 评测未通过 ({runResult.totalTimeMs}ms)</span>
+              <span>
+                {runResult.overallVerdict} 评测未通过 ({runResult.totalTimeMs}ms ·{' '}
+                {memoryLabel(runResult.maxMemoryKb)})
+              </span>
             </div>
           )
+        ) : saveHint ? (
+          <div className="soft-fade-in flex items-center gap-1 text-[var(--color-ac)] font-semibold">
+            <CheckCircle2 className="w-3 h-3" />
+            <span className="truncate max-w-[340px]" title={saveHint}>{saveHint}</span>
+          </div>
         ) : (
           <span className="soft-fade-in opacity-60 text-[10px] flex items-center gap-1">
             <ShieldCheck className="w-3 h-3 opacity-70" />
@@ -108,23 +120,24 @@ export const StatusBar: React.FC = () => {
         <span className="opacity-30">|</span>
 
         {/* Theme Pill Toggle */}
-        <button
+        <OButton
+          variant="ghost"
+          size="xs"
           onClick={handleToggleTheme}
           title={`当前主题：${settings.theme === 'GitHubLight' ? 'GitHub Light (浅色)' : 'One Dark Pro (深色)'}，点击切换`}
-          className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-black/10 transition-colors cursor-pointer text-[10px]"
         >
           {settings.theme === 'GitHubLight' ? (
             <>
-              <Sun className="w-3 h-3 text-[#e5a43b]" />
+              <Sun className="w-3 h-3" color={themeIcon.sun} />
               <span>GitHub Light</span>
             </>
           ) : (
             <>
-              <Moon className="w-3 h-3 text-[#7aa2f7]" />
+              <Moon className="w-3 h-3" color={themeIcon.moon} />
               <span>One Dark Pro</span>
             </>
           )}
-        </button>
+        </OButton>
       </div>
     </footer>
   );

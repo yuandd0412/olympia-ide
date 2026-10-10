@@ -7,10 +7,12 @@ import {
   XCircle,
   Clock,
   AlertTriangle,
+  Cpu,
   FileCode,
   Layers,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
+import { memoryLabel } from '../../lib/design';
 
 export const RunnerPanel: React.FC = () => {
   const {
@@ -69,6 +71,17 @@ export const RunnerPanel: React.FC = () => {
             className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#ff9f0a]/20 text-[#ff9f0a] border border-[#ff9f0a]/30 flex items-center gap-1 font-mono"
           >
             <Clock className="w-3 h-3" /> TLE
+          </motion.span>
+        );
+      case 'MLE':
+        return (
+          <motion.span
+            initial={{ scale: 0.92, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+            className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#5e5ce6]/20 text-[#5e5ce6] border border-[#5e5ce6]/30 flex items-center gap-1 font-mono"
+          >
+            <Cpu className="w-3 h-3" /> MLE
           </motion.span>
         );
       case 'RE':
@@ -135,7 +148,7 @@ export const RunnerPanel: React.FC = () => {
               <div className="flex items-center gap-2">
                 {getVerdictBadge(runResult.overallVerdict)}
                 <span className="font-mono text-[11px] text-[var(--text-tertiary)]">
-                  {runResult.totalTimeMs} ms / {runResult.maxMemoryKb} KB
+                  {runResult.totalTimeMs} ms / {memoryLabel(runResult.maxMemoryKb)}
                 </span>
               </div>
             )}
@@ -247,6 +260,8 @@ export const RunnerPanel: React.FC = () => {
                       <span>实际输出</span>
                       {activeResult.verdict === 'AC' ? (
                         <span className="text-[#34c759] text-[10px] font-semibold">100% 匹配一致</span>
+                      ) : activeResult.verdict === 'MLE' ? (
+                        <span className="text-[var(--color-mle)] text-[10px] font-semibold">超出内存限制（本例峰值 {memoryLabel(activeResult.memoryKb)}）</span>
                       ) : activeResult.actualOutput.trim() === activeInput?.expectedOutput.trim() ? (
                         <span className="text-[#ff9f0a] text-[10px] font-semibold">末尾空格/换行差异</span>
                       ) : (
@@ -258,7 +273,7 @@ export const RunnerPanel: React.FC = () => {
                     </span>
                   </div>
                   <pre
-                    className={'flex-1 w-full p-2.5 rounded-lg border font-mono text-xs overflow-auto leading-relaxed ' + (activeResult.verdict === 'AC' ? 'border-[#34c759]/40 bg-[#34c759]/5 text-[var(--text-primary)]' : 'border-[#ff453a]/40 bg-[#ff453a]/5 text-[var(--text-primary)]')}
+                    className={'flex-1 w-full p-2.5 rounded-lg border font-mono text-xs overflow-auto leading-relaxed ' + (activeResult.verdict === 'AC' ? 'border-[#34c759]/40 bg-[#34c759]/5 text-[var(--text-primary)]' : activeResult.verdict === 'MLE' ? 'border-[#5e5ce6]/40 bg-[#5e5ce6]/5 text-[var(--text-primary)]' : 'border-[#ff453a]/40 bg-[#ff453a]/5 text-[var(--text-primary)]')}
                   >
                     {activeResult.actualOutput || (activeResult.errorMessage && ('[Error]: ' + activeResult.errorMessage)) || '(空输出)'}
                   </pre>

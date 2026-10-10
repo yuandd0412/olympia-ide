@@ -1,10 +1,8 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { modalShell, modalCard } from '../../lib/motion';
 import { tauriApi } from '../../services/tauriApi';
 import React from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
+import { Markdown } from '../../ports/document';
 import { X, Play, ExternalLink, Clock, Cpu, Copy, Check } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
 import type { Problem } from '../../types';
@@ -17,6 +15,7 @@ interface Props {
 
 export const ProblemDetailModal: React.FC<Props> = ({ problem, isOpen, onClose }) => {
   const { setActiveProblem } = useAppStore();
+  const reduce = useReducedMotion();
   const [copiedIdx, setCopiedIdx] = React.useState<number | null>(null);
 
   const handleCopy = (text: string, idx: number) => {
@@ -36,17 +35,11 @@ export const ProblemDetailModal: React.FC<Props> = ({ problem, isOpen, onClose }
     <AnimatePresence>
       {isOpen && problem && (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
+          {...modalShell(!!reduce)}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6 select-none"
         >
           <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 8 }}
-            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            {...modalCard(!!reduce)}
             className="w-full max-w-4xl max-h-[90vh] rounded-2xl border shadow-2xl flex flex-col overflow-hidden text-sm"
             style={{
               backgroundColor: 'var(--bg-surface)',
@@ -132,12 +125,7 @@ export const ProblemDetailModal: React.FC<Props> = ({ problem, isOpen, onClose }
                   题目描述
                 </h3>
                 <div className="prose prose-invert max-w-none text-sm leading-relaxed text-[var(--text-primary)]">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkMath]}
-                    rehypePlugins={[rehypeKatex]}
-                  >
-                    {problem.descriptionMd || '暂无题目描述。'}
-                  </ReactMarkdown>
+                  <Markdown>{problem.descriptionMd || '暂无题目描述。'}</Markdown>
                 </div>
               </div>
 
@@ -147,14 +135,9 @@ export const ProblemDetailModal: React.FC<Props> = ({ problem, isOpen, onClose }
                   <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-tertiary)] mb-2 select-none">
                     输入格式
                   </h3>
-                  <div className="text-sm leading-relaxed text-[var(--text-primary)]">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkMath]}
-                      rehypePlugins={[rehypeKatex]}
-                    >
-                      {problem.inputFormat}
-                    </ReactMarkdown>
-                  </div>
+                  <Markdown className="text-sm leading-relaxed text-[var(--text-primary)]">
+                    {problem.inputFormat}
+                  </Markdown>
                 </div>
               )}
 
@@ -164,14 +147,9 @@ export const ProblemDetailModal: React.FC<Props> = ({ problem, isOpen, onClose }
                   <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-tertiary)] mb-2 select-none">
                     输出格式
                   </h3>
-                  <div className="text-sm leading-relaxed text-[var(--text-primary)]">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkMath]}
-                      rehypePlugins={[rehypeKatex]}
-                    >
-                      {problem.outputFormat}
-                    </ReactMarkdown>
-                  </div>
+                  <Markdown className="text-sm leading-relaxed text-[var(--text-primary)]">
+                    {problem.outputFormat}
+                  </Markdown>
                 </div>
               )}
 
@@ -248,14 +226,9 @@ export const ProblemDetailModal: React.FC<Props> = ({ problem, isOpen, onClose }
                   <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-tertiary)] mb-2 select-none">
                     说明 / 提示
                   </h3>
-                  <div className="text-sm leading-relaxed text-[var(--text-primary)]">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkMath]}
-                      rehypePlugins={[rehypeKatex]}
-                    >
-                      {problem.hint}
-                    </ReactMarkdown>
-                  </div>
+                  <Markdown className="text-sm leading-relaxed text-[var(--text-primary)]">
+                    {problem.hint}
+                  </Markdown>
                 </div>
               )}
             </div>

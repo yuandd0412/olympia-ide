@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
+import { modalShell, modalCard } from '../../lib/motion';
 import React, { useState } from 'react';
 import {
     Download,
@@ -200,17 +201,11 @@ export const ProblemsPage: React.FC = () => {
       <AnimatePresence>
         {showFetchDialog && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            {...modalShell(false)}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
           >
             <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 8 }}
-              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              {...modalCard(false)}
               className="w-full max-w-md p-6 rounded-2xl border shadow-2xl space-y-4"
               style={{
                 backgroundColor: 'var(--bg-surface)',

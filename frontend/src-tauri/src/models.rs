@@ -71,6 +71,9 @@ pub struct AppSettings {
     pub auto_save: bool,
     pub font_size: u32,
     pub font_family: String,
+    /// Root folder for per-problem source files; optional so old
+    /// settings.json files keep loading.
+    pub practice_root: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -95,6 +98,7 @@ impl Default for AppSettings {
             auto_save: true,
             font_size: 14,
             font_family: "Cascadia Mono".to_string(),
+            practice_root: None,
         }
     }
 }
@@ -150,6 +154,10 @@ pub struct StressRoundResult {
     pub sol_output: String,
     pub brute_output: String,
     pub error_msg: Option<String>,
+    /// Peak working set (KB) sampled from the solution run (Windows);
+    /// absent when unmeasured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sol_memory_kb: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,5 +169,8 @@ pub struct StressTestResult {
     pub is_compilation_error: bool,
     pub compiler_output: String,
     pub failed_round: Option<StressRoundResult>,
+    /// Highest peak memory (KB) the solution reached in any round, so 对拍 can
+    /// report a memory profile even when every output matched. `None` = not sampled.
+    pub max_sol_memory_kb: Option<u64>,
 }
 

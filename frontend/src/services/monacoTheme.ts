@@ -1,51 +1,65 @@
-﻿export const registerMonacoThemes = (monaco: any) => {
+import { useAppStore } from '../stores/useAppStore';
+import { editorPalette } from '../lib/design/tokens';
+
+const monacoThemeName = (theme: string) =>
+  theme === 'GitHubLight' ? 'oler-light-theme' : 'oler-dark-theme';
+
+// Monaco's defineTheme cannot read CSS variables, so the palettes come from
+// lib/design/tokens (raw mirrors of the index.css theme vars).
+const withoutHash = (hex: string) => hex.slice(1);
+
+const themeFromPalette = (
+  base: 'vs-dark' | 'vs',
+  palette: typeof editorPalette.dark | typeof editorPalette.light,
+) => ({
+  base,
+  inherit: true,
+  rules: [
+    { token: 'comment', foreground: withoutHash(palette.tokens.comment), fontStyle: 'italic' },
+    { token: 'keyword', foreground: withoutHash(palette.tokens.keyword), fontStyle: 'bold' },
+    { token: 'string', foreground: withoutHash(palette.tokens.string) },
+    { token: 'number', foreground: withoutHash(palette.tokens.number) },
+    { token: 'type', foreground: withoutHash(palette.tokens.type) },
+    { token: 'identifier', foreground: withoutHash(palette.tokens.identifier) },
+  ],
+  colors: {
+    'editor.background': palette.chrome.editorBg,
+    'editor.foreground': palette.chrome.editorFg,
+    'editorGutter.background': palette.chrome.gutterBg,
+    'editorLineNumber.foreground': palette.chrome.lineNumber,
+    'editorLineNumber.activeForeground': palette.chrome.lineNumberActive,
+    'editor.lineHighlightBackground': palette.chrome.lineHighlight,
+    'editorCursor.foreground': palette.chrome.cursor,
+    'editor.selectionBackground': palette.chrome.selection,
+  },
+});
+
+// Wired once per app lifetime: the global Monaco theme follows the store, so
+// a theme change can never be missed by an editor that was unmounted, still
+// loading, or remounted with a stale prop (the "editor stays dark" bug).
+let themeSyncWired = false;
+
+export const registerMonacoThemes = (monaco: any) => {
   if (!monaco) return;
 
   // Dark Theme (One Dark Pro)
-  monaco.editor.defineTheme('oler-dark-theme', {
-    base: 'vs-dark',
-    inherit: true,
-    rules: [
-      { token: 'comment', foreground: '5c6370', fontStyle: 'italic' },
-      { token: 'keyword', foreground: 'c678dd', fontStyle: 'bold' },
-      { token: 'string', foreground: '98c379' },
-      { token: 'number', foreground: 'd19a66' },
-      { token: 'type', foreground: 'e5c07b' },
-      { token: 'identifier', foreground: 'abb2bf' },
-    ],
-    colors: {
-      'editor.background': '#1e1e1e',
-      'editor.foreground': '#abb2bf',
-      'editorGutter.background': '#1e1e1e',
-      'editorLineNumber.foreground': '#636d83',
-      'editorLineNumber.activeForeground': '#c678dd',
-      'editor.lineHighlightBackground': '#2c313c',
-      'editorCursor.foreground': '#528bff',
-      'editor.selectionBackground': '#3e4451',
-    },
-  });
+  monaco.editor.defineTheme('oler-dark-theme', themeFromPalette('vs-dark', editorPalette.dark));
 
   // Light Theme (GitHub Light)
-  monaco.editor.defineTheme('oler-light-theme', {
-    base: 'vs',
-    inherit: true,
-    rules: [
-      { token: 'comment', foreground: '6e7781', fontStyle: 'italic' },
-      { token: 'keyword', foreground: 'cf222e', fontStyle: 'bold' },
-      { token: 'string', foreground: '0a3069' },
-      { token: 'number', foreground: '0550ae' },
-      { token: 'type', foreground: '8250df' },
-      { token: 'identifier', foreground: '1f2328' },
-    ],
-    colors: {
-      'editor.background': '#ffffff',
-      'editor.foreground': '#1f2328',
-      'editorGutter.background': '#ffffff',
-      'editorLineNumber.foreground': '#8c959f',
-      'editorLineNumber.activeForeground': '#0969da',
-      'editor.lineHighlightBackground': '#f6f8fa',
-      'editorCursor.foreground': '#0969da',
-      'editor.selectionBackground': '#add6ff80',
-    },
-  });
+  monaco.editor.defineTheme('oler-light-theme', themeFromPalette('vs', editorPalette.light));
+
+  const applyStoreTheme = () => {
+    monaco.editor.setTheme(monacoThemeName(useAppStore.getState().settings.theme));
+  };
+
+  // Runs before every editor creation (beforeMount), so the global theme is
+  // always in lockstep with the app theme at the moment an editor is created.
+  applyStoreTheme();
+
+  if (!themeSyncWired) {
+    themeSyncWired = true;
+    useAppStore.subscribe((state, prev) => {
+      if (state.settings.theme !== prev.settings.theme) applyStoreTheme();
+    });
+  }
 };

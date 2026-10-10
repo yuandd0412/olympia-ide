@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Code2, Swords, BookOpen, Bot, Settings, Moon, Sun } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
+import { OButton, bg, brand, line, themeIcon } from '../../lib/design';
 
 export const ActivityBar: React.FC = () => {
   const { activeNav, setActiveNav, settings, updateSettings, contestEndTime } = useAppStore();
@@ -18,7 +19,7 @@ export const ActivityBar: React.FC = () => {
   return (
     <aside
       className="w-12 border-r flex flex-col items-center justify-between py-2 select-none shrink-0 relative z-20"
-      style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+      style={{ backgroundColor: bg.surface, borderColor: line.border }}
     >
       {/* Top Nav Icons */}
       <div className="flex flex-col gap-2 w-full items-center">
@@ -39,33 +40,32 @@ export const ActivityBar: React.FC = () => {
           }
 
           return (
-            <button
+            <OButton
               key={item.id}
               onClick={() => setActiveNav(item.id as any)}
               title={item.label}
-              className={
-                'relative p-2.5 rounded-xl transition-colors cursor-pointer flex items-center justify-center group ' +
-                (isActive
-                  ? 'text-white'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]')
-              }
+              size="icon"
+              variant={isActive ? 'onAccent' : 'ghost'}
+              className="relative group"
             >
               {isActive && (
                 <motion.div
                   layoutId="activityBarPill"
                   className="absolute inset-0 rounded-xl shadow-xs"
-                  style={{ backgroundColor: 'var(--accent)' }}
+                  style={{ backgroundColor: brand.accent }}
                   transition={{ type: 'spring', stiffness: 450, damping: 35 }}
                 />
               )}
               <item.icon className="w-5 h-5 relative z-10" />
-            </button>
+            </OButton>
           );
         })}
       </div>
 
       {/* Bottom Actions */}
       <div className="w-full flex flex-col items-center gap-1">
+        {/* Bespoke on purpose: needs transition-all for the scale bounce, which
+            would fight OButton's transition-colors in the generated CSS. */}
         <button
           onClick={() => {
             const nextTheme = settings.theme === 'GitHubLight' ? 'OneDarkPro' : 'GitHubLight';
@@ -75,24 +75,20 @@ export const ActivityBar: React.FC = () => {
           className="relative p-2.5 rounded-xl text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] transition-all cursor-pointer hover:scale-105 active:scale-95"
         >
           {settings.theme === 'GitHubLight' ? (
-            <Moon className="w-4 h-4 text-[#7aa2f7]" />
+            <Moon className="w-4 h-4" color={themeIcon.moon} />
           ) : (
-            <Sun className="w-4 h-4 text-[#e5a43b]" />
+            <Sun className="w-4 h-4" color={themeIcon.sun} />
           )}
         </button>
 
-        <button
+        <OButton
           onClick={() => setActiveNav('settings')}
           title="偏好设置"
-          className={
-            'relative p-2.5 rounded-xl transition-colors cursor-pointer flex items-center justify-center ' +
-            (activeNav === 'settings'
-              ? 'text-[var(--accent)] bg-[var(--accent-subtle)]'
-              : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]')
-          }
+          size="icon"
+          variant={activeNav === 'settings' ? 'accentSoft' : 'ghost'}
         >
           <Settings className="w-4 h-4" />
-        </button>
+        </OButton>
       </div>
     </aside>
   );

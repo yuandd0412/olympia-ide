@@ -678,7 +678,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         activeTab.testcases,
         settings.compilerPath,
         settings.compilerFlags,
-        activeProblem ? activeProblem.timeLimitMs : 1000
+        activeProblem ? activeProblem.timeLimitMs : 1000,
+        activeProblem ? activeProblem.memoryLimitKb : 262144
       );
 
       // 评测耗时数秒，期间用户可能新开/关闭/编辑其它标签页——

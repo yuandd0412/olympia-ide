@@ -19,22 +19,43 @@
 import fs from 'fs';
 import path from 'path';
 
-const LANGPACK = 'D:/oler-ide-v2/build/langpack/extension';
+const LANGPACKS = [
+	'D:/oler-ide-v2/build/langpack/extension',
+	latestInstalledZhPack(),
+].filter(root => root && fs.existsSync(root));
 const EXTENSIONS = 'D:/oler-ide-v2/oss/extensions';
 const reportOnly = process.argv.includes('--report');
 
-const packManifest = JSON.parse(fs.readFileSync(path.join(LANGPACK, 'package.json'), 'utf8'));
-const translations = packManifest.contributes.localizations[0].translations;
-
-// `vscode.cpp` -> the translated `contents.package` block for that extension.
-const packageContentsById = new Map();
-for (const entry of translations) {
-	const file = path.join(LANGPACK, entry.path.replace(/^\.\//, ''));
-	if (!fs.existsSync(file)) {
-		continue;
+/**
+ * The staging copy is the July 1.131.0 build; a newer pack may already be installed for regular
+ * VS Code and carries keys the old one does not (markdown-language-features: 136 vs 96).
+ */
+function latestInstalledZhPack() {
+	const extDir = path.join(process.env.USERPROFILE ?? process.env.HOME ?? '', '.vscode', 'extensions');
+	if (!fs.existsSync(extDir)) {
+		return undefined;
 	}
-	const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-	packageContentsById.set(entry.id.toLowerCase(), parsed.contents?.package ?? {});
+	const dirs = fs.readdirSync(extDir)
+		.filter(name => /^ms-ceintl\.vscode-language-pack-zh-hans-/.test(name))
+		.sort();
+	return dirs.length > 0 ? path.join(extDir, dirs[dirs.length - 1]) : undefined;
+}
+
+// `vscode.cpp` -> the translated `contents.package` block, later packs filling in newer keys.
+const packageContentsById = new Map();
+for (const root of LANGPACKS) {
+	const packManifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+	for (const entry of packManifest.contributes.localizations[0].translations) {
+		const file = path.join(root, entry.path.replace(/^\.\//, ''));
+		if (!fs.existsSync(file)) {
+			continue;
+		}
+		const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+		const contents = parsed.contents?.package ?? {};
+		const usable = Object.fromEntries(Object.entries(contents).filter(([, value]) => typeof value === 'string' && value.trim().length > 0));
+		const id = entry.id.toLowerCase();
+		packageContentsById.set(id, { ...(packageContentsById.get(id) ?? {}), ...usable });
+	}
 }
 
 function donorFor(extensionName) {

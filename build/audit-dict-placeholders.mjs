@@ -11,6 +11,10 @@
  *    node build/audit-dict-placeholders.mjs --restore  write the English source back into oss/src,
  *                                                      so the string ships English instead of a
  *                                                      broken sentence
+ *    node build/audit-dict-placeholders.mjs --restore --quarantine
+ *                                                      additionally rewrite the offending dictionary
+ *                                                      values to their English key, so a later
+ *                                                      apply-zh-cn-ast run cannot reintroduce them
  *
  *  --restore edits the vendored source, not the dictionaries: the repaired keys still have to be
  *  re-translated by hand before anyone re-runs apply-zh-cn-ast.mjs, otherwise the damage returns.
@@ -71,6 +75,31 @@ for (const item of mismatches) {
 
 if (!restore || mismatches.length === 0) {
 	process.exit(0);
+}
+
+if (process.argv.includes('--quarantine')) {
+	// Make the entry an identity mapping: the applier then leaves the English literal alone
+	// instead of writing a sentence whose arguments cannot bind.
+	const byFile = new Map();
+	for (const item of mismatches) {
+		const list = byFile.get(item.file) ?? [];
+		list.push(item);
+		byFile.set(item.file, list);
+	}
+	for (const [name, items] of byFile) {
+		const full = path.join(BUILD, name);
+		const original = fs.readFileSync(full, 'utf8');
+		let updated = original;
+		for (const item of items) {
+			const escaped = JSON.stringify(item.chinese);
+			const replacement = JSON.stringify(item.english);
+			updated = updated.split(escaped).join(replacement);
+		}
+		if (updated !== original) {
+			fs.writeFileSync(full, updated);
+		}
+	}
+	console.log(`已隔离 ${mismatches.length} 条词典条目（改为与原文相同，重跑 applier 不会再引入损坏译文）`);
 }
 
 const sources = walk(SRC);

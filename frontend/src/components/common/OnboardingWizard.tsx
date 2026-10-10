@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useAppStore } from '../../stores/useAppStore';
 import { Check, ChevronRight, ChevronLeft, Moon, Sun, Key, Code2, Sparkles, Loader2, Swords, Flame, Download, CheckCircle2, AlertTriangle, ListOrdered, Rocket } from 'lucide-react';
@@ -154,12 +154,12 @@ export const OnboardingWizard: React.FC = () => {
   };
 
   // Walking all six steps used to be the only way out: closing the app mid-wizard replayed it from
-  // step one on every launch.
-  const handleSkip = async () => {
+  // step one on every launch. Memoised so the Escape listener below subscribes once.
+  const handleSkip = useCallback(async () => {
     setSaving(true);
     await updateSettings({ isFirstRun: false });
     setSaving(false);
-  };
+  }, [updateSettings]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -167,7 +167,7 @@ export const OnboardingWizard: React.FC = () => {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [handleSkip]);
 
   const fade = (i: number) => fadeItem(i, !!reduce);
 

@@ -62,11 +62,15 @@ tokens. No page invents its own color, type size, or radius.
 |------------------------------|-----------|-----------------------------------------------|
 | `--oler-ac`                  | `#34c759` | Accepted (full pass)                          |
 | `--oler-wa`                  | `#ff453a` | Wrong Answer                                  |
+| `--color-mle` *(mainline)*   | `#5e5ce6` dark / `#4433cf` light | Memory Limit Exceeded — the v0 sheet has no MLE entry; the judge gained the `MLE` verdict later, and the live token is `--color-mle` in `frontend/src/index.css` |
 | `--oler-tle`                 | `#ff9f0a` | Time Limit Exceeded                           |
 | `--oler-re`                  | `#c45c4a` | Runtime Error (subtler red than WA)           |
 | `--oler-ce`                  | `#c49a3c` | Compile Error (amber, not red)                |
 
-These map 1:1 to test-results panel verdict badges and the Mistakes tab tags.
+Six codes are judged today — AC / WA / MLE / TLE / RE / CE — and `verdictColor`
+(`frontend/src/lib/design/tokens.ts`) is the mapping the live surfaces read; an
+unknown code falls back to the WA colour. These map to the test-results panel
+badges; the Mistakes tab they were also meant to feed is **Unbuilt**.
 
 ## Radius
 
@@ -175,6 +179,10 @@ are continuity anchors reused across every shell page (see
   fall back to in-widget stylesheet that uses the same token values.
 - Any new color added to the system must land here first; no ad-hoc hex in
   page code.
-- Light theme (OneLight / AmberLight) inverts the neutral scale; the verdict
-  palette stays identical (red is red, green is green — readability beats
-  brand symmetry in OI).
+- Light theme in the mainline is `GitHubLight` (OneLight / AmberLight were
+  Qt-era and never ported). It inverts the neutral scale **and** re-dials
+  every judgement colour (`--color-ac` `#1a7f37`, `--color-wa` `#cf222e`,
+  `--color-tle` `#9a6700`, `--color-mle` `#4433cf`, `--color-re` `#8250df`,
+  `--color-ce` `#bc4c00`), so the v0 promise that "the verdict palette stays
+  identical (red is red, green is green)" does **not** hold for
+  `frontend/src/index.css` — both `[data-theme]` blocks carry their own hues.

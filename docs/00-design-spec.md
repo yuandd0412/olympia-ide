@@ -85,13 +85,22 @@
 |-------------|-----------|----------------------------------------|
 | `--oler-ac` | `#34c759` | Accepted (full pass)                   |
 | `--oler-wa` | `#ff453a` | Wrong Answer                           |
+| `--color-mle` | `#5e5ce6` (dark) / `#4433cf` (light) | Memory Limit Exceeded — **not in the v0 sheet**; added with the judge's `MLE` verdict in `frontend/src/index.css` |
 | `--oler-tle`| `#ff9f0a` | Time Limit Exceeded                    |
 | `--oler-re` | `#c45c4a` | Runtime Error (subtler red than WA)    |
 | `--oler-ce` | `#c49a3c` | Compile Error (amber, not red)         |
 
-1:1 with test-results panel verdict badges and Mistakes-tab tags. These stay
-identical across light/dark themes (red is red, green is green - readability
-beats brand symmetry in OI).
+1:1 with test-results panel verdict badges and Mistakes-tab tags. "Identical
+across light/dark themes" (red is red, green is green) is the **v0 contract**;
+the mainline re-dials **all six** judgement colours in
+`[data-theme="GitHubLight"]` (`frontend/src/index.css`: `--color-ac` `#1a7f37`,
+`--color-wa` `#cf222e`, `--color-tle` `#9a6700`, `--color-mle` `#4433cf`,
+`--color-re` `#8250df`, `--color-ce` `#bc4c00`), each with a
+`--color-<verdict>-soft` tint (`rgba(…, 0.16)` dark / `0.12` light) used for badge
+backgrounds. Surfaces read the variables — `verdictColor` in
+`frontend/src/lib/design/tokens.ts` drives the status bar, and the badges plus the
+expected/actual panes in `frontend/src/components/runner/RunnerPanel.tsx` use
+`var(--color-*)` / `var(--color-*-soft)` — so they do shift with the theme.
 
 ### 1.6 Radius
 
@@ -202,6 +211,14 @@ In-app syntax token colors (fall back when no theme binding):
 
 ## 2. The 4 Themes
 
+> **Mainline reality:** the Tauri app ships **two** themes, and none of the paths below exist.
+> `ThemeType = 'OneDarkPro' | 'GitHubLight'` (`frontend/src/types/index.ts`), applied by
+> `[data-theme]` blocks in `frontend/src/index.css`: OneDarkPro `--bg-base` `#1e1e1e` /
+> `--accent` `#007acc`, GitHubLight `#ffffff` / `#0969da`; default is OneDarkPro
+> (`getSavedTheme` in `frontend/src/stores/useAppStore.ts`). There is no QSS, no
+> `CThemeManager`, no `cycleTheme()`; OneLight / AmberDark / AmberLight were never ported. The
+> table and the switching description below are the Qt-line intent.
+
 All 4 themes live in `D:\oler-ide-v2\resources\themes\*.qss` and are loaded
 by `CThemeManager::instance()->applyTheme("AmberDark")` etc. 4 themes =
 2 hue families (cool/blue-purple, warm/amber) x 2 lightnesses (dark, light).
@@ -260,6 +277,13 @@ AmberDark -> AmberLight -> OneDarkPro -> OneLight -> AmberDark.
 5. AI (A)
 6. Settings (S)
 
+Mainline reality (as of the Tauri port): the rail has **five** tabs —
+`NavTab = 'editor' | 'problems' | 'ai' | 'settings' | 'stress'`
+(`NavTab` in `frontend/src/types/index.ts`). Training and Mistakes never got a tab
+(both unbuilt), 对拍器 (stress tester) replaced them, the rail is 48px (`w-12`,
+`frontend/src/components/common/ActivityBar.tsx`) rather than 56px, and the 36px
+"TabBar" above is the **file** tab strip (`EditorTabBar.tsx`), not a page switcher.
+
 ---
 
 ## 4. Shell 5 Pages (visual north star per page)
@@ -294,9 +318,9 @@ AmberDark -> AmberLight -> OneDarkPro -> OneLight -> AmberDark.
 
 - **North Star**: *"Mistake journal with verdict-colored tags (WA/TLE/RE/CE),
   filterable list, frequency heatmap hint, review actions."*
-- **Layout**: Top filter bar (verdict multi-select: AC/WA/TLE/RE/CE, OJ multi-
+- **Layout**: Top filter bar (verdict multi-select: AC/WA/MLE/TLE/RE/CE, OJ multi-
   select, date range). Main: scrollable list of mistake rows, each row shows
-  problem title, verdict badge (using `--oler-{ac,wa,tle,re,ce}`), wrong
+  problem title, verdict badge (using `--oler-{ac,wa,tle,re,ce}` plus `--color-mle`), wrong
   attempt summary, "Open" and "Re-attempt" actions. Right rail: small
   frequency heatmap of "you make most mistakes on tag X".
 - **Verdict badge style**: filled chip with the verdict color as BG and
@@ -433,6 +457,14 @@ Output, Test Cases are subpanels inside the Editor tab (splitter).
 ---
 
 ## 9. Implementation Status (as of v2.1.0)
+
+> This table records the **Qt line** (`resources/themes/*.qss`, `src/**/*.cpp` — all deleted in
+> commit `b3292ee`). Against the Tauri mainline several "PENDING" rows already ship: Welcome
+> (`OnboardingWizard.tsx`), the Problems grid (`ProblemsPage.tsx`), AI Coach chat
+> (`AiCoachPage.tsx`), the Settings theme picker (`SettingsPage.tsx`), the test-results panel and
+> its Output / Test-cases subpanels (`RunnerPanel.tsx`, verdicts AC / WA / MLE / TLE / RE / CE).
+> Training and Mistakes remain unbuilt, and there is no file explorer. Authoritative status lives
+> in [`docs/08-roadmap/phases.md`](08-roadmap/phases.md).
 
 | Item                              | Status   | Where                                    |
 |-----------------------------------|----------|------------------------------------------|

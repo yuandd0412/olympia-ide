@@ -20,12 +20,15 @@ they appear in the UI.
 | RE   | 运行错误   | Runtime Error              | `--oler-re`                              | `#c45c4a` |
 | CE   | 编译错误   | Compile Error              | `--oler-ce`                              | `#c49a3c` |
 | PE   | 格式错误   | Presentation Error         | (uses `--oler-wa` until Phase 5+)        | `#ff453a` |
-| MLE  | 内存超限   | Memory Limit Exceeded      | (uses `--oler-tle` until Phase 5+)       | `#ff9f0a` |
+| MLE  | 内存超限   | Memory Limit Exceeded      | `--color-mle` (mainline; no v0 `--oler-` entry) | `#5e5ce6` dark / `#4433cf` light |
 | OLE  | 输出超限   | Output Limit Exceeded      | (uses `--oler-tle` until Phase 5+)       | `#ff9f0a` |
 
-PE, MLE, and OLE are aliases of WA / TLE in v1 — they share the same
-token so the verdict palette stays focused. Phase 5+ may split them if
-a real diagnostic value emerges.
+`MLE` is **no longer an alias**. The judge has emitted it as a verdict of its
+own since 2026-10: a case whose measured peak working set exceeds the problem's
+memory limit is judged `MLE`, and `worse_verdict`
+(`frontend/src-tauri/src/runner.rs`) ranks the codes `AC < WA < MLE < TLE < RE`
+when it folds a run into one verdict. PE and OLE remain aliases of WA / TLE —
+the local judge emits neither code today.
 
 ## OI Tiers (Problem Difficulty)
 

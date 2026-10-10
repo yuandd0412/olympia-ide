@@ -93,7 +93,9 @@ expanded) showing the **run output**. Two tabs inside the panel:
   default. Errors in `--state-error`. Warnings in `--state-warning`.
 - **Status row** — `Exit 0`, `Time 12ms`, `Memory 1.2MB`, `Verdict: ?`.
   Tabular-nums. The verdict badge is the same component used in
-  `05-test-results/panel.md`.
+  `05-test-results/panel.md`. `Memory` is the measured peak working set;
+  when the sample fails the mainline prints `未测得` instead of a size
+  (`memoryLabel`, `frontend/src/lib/design/tokens.ts`).
 - **Resize handle** — 4px-tall drag strip at the top of the panel;
   cursor changes to `ns-resize`.
 
@@ -108,7 +110,10 @@ the **testcase table**. Each row: index, time, memory, verdict,
 
 - **Header row** — `# / Time / Memory / Verdict / Action`. Text in
   `--oler-text-tertiary`, 11px (`--font-size-xs`).
-- **Verdict cell** — colored badge using `--oler-ac / wa / tle / re / ce`.
+- **Verdict cell** — colored badge over the live verdict set AC / WA /
+  MLE / TLE / RE (CE is a whole-run verdict, so it never lands on a case
+  row). Colours come from `verdictColor`
+  (`frontend/src/lib/design/tokens.ts`).
 - **Diff reveal** — clicking opens a 200px-tall diff sub-panel
   below the row, using `--oler-mono` and `--oler-bg-surface`.
   Expected lines in `--state-success`, actual in `--state-error`,
@@ -134,8 +139,13 @@ declared in the v0 design.
 
 ## Cross-Reference
 
-- The 5 verdict colors used in the testcases panel come from
-  `02-design-system/tokens.md` (`--oler-ac / wa / tle / re / ce`).
+- The testcases panel has a **six**-code verdict palette: AC / WA /
+  MLE / TLE / RE / CE. The five inherited from
+  `02-design-system/tokens.md` (`--oler-ac / wa / tle / re / ce`) are
+  joined by `MLE`, which landed in the mainline as `--color-mle`
+  (`#5e5ce6` dark / `#4433cf` light, `frontend/src/index.css`); badge fills
+  use the matching `--color-*-soft` tokens, because a Tailwind alpha modifier
+  cannot be applied to `var()`.
 - The test-results surface is a sibling view (full panel, not
   docked); see `05-test-results/panel.md`.
 - The "Open in editor" action from `03-shell-pages/problems.md`

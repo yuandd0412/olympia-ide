@@ -21,11 +21,11 @@
 | --- | --- | --- |
 | A | Shell & navigation | Partial — two dead components |
 | B | Code editor | Implemented |
-| C | Compile & run pipeline | Partial — no MLE, fake memory, no child kill |
-| D | Terminal | Partial — `run_in_console` unwired |
+| C | Compile & run pipeline | Partial — verdicts are still bare strings, no computed diff, no job object |
+| D | Terminal | Absent — no terminal UI; the Rust-only `run_in_console` has no frontend caller |
 | E | Stress tester (对拍器) | Implemented |
-| F | Problem library, Luogu ingest, PDF import | Partial — search/filter is dead code |
-| G | AI coach | Partial — no streaming, no persistence, no context injection |
+| F | Problem library, Luogu ingest, PDF import | Partial — favourites unreachable; ingest returns no tags |
+| G | AI coach | Partial — no streaming; one flat transcript, not per-problem |
 | H | Settings | Implemented |
 | I | Persistence | Implemented |
 | J | Contest mode | Partial — deadline rehydration **fixed 2026-09-13** (pending manual acceptance) |
@@ -36,16 +36,20 @@
 
 ## A — Shell & navigation · Partial
 
-`NavTab = 'editor' | 'problems' | 'ai' | 'settings' | 'stress'`
-(`frontend/src/types/index.ts:173`); all five render from `frontend/src/App.tsx:124,198,211,224,237`,
-driven by `frontend/src/components/common/ActivityBar.tsx:10-13,84-95`.
+`NavTab = 'editor' | 'problems' | 'ai' | 'settings' | 'stress'` (the `NavTab` union in
+`frontend/src/types/index.ts`) — there is **no `training`** member, which is what makes
+`TrainingPage.tsx` unreachable. All five render from
+the `activeNav === …` branches in `frontend/src/App.tsx`, driven by the `navItems` list plus the
+separate settings button in `frontend/src/components/common/ActivityBar.tsx`.
 
 - Two themes only: `ThemeType = 'OneDarkPro' | 'GitHubLight'`
-  (`frontend/src/types/index.ts:56`), applied through `data-theme`
-  (`frontend/src/stores/useAppStore.ts:387,400`). The documented AmberDark / AmberLight pair
+  (`frontend/src/types/index.ts`), applied through `data-theme`
+  (the `document.documentElement.setAttribute('data-theme', …)` calls in
+  `frontend/src/stores/useAppStore.ts`). The documented AmberDark / AmberLight pair
   was never ported.
-- **Dead code:** `frontend/src/components/training/TrainingPage.tsx:10` (zero importers) and
-  `frontend/src/components/common/TitleBar.tsx:4` (returns `null`, unimported).
+- **Dead code:** `frontend/src/components/training/TrainingPage.tsx` (zero importers — the file
+  exists but no module reaches it, and there is no `training` tab to reach it through) and
+  `frontend/src/components/common/TitleBar.tsx` (returns `null`, unimported).
 
 **Acceptance:** `cd frontend && npm run build` exits 0; `npm run tauri dev` opens a window whose
 five rail buttons switch pages, and both `[data-theme]` values restyle every surface.
@@ -67,50 +71,82 @@ the file to disk.
 
 ## C — Compile & run pipeline · Partial
 
-`run_code` (`frontend/src-tauri/src/lib.rs:72-81`) → `execute_code`
-(`frontend/src-tauri/src/runner.rs:127`), per-case verdicts surfaced by
-`frontend/src/components/runner/RunnerPanel.tsx:255-278`.
+`run_code` (`frontend/src-tauri/src/lib.rs`) → `execute_code`
+(`frontend/src-tauri/src/runner.rs`), per-case verdicts surfaced by
+`frontend/src/components/runner/RunnerPanel.tsx`.
 
-- Verdicts are bare `String` literals — `"CE"` `:148`, `"RE"` `:179`, `"AC"` `:231`,
-  `"WA"` `:237`, `"TLE"` `:273`. There is **no `MLE`** and no enum.
-- Timeout is a 1000 ms `tokio::time::timeout` (`frontend/src-tauri/src/runner.rs:155,198`).
-- ~~`memory_kb` is hard-coded `1024`~~ superseded: `runner.rs` now reads the child's
-  `PeakWorkingSetSize`, so `max_memory_kb` reports a measured value. There is still no `MLE` verdict.
-- Timeout kills the case's child now: `kill_on_drop(true)` on every run plus an explicit
-  `child.kill()` in the TLE branch (`runner.rs:242`, `:368`). There is still no job object, so a
-  program that spawns its own children can leave those behind.
+- Verdicts are still bare `String` literals, not an enum: `"CE"`, `"RE"`, `"AC"`, `"WA"`, `"TLE"`
+  **and now `"MLE"`**. The overall verdict is folded with `worse_verdict` (`runner.rs`), which ranks
+  them `AC < WA < MLE < TLE < RE`; any string outside that list ranks as `AC`, so an unknown code can
+  never escalate the run (a `"CE"` from the compile path is returned directly with an empty case
+  list, not folded).
+- `MLE` is a real per-case verdict: a case that exits cleanly but whose measured peak working set
+  exceeds `memory_limit_kb` is judged `MLE` in preference to `AC`/`WA`. `run_code` takes
+  `memory_limit_kb: Option<u64>` and passes it through; absent, the judge defaults to 262144 KB —
+  the same figure `useAppStore` uses when no problem is bound. Time limit works the same way
+  (`time_limit_ms`, default 1000 ms).
+- Memory is now a measurement, not a placeholder. `peak_memory_kb_from_handle` (`runner.rs`) reads
+  `PeakWorkingSetSize`, and it is reached through `ProcessHandle` (`runner.rs`), which takes its own
+  duplicate of the child's OS handle *while the child is still alive*. That indirection is the fix:
+  tokio closes the child's own handle as soon as `wait()` reaps it, so sampling after `wait()`
+  returned `None` and every run reported the hard-coded `1024` KB. A failed sample reports `0`, which
+  means "not measured" — it never escalates to `MLE`, and the UI prints `未测得` rather than "0 KB"
+  (`memoryLabel`, with `verdictColor` alongside it, in `frontend/src/lib/design/tokens.ts`).
+- Timeout is a `tokio::time::timeout` around `child.wait()`. It kills the case's child:
+  `kill_on_drop(true)` on every run plus an explicit `child.kill()` in the TLE branch. There is
+  still no job object, so a program that spawns its own children can leave those behind.
 - No computed diff — the panel shows raw expected/actual panes.
 
-**Acceptance:** `cd frontend/src-tauri && cargo test --lib` passes; `Ctrl+R` on a real `main.cpp`
-against a problem's samples reports the expected AC / WA / TLE / RE / CE per case.
+**Acceptance:** `cd frontend/src-tauri && cargo test --lib` passes — that run covers
+`samples_current_process_peak_memory`, `samples_peak_memory_of_a_child_that_already_exited` (the
+regression this section depends on), `overall_verdict_prefers_the_stricter_failure` and
+`unknown_verdict_never_escalates`. The end-to-end MLE case is `#[ignore]`d because it needs a working
+g++ (`cargo test --lib -- --ignored` runs `a_memory_greedy_run_is_judged_mle`). `Ctrl+R` on a real
+`main.cpp` against a problem's samples reports the expected AC / WA / MLE / TLE / RE per case, and CE
+when the build fails.
 
-## D — Terminal · Partial
+## D — Terminal · Absent
 
-`frontend/src/components/terminal/TerminalPanel.tsx:54,64,75` keeps a persistent `cmd /K` session
-via the shell plugin; `run_terminal_command` is a one-shot PowerShell
-(`frontend/src-tauri/src/runner.rs:299-339`).
+**There is no terminal surface in the mainline.** None of these exist:
+`frontend/src/components/terminal/TerminalPanel.tsx`, the `src/components/terminal/` directory,
+a `run_terminal_command` Rust command, or `triggerTerminalRun` in
+`frontend/src/stores/useAppStore.ts`. The earlier version of this section described an embedded
+`cmd /K` panel with a one-shot PowerShell command; that was never ported, and an earlier doc pass
+described it as if it shipped. Treat "type a command into the IDE and see its output" as **intent**.
 
-- **Gap:** `run_in_console` — the Dev-C++ style console window
-  (`frontend/src-tauri/src/runner.rs:101-125`, `CREATE_NEW_CONSOLE`) — has **no frontend caller**;
-  the typed wrapper `runConsole` (`frontend/src/services/tauriApi.ts:177`) is never invoked, and
-  `triggerTerminalRun` (`frontend/src/stores/useAppStore.ts:663`) is missing from the store's
-  `AppState` and never called.
-- **Gap:** no PTY and no timeout on the one-shot command.
+What does exist is one Rust command: `run_in_console` (`frontend/src-tauri/src/runner.rs`,
+registered in `lib.rs`) compiles headlessly and then spawns `cmd /C <exe> & pause` in a fresh
+`CREATE_NEW_CONSOLE` window — the Dev-C++ style interactive run.
 
-**Acceptance:** type a command in the terminal panel and see its output; a long-running command can
-be interrupted.
+- **Gap:** it has **no frontend caller**. The typed wrapper `runConsole`
+  (`frontend/src/services/tauriApi.ts`) is never invoked, and `runCodeAction`
+  (`frontend/src/stores/useAppStore.ts`) always goes through the built-in judge — an in-code comment
+  parks terminal-first mode until its focus/interaction defects are fixed.
+- **Gap:** no PTY, no embedded panel, no timeout on the spawned console window.
+
+**Acceptance (when built):** a terminal panel exists, shows command output, and a long-running
+command can be interrupted. Today the only reachable behaviour is an external console window.
 
 ## E — Stress tester (对拍器) · Implemented
 
-`frontend/src-tauri/src/stress.rs` (solution/brute/generator at `:133,149,165`, rounds loop
-`:184`, counterexample capture `:214-221`, reporting `:253-262`), UI at
-`frontend/src/components/stress/StressTesterPage.tsx:75-86` (round presets 10/30/50/100/500),
-store wiring `frontend/src/stores/useAppStore.ts:638-660`.
+`execute_stress_test` (`frontend/src-tauri/src/stress.rs`) compiles the three programs (solution /
+brute / generator), loops the rounds, captures the first counterexample into
+`StressTestResult.failed_round` (`Option<StressRoundResult>`, `frontend/src-tauri/src/models.rs`) and
+reports the tally. UI:
+`frontend/src/components/stress/StressTesterPage.tsx` (the rounds control is a `<select>` with
+presets 10/30/50/100/500); store wiring: the `setStress*` fields and `runStressAction` in
+`frontend/src/stores/useAppStore.ts`, calling `tauriApi.runStressTest`.
 
+- Each round also carries `solMemoryKb`, and the result carries `maxSolMemoryKb`
+  (`max_sol_memory_kb: Option<u64>` in `StressTestResult`, `frontend/src-tauri/src/models.rs`) — the
+  highest peak the solution reached in any round, sampled through the same
+  `runner::ProcessHandle` as the judge. `StressTesterPage.tsx` renders that peak and warns when it
+  exceeds the active problem's `memoryLimitKb`. `None`/absent means "not measured", not 0.
 - Gap: no free-text rounds field.
 - **Note:** stress defaults are `-O2 -std=c++17 -Wall` with a **3000 ms generator** budget vs
-  **2000 ms** for solution and brute (`frontend/src-tauri/src/stress.rs:123-130,180-186`), whereas
-  the judge allows 1000 ms. A stress verdict is therefore *not* directly comparable to a judge
+  **2000 ms** for solution and brute (`stress.rs`: `comp_flags` default, the per-round
+  `t_limit`, and the generator's `Duration::from_millis(3000)`), whereas the judge allows 1000 ms.
+  A stress verdict is therefore *not* directly comparable to a judge
   verdict — a solution that TLEs under the judge can still "pass" a stress round.
 
 **Acceptance:** feed a wrong solution + a brute force + a generator → the app reports a
@@ -118,19 +154,25 @@ counterexample input with both outputs.
 
 ## F — Problem library, Luogu ingest, PDF import · Partial
 
-Seed and store in `frontend/src-tauri/src/storage.rs:38-79` (`problems.json` ships an empty library;
-the editor opens an unbound `main.cpp` tab rather than faking a P1001 binding);
-Luogu fetch in `frontend/src-tauri/src/ingest.rs:28-157` behind `fetch_problem_online`
-(`frontend/src-tauri/src/lib.rs:34-37`); favourite toggle at `frontend/src-tauri/src/lib.rs:39-47`;
-Markdown + KaTeX rendering and PDF import in
-`frontend/src/components/viewer/ProblemViewerPanel.tsx:74,407`; PDF text/`pdfjs-dist` extraction with
-contest-style boundary heuristics in `frontend/src/services/pdfExtract.ts:1,19-20`.
+Seed and store in `frontend/src-tauri/src/storage.rs` (`load_problems` / `save_problems` —
+`problems.json` starts empty; the editor opens an unbound `main.cpp` tab rather than faking a P1001
+binding); Luogu fetch in `frontend/src-tauri/src/ingest.rs` behind the `fetch_problem_online` command
+(`frontend/src-tauri/src/lib.rs`); favourite toggle at `toggle_favorite_problem` (same file);
+Markdown + KaTeX rendering and the PDF import dialog in
+`frontend/src/components/viewer/ProblemViewerPanel.tsx`, whose `Markdown` comes from
+`frontend/src/ports/document.ts` (adapter: `MarkdownMathAdapter`, react-markdown + katex).
+PDF **extraction is Rust-side**: `frontend/src-tauri/src/pdf_extract.rs` behind the
+`extract_pdf_problems` command, applying the contest-style page-boundary heuristics;
+`frontend/src/services/pdfExtract.ts` is only a thin wrapper — the `pdfjs-dist` runtime path it used
+to carry has been removed.
 
-- **Search/filter is dead.** `setSearchQuery` / `setSelectedDifficulty`
-  (`frontend/src/stores/useAppStore.ts:162-163,759-760`) have zero call sites and no input renders
-  them — `ProblemsPage.tsx`'s only text input is the Luogu dialog at `:216`.
+- **Search/filter shipped on 2026-10-11** (commit `03a38bd`). `frontend/src/components/problems/ProblemsPage.tsx`
+  renders a `type="search"` input bound to `setSearchQuery` (matches id / title / tag) and difficulty
+  chips (全部 · 入门 · 普及 · 提高 · 省选 · NOI) bound to `setSelectedDifficulty`; both feed
+  `filteredProblems`. The two store fields existed long before anything rendered them. Tag matching
+  is inert in practice, because ingest returns `tags: []` (see the next bullet).
 - **Favourites are unreachable:** the command exists and `toggleFavorite` lands in the store
-  (`frontend/src/stores/useAppStore.ts:739`), but no component calls it.
+  (`frontend/src/stores/useAppStore.ts`), but no component calls it and none renders `isFavorite`.
 - Ingest always returns **empty tags**.
 
 **Acceptance:** paste a Luogu URL → the problem is cached and listed offline; drop an OI PDF →
@@ -138,41 +180,49 @@ each detected problem becomes a record; restart the app with the network off and
 
 ## G — AI coach · Partial
 
-`chat_with_ai` (`frontend/src-tauri/src/lib.rs:119-131`) → `frontend/src-tauri/src/ai.rs`: an empty
-key short-circuits to a hint (`:16-21`), then a single non-streaming
-`POST {base}/chat/completions` with `temperature 0.6`, `max_tokens 2048`
-(`:23-35`), reading `choices[0]` (`:51-63`). UI in `frontend/src/components/ai/AiCoachPage.tsx`
-(contest lock `:44-65`, one `await` `:95-102`, three prompt chips `:122-135`).
+`chat_with_ai` (`frontend/src-tauri/src/lib.rs`) → `ask_ai_coach`
+(`frontend/src-tauri/src/ai.rs`): an empty key short-circuits to a hint, then a single
+non-streaming `POST {base}/chat/completions` with `temperature 0.6`, `max_tokens 2048`, reading
+`choices[0]`. The command also takes an optional `context` string, and the UI in
+`frontend/src/components/ai/AiCoachPage.tsx` builds it: the bound problem's id / title / OJ /
+difficulty with its `timeLimitMs` and `memoryLimitKb`, the current code (truncated), the last run's
+`overallVerdict` / `totalTimeMs` / `maxMemoryKb`, the compiler output, and up to three non-AC cases —
+an `MLE` case contributes its measured `memoryKb` instead of an output comparison, because its stdout
+never took part in the judgement. Contest lock, the single `await`, and three prompt chips live in
+the same component.
 
-- Gaps: no streaming; no conversation persistence (plain component state — nothing is written to
-  `~/.oleride`); test/judge results are never injected into the prompt.
+- **Persistence is implemented:** `load_chats` / `save_chats` (`lib.rs`) over
+  `~/.oleride/chats.json` (`storage.rs`, length-capped and content-clamped); `AiCoachPage.tsx` loads
+  on mount and saves after every reply, system messages excluded.
+- Gaps: no streaming; the transcript is one flat list, not per-problem or per-session.
 
 **Acceptance:** with a valid key, ask "why is case 3 WA" and get an answer that references the
-user's actual code and failing case.
+user's actual code and failing case; restart the app and the conversation is still there.
 
 ## H — Settings · Implemented
 
-Seven live blocks in `frontend/src/components/settings/SettingsPage.tsx:156` (contest),
-`:232` (theme), `:311` (boilerplate), `:374` (compiler), `:422` (Luogu notes), `:442` (AI),
-`:499` (typography); compiler path/flags `:396,411-413`, AI base/key/model `:464,477,490`,
-contest presets `:189-213`; theme is also toggled from the rail
-(`frontend/src/components/common/ActivityBar.tsx:69-82`).
+Seven live `<Section>` blocks in `frontend/src/components/settings/SettingsPage.tsx`: 外观 (theme +
+font size), 编译器 (compiler path / flags), 缺省源 (boilerplate), 比赛模式 (contest), AI 助手 (base /
+key / model), 快捷键 (shortcuts) and 关于 (version, links, and the static Luogu privacy note). Theme
+is also toggled from the rail (`frontend/src/components/common/ActivityBar.tsx`).
 
-- Gaps: no `preferTerminalRun` and no `autoSave` toggle, although both fields exist in the store.
-  The Luogu block (`:437-439`) is static help text and performs no fetch.
+- Gaps: no `preferTerminalRun` and no `autoSave` toggle, although both fields exist in the store's
+  settings defaults. The Luogu text in 关于 is static help and performs no fetch.
 
 **Acceptance:** change theme, font size, compiler flags and AI model, restart → all four survive.
 
 ## I — Persistence · Implemented
 
-`frontend/src-tauri/src/storage.rs:4-11` resolves `~/.oleride` from `dirs::home_dir()`, then
-`settings.json` `:13-30`, `problems.json` `:62-79`, `solves.json` `:81-96`, `sessions.json`
-`:98-113`. Frontend-side state lives under `localStorage` keys `olympia-practice-records`,
-`olympia-active-record`, `olympia-saved-theme` (`frontend/src/stores/useAppStore.ts:16,17,169`) and
-the panel layout keys `olympia-layout-*` (`frontend/src/App.tsx:35-36`).
+`data_dir` (`frontend/src-tauri/src/storage.rs`) resolves `~/.oleride` from `dirs::home_dir()`, and
+five files live there: `settings.json`, `problems.json`, `solves.json`, `sessions.json` and
+`chats.json` (the AI transcript, length-capped and content-clamped on load). Frontend-side state
+lives under the `localStorage` keys `olympia-practice-records`, `olympia-problem-files`,
+`olympia-active-record`, `olympia-contest-end-time` and `olympia-saved-theme`
+(`frontend/src/stores/useAppStore.ts`), plus the panel split keys `olympia-layout-horizontal` /
+`olympia-layout-vertical` (`frontend/src/App.tsx`).
 
-- Gap: there is no chats file and no contest file. Nothing writes `mistakes.json` — the data layer
-  covers four files only.
+- Gap: there is no contest file and no mistakes file — nothing under `frontend/src-tauri/src` even
+  names `mistakes.json`, so 错题本 still has no data layer.
 
 **Acceptance:** delete `~/.oleride/settings.json`, restart → defaults are recreated without a crash.
 
@@ -196,10 +246,10 @@ contest is still running and the AI is still locked.
 
 ## K — OJ submission · **Absent**
 
-`frontend/src-tauri/src/lib.rs:166-171` is an explicit placeholder: it ignores `code`
-(`let _ = code;`) and returns `Ok(format!("Submitted {} successfully", problem_id))`
-unconditionally. There is no frontend call path at all — no wrapper in
-`frontend/src/services/tauriApi.ts`.
+`frontend/src-tauri/src/lib.rs` has no submit command at all: the `submit_problem` placeholder was
+removed (it ignored `code` via `let _ = code;` and returned
+`Ok(format!("Submitted {} successfully", problem_id))` unconditionally), and there is still no
+wrapper in `frontend/src/services/tauriApi.ts`.
 
 - The Luogu integration is read-only ingest; there is no credential store and no per-OJ adapter.
 
@@ -225,13 +275,14 @@ six steps render content.
 
 | Command | Evidence | State |
 | --- | --- | --- |
-| ~~`submit_problem`~~ | was `frontend/src-tauri/src/lib.rs` | removed: the placeholder always reported success and had no caller |
-| `runner::run_in_console` | `frontend/src-tauri/src/runner.rs:101-125` | parked on purpose: `useAppStore.runCodeAction` keeps terminal mode hidden until the focus/interaction defects are fixed |
-| `toggle_favorite_problem` | `frontend/src-tauri/src/lib.rs:39-47`, store `useAppStore.ts:180,859` | store action exists, no component calls it; `Problem` has no `favorite` field yet |
-| `get_sessions` / `save_sessions_list` | `frontend/src-tauri/src/lib.rs:63-68`, wrappers at `services/tauriApi.ts:97,100` | callerless (`training` tab is unbuilt) |
+| ~~`submit_problem`~~ | was in `frontend/src-tauri/src/lib.rs` | removed: the placeholder always reported success and had no caller |
+| `runner::run_in_console` | `frontend/src-tauri/src/runner.rs`; registered in the `invoke_handler` list in `lib.rs` | parked on purpose: `runCodeAction` (`frontend/src/stores/useAppStore.ts`) keeps terminal mode hidden until the focus/interaction defects are fixed, and `tauriApi.runConsole` is never called |
+| `toggle_favorite_problem` | `frontend/src-tauri/src/lib.rs` (`fn toggle_favorite_problem`), store `toggleFavorite` in `useAppStore.ts` | store action exists, no component calls it. `Problem` **does** have the field on both sides (`is_favorite` in `models.rs`, `isFavorite` in `frontend/src/types/index.ts`), so favourites round-trip as soon as something renders a star |
+| `get_sessions` / `save_sessions_list` | `frontend/src-tauri/src/lib.rs`, wrappers `getSessions` / `saveSessionsList` in `services/tauriApi.ts` | callerless (`training` tab is unbuilt) |
 
-`grep -r "TODO\|FIXME\|unimplemented!()" frontend/src-tauri/src` returns nothing: the only known
-placeholder left is the comment at `frontend/src-tauri/src/ingest.rs:66`.
+`grep -r "TODO\|FIXME\|unimplemented!()" frontend/src-tauri/src` returns nothing. The one
+explicitly-unsupported path left is the legacy `_feInjection` fallback in
+`frontend/src-tauri/src/ingest.rs`, which returns a "not supported" error instead of parsing.
 
 ## Cross-Cutting Rules
 

@@ -13,12 +13,16 @@
 >
 > - How the app is built and shipped **today** → repo-root `AGENTS.md` and `README.md`.
 > - What is implemented **today** → [`08-roadmap/phases.md`](08-roadmap/phases.md)
->   (rewritten against the code on 2026-09-10).
+>   (rewritten against the code on 2026-09-10; re-checked 2026-10-11 against the 2026-10-10 runner
+>   commit, which added the `MLE` verdict and real peak-memory sampling, and which forced the
+>   Terminal section down to **Absent** — no terminal UI exists).
 > - A "Status: DONE" line inside any doc body below is **not** authoritative. Trust the
 >   table in this file, not the doc.
 
-This tree holds 18 markdown files and 2 HTML mockups across 11 sub-directories, and it is
-the source of truth for **design intent** — not for build commands or code paths.
+This tree is the source of truth for **design intent** — not for build commands or code paths.
+It holds the numbered sections below (00–11 plus `mockups/`, `compose/` and the `superpowers/`
+mirror; count the files with `git ls-files docs | grep '\.md$' | wc -l` rather than trusting a
+number written here). `docs/zcode-*.md` are another tool's handoff notes, not part of this set.
 
 ## Status Legend
 
@@ -42,34 +46,35 @@ the source of truth for **design intent** — not for build commands or code pat
 
 | Doc | Describes | Status |
 | --- | --- | --- |
-| [`02-design-system/tokens.md`](02-design-system/tokens.md) | The CSS-variable contract every page/theme follows. | **Intent**, with one divergence — the mainline counterpart is `frontend/src/index.css` (Tailwind 4 plus plain custom properties on `:root` / `[data-theme="…"]` blocks), and it implements **2 themes**, not the 4 documented here: `ThemeType = 'OneDarkPro' \| 'GitHubLight'` (`frontend/src/types/index.ts:56`), applied via `document.documentElement.setAttribute('data-theme', …)` (`frontend/src/stores/useAppStore.ts:387`). AmberDark / AmberLight were Qt-era only. `tokens.md:173` (`CThemeManager.cpp`, QSS) is Historical. |
-| [`10-ui-styleguide.md`](10-ui-styleguide.md) | The prose style guide (philosophy, density, motion). | **Intent** — its "唯一来源" line points at `src/ui/common/OlerTheme.{h,cpp}`, which is Historical; the live token source is `frontend/src/index.css`. |
+| [`02-design-system/tokens.md`](02-design-system/tokens.md) | The CSS-variable contract every page/theme follows. | **Intent**, with two divergences — the mainline counterpart is `frontend/src/index.css` (Tailwind 4 plus plain custom properties on `:root` / `[data-theme="…"]` blocks), and it implements **2 themes**, not the 4 documented here: `ThemeType = 'OneDarkPro' \| 'GitHubLight'` (`frontend/src/types/index.ts`), applied via `document.documentElement.setAttribute('data-theme', …)` (in `frontend/src/stores/useAppStore.ts`). AmberDark / AmberLight were Qt-era only. And the judgement palette is **six** entries, not five: the `MLE` verdict landed with its own `--color-mle` (`#5e5ce6` dark / `#4433cf` light), selected by `verdictColor` in `frontend/src/lib/design/tokens.ts`, and each code also carries a `--color-<verdict>-soft` background tint (`rgba(…, 0.16)` dark / `0.12` light) in `index.css`. Its "verdict palette stays identical across themes" note is also corrected — `index.css` re-dials all six per `[data-theme]`. The QSS note in `tokens.md` (`CThemeManager.cpp`) is Historical. |
+| [`10-ui-styleguide.md`](10-ui-styleguide.md) | The prose style guide (philosophy, density, motion). | **Intent** — its "唯一来源" line points at `src/ui/common/OlerTheme.{h,cpp}`, which is Historical; the live token source is `frontend/src/index.css`. Corrected in place against the code: the 4-theme table and the "判定色不反转 / 4 主题" rules (the mainline ships **2** themes and re-dials all six judgement colours), the 判定徽章 row (six codes, AC / WA / MLE / TLE / RE / CE, and how the live badge actually differs), and the Training / Mistakes rows, whose "已实现" label was wrong — both are **Unbuilt**. |
 
 ### 3. Shell Pages
 
 The documented shell had 5 tabs (题库 / 训练 / 错题本 / AI / 设置). The mainline has a
 different set — `NavTab = 'editor' | 'problems' | 'ai' | 'settings' | 'stress'`
-(`frontend/src/types/index.ts:173`) — so two of these docs describe surfaces that were
-never ported, and two live surfaces have no doc at all.
+(the `NavTab` union in `frontend/src/types/index.ts`) — so two of these docs describe surfaces that
+were never ported, and two live surfaces have no doc at all.
 
 | Doc | Describes | Status |
 | --- | --- | --- |
 | [`03-shell-pages/problems.md`](03-shell-pages/problems.md) | 题库 — the default landing tab. | **Intent** — implemented in `frontend/src/components/problems/ProblemsPage.tsx` (plus `ProblemDetailModal.tsx`, `ProblemViewerPanel.tsx`). |
 | [`03-shell-pages/ai.md`](03-shell-pages/ai.md) | dots.ai chat surface. | **Intent** — implemented in `frontend/src/components/ai/AiCoachPage.tsx`. |
 | [`03-shell-pages/settings.md`](03-shell-pages/settings.md) | 设置 — grouped control panel. | **Intent** — implemented in `frontend/src/components/settings/SettingsPage.tsx`; the section list has drifted from the doc. |
-| [`03-shell-pages/training.md`](03-shell-pages/training.md) | 训练 — streak + goal + sessions + chart. | **Unbuilt** — `frontend/src/components/training/TrainingPage.tsx` exists but is imported by nothing (dead code); there is no `training` nav tab. |
-| [`03-shell-pages/mistakes.md`](03-shell-pages/mistakes.md) | 错题本 — verdict-tagged journal. | **Unbuilt** — no component and no nav tab. `~/.oleride/mistakes.json` exists in the data layer only. |
+| [`03-shell-pages/training.md`](03-shell-pages/training.md) | 训练 — streak + goal + sessions + chart. | **Unbuilt** — `frontend/src/components/training/TrainingPage.tsx` exists but is imported by nothing (dead code), and there is no `training` member in the `NavTab` union, so nothing can reach it from the rail. |
+| [`03-shell-pages/mistakes.md`](03-shell-pages/mistakes.md) | 错题本 — verdict-tagged journal. | **Unbuilt** — no component and no nav tab, and no data layer either: nothing under `frontend/src-tauri/src` reads or writes `mistakes.json`. |
 
 | Live surface | Where | Doc? |
 | --- | --- | --- |
 | 压力测试 (stress tester) | `frontend/src/components/stress/StressTesterPage.tsx` | **none — doc gap** |
 | 比赛模式 (contest countdown / AI lock) | `frontend/src/components/common/ContestBar.tsx` | **none — doc gap** |
-| AI 教练聊天参与者 (fork 侧，需用户自配模型) | `oss/extensions/olympia-coach/` | **none — doc gap** |
-| 内置编译器 / 题面拉取 / 上手引导 (fork 侧) | `oss/extensions/olympia-{onboarding,contest}/` | **none — doc gap** |
+| AI 教练聊天参与者 (fork 侧，需用户自配模型) | `oss/extensions/olympia-coach/` | [`11-fork/extensions.md`](11-fork/extensions.md) |
+| 内置编译器 / 题面拉取 / 上手引导 (fork 侧) | `oss/extensions/olympia-{onboarding,contest}/` | [`11-fork/extensions.md`](11-fork/extensions.md) |
 
-Everything above documents the Tauri mainline. The `oss/` tree is a separate VS Code fork with its
-own git repository (its `.gitignore` and build pipeline are upstream's), and none of it is covered
-by this docs set yet.
+Everything else here documents the Tauri mainline. The `oss/` tree is a separate VS Code fork with
+its own git repository (its `.gitignore` and build pipeline are upstream's); its extensions are
+covered by [`11-fork/extensions.md`](11-fork/extensions.md) and its build conventions by the "VS Code
+Fork (`oss/`) Line" section of `AGENTS.md`.
 
 ### 4. Editor
 
@@ -81,7 +86,7 @@ by this docs set yet.
 
 | Doc | Describes | Status |
 | --- | --- | --- |
-| [`05-test-results/panel.md`](05-test-results/panel.md) | The post-run verdict surface. | **Intent** — implemented in `frontend/src/components/runner/RunnerPanel.tsx` (AC/WA/TLE/RE/CE colour semantics are the live ones). |
+| [`05-test-results/panel.md`](05-test-results/panel.md) | The post-run verdict surface. | **Intent** — implemented in `frontend/src/components/runner/RunnerPanel.tsx`. The live verdict set is AC / WA / **MLE** / TLE / RE / CE, coloured by `verdictColor` (`frontend/src/lib/design/tokens.ts`); the overall verdict is the strictest per-case verdict (`AC < WA < MLE < TLE < RE` in `worse_verdict`, `frontend/src-tauri/src/runner.rs`), memory is a measured peak working set, and an unmeasured run prints `未测得` (`memoryLabel`). The doc's inline diff highlighting and its pass-rate bar are **not** built — the panel shows side-by-side expected/actual panes. |
 
 ### 6. Welcome
 
@@ -111,7 +116,7 @@ by this docs set yet.
 
 | Doc | Describes | Status |
 | --- | --- | --- |
-| [`00-design-spec.md`](00-design-spec.md) | The consolidated v0 → v2 UI spec (sections 0-13). | **Intent**, partly Historical — §1.12/§1.13 (KSyntax theme mapping, `OlerEditor`) and the status table at lines 440-443 (`resources/themes/*.qss`, `CThemeManager.cpp`, `MainWindow.cpp` marked DONE) document the deleted Qt line. The page-level sections remain the best description of the intended UI. |
+| [`00-design-spec.md`](00-design-spec.md) | The consolidated v0 → v2 UI spec (sections 0-11). | **Intent**, partly Historical — §2 (the 4 QSS themes, `CThemeManager`, `resources/themes/*.qss`), §1.12 (KSyntax theme map, `OlerEditor`) and the §9 status table document the deleted Qt line; each now opens with a mainline-reality note (2 themes, `ThemeType = 'OneDarkPro' \| 'GitHubLight'`, no QSS). §1.5 lists the live `--color-mle` and records that `frontend/src/index.css` re-dials **all six** judgement colours per `[data-theme]`, so "identical across themes" is v0 only; §3.3 notes the rail has five tabs, not six; §9's "PENDING" rows are largely shipped. The page-level sections remain the best description of the intended UI. |
 
 ### 11. Mockups
 
@@ -126,6 +131,12 @@ by this docs set yet.
 | --- | --- | --- |
 | [`superpowers/plans/2026-08-21-oler-ide-v2-foundation.md`](superpowers/plans/2026-08-21-oler-ide-v2-foundation.md) | The Qt foundation implementation plan. | **Historical** |
 | [`superpowers/plans/2026-08-21-phase4-editor-and-highlight.md`](superpowers/plans/2026-08-21-phase4-editor-and-highlight.md) | The Qt editor/KSyntax bridge plan. | **Historical** |
+
+### 13. Fork (`oss/`)
+
+| Doc | Describes | Status |
+| --- | --- | --- |
+| [`11-fork/extensions.md`](11-fork/extensions.md) | The three self-written built-in extensions of the `oss/` VS Code fork: `olympia-onboarding`, `olympia-contest`, `olympia-coach`. | **Implemented** — written against the current manifests: command titles, keybindings, `when` clauses, configuration keys and defaults were read out of `oss/extensions/olympia-*/package.json`. The coach section records why `product.json`'s `defaultChatAgent.chatExtensionId` / `.extensionId` must keep naming a non-existent extension. Build and localisation conventions for that tree are in `AGENTS.md` ("VS Code Fork (`oss/`) Line"), not here. |
 
 ## Source Provenance
 
@@ -179,5 +190,7 @@ Plus internal sources:
 - Doc status lines rot faster than prose: when you touch a doc, re-check its status row
   against `frontend/src/` and fix the row rather than the body.
 - Changing `frontend/src/index.css` tokens is a **breaking change** for every themed
-  surface; update both `[data-theme]` blocks and the theme-aware editors
-  (`frontend/src/services/monacoTheme.ts`, `TerminalPanel.tsx`) in the same commit.
+  surface; update both `[data-theme]` blocks and the theme-aware consumers
+  (`frontend/src/services/monacoTheme.ts`, and `frontend/src/lib/design/tokens.ts` for the verdict
+  colours) in the same commit. No `TerminalPanel.tsx` is involved — that component does not exist;
+  the mainline has no terminal surface (see §D of [`08-roadmap/phases.md`](08-roadmap/phases.md)).

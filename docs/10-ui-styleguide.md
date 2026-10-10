@@ -52,9 +52,13 @@
 --oler-primary:       #d97757;
 --oler-primary-hover: #e08a6c;
 
-/* 判定色（OI 词汇，四主题恒定不变）*/
+/* 判定色（OI 词汇）。v0 设想四主题恒定；主线只有 OneDarkPro / GitHubLight 两档，
+   且 GitHubLight 会重标全部判定色（见 frontend/src/index.css） */
 --oler-ac:#34c759; --oler-wa:#ff453a; --oler-tle:#ff9f0a;
 --oler-re:#c45c4a; --oler-ce:#c49a3c;
+/* 主线实际 token：--color-ac / wa / tle / re / ce，外加 --color-mle
+   （#5e5ce6 暗色 / #4433cf 浅色），统一经 verdictColor 映射；
+   每个判定色另有一枚 --color-<判定>-soft 底色（暗色 alpha .16 / 浅色 .12） */
 ```
 
 ### 1.2 状态层（新增，源自 Material）
@@ -161,7 +165,7 @@ surface 底 + border + radius-md + padding 14px；hover 升为 elevated + border
 
 | 类型 | 样式 |
 |------|------|
-| 判定徽章 AC/WA/TLE/RE/CE | 判定色 @15% 底 + 判定色字，mono 10px/600，pill，高 18px |
+| 判定徽章 AC/WA/MLE/TLE/RE/CE | 判定色 @15% 底 + 判定色字，mono 10px/600，pill，高 18px（现状：`RunnerPanel.tsx` 为 mono 11px/700、`--color-<判定>-soft` 底（暗 .16 / 浅 .12）+ 判定色 1px 描边 + 图标；一律取主题 token，浅色主题不再用深色 hex） |
 | OJ 来源 pill | 各 OJ 专属色（Luogu #73ba4b / CF #7daed4 / AtCoder #b57850），@15% 底 |
 | 难度点 | 8×8 实心圆 + 同色 30% 光晕；入门绿/普及橙黄/提高红（沿用原型 easy/medium/hard 映射）|
 | kbd 键帽 | overlay 底 + border，radius-xs，10px mono，高 20px |
@@ -178,8 +182,8 @@ surface 底 + border + radius-md + padding 14px；hover 升为 elevated + border
 | 页面 | 骨架 | 数据真实度要求 |
 |------|------|---------------|
 | Problems | 搜索栏(36px, Ctrl+K chip) → 快捷按钮排(拉取/新建/导入) → 最近题目横滑条 → 全部题目 4 列网格 → 底部统计条 | 卡片双击建工作区进编辑器（已实现）|
-| Training | 4 张 KPI 卡(streak/今日/总量/正确率环) → 今日目标卡(进度条 6px 渐变) → 训练计划列表 → 最近提交列表 | streak/提交来自本地日志；计划允许空状态 |
-| Mistakes | 左判定筛选 chips(WA/TLE/RE/CE 计数) + 列表行卡(左缘 3px 判定色条) + 右 7×4 热力图 | 已实现，行卡需从表格改为卡片列表 |
+| Training | 4 张 KPI 卡(streak/今日/总量/正确率环) → 今日目标卡(进度条 6px 渐变) → 训练计划列表 → 最近提交列表 | **未实装**：`TrainingPage.tsx` 零引用，`NavTab` 里没有 `training`；`sessions.json` 有存取、`get_sessions` / `save_sessions_list` 有命令与 wrapper，但没有任何调用方。本行是设计意图 |
+| Mistakes | 左判定筛选 chips(WA/MLE/TLE/RE/CE 计数) + 列表行卡(左缘 3px 判定色条) + 右 7×4 热力图 | **未实装**：无组件、无 nav tab，`frontend/src-tauri/src` 里也没有 `mistakes.json` 的读写方。「已实现」是本文档此前的错标 |
 | AI Coach | 顶栏 dots.ai + 模型选择 → 聊天流(用户右/elevated，AI 左/surface+border，头像 28×28) → prompt chips → composer(自适应高 ≤120px + 36×36 主色圆发送钮) | mock 应答保留到 Phase 7 |
 | Settings | 单栏 max-width 640px：页头(设置+副标题) → 分区(编译器/运行/OJ/快捷键/关于)，分区间 1px 分隔线；表单行 = 140px 右对齐标签 + 控件 + hint | 优化等级改 radio 药丸组 |
 | Editor | 文件标签条(closable, 未存=斜体+圆点) → 行号槽(56px, muted) → 当前行高亮(primary-subtle) → 底部输出面板(Build/Run 子tab) | 已有大半 |
@@ -207,10 +211,15 @@ surface 底 + border + radius-md + padding 14px；hover 升为 elevated + border
 | AmberLight | #fafaf7 | #f0eee8 | #d97757 |
 | OneLight | #fafafa | #f0f0f0 | #4078f2 |
 
+> 主线现状：只有 **两档** 主题 —— `OneDarkPro`（`--bg-base` `#1e1e1e` / `--bg-surface` `#252526` /
+> `--accent` `#007acc`）与 `GitHubLight`（`#ffffff` / `#f6f8fa` / `#0969da`），定义在
+> `frontend/src/index.css`；`ThemeType` 只有这两个成员，AmberDark / AmberLight / OneLight 从未移植。
+
 规则：
-- 浅色主题的中性面按同语义反转，但**判定色与品牌 accent 不反转**（铁律 6）。
+- v0 说**判定色与品牌 accent 不反转**（铁律 6），主线并不遵守：`[data-theme="GitHubLight"]` 重标了
+  全部六枚判定色（含 `--color-mle` `#5e5ce6` → `#4433cf`），accent 也由 `#007acc` 换成 `#0969da`。
 - 状态层浅色主题用黑 alpha（hover 0.04）。
-- 任何新控件必须 4 主题全过才能合并（铁律 8）。
+- 任何新控件必须 4 主题全过才能合并（铁律 8）—— 按主线口径即两个 `[data-theme]` 块都过。
 
 ---
 

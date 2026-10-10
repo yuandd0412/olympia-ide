@@ -34,9 +34,10 @@ window that already knows what an OI session looks like.
 3. **Dark-first with two accent systems** — One Dark Pro (blue/violet, Atom
    classic) and Amber/Terracotta (#d97757) coexist across the 4 shipped
    themes. Users pick a combination, not a single look.
-4. **OI-native surface vocabulary** — verdict colors (AC / WA / TLE / RE / CE)
+4. **OI-native surface vocabulary** — verdict colors (AC / WA / MLE / TLE / RE / CE)
    are first-class design tokens, not afterthought badges. The test-results
-   panel and mistake book use them as the primary signal.
+   panel uses them as the primary signal; the mistake book that would share
+   them is still unbuilt.
 
 ## Visual Style
 

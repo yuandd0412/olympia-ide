@@ -65,11 +65,14 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------- paths
 
 $OssRoot   = 'D:\oler-ide-v2\oss'
-$UserData  = Join-Path $env:APPDATA 'Olympia IDE'
+# The packaged product, not the dev launcher: simulating a first run only tests what users run.
+$Product   = 'D:\oler-ide-v2\VSCode-win32-x64'
+# dataFolderName/.olympia-ide and the product name give %APPDATA%\Olympia, not "Olympia IDE".
+$UserData  = Join-Path $env:APPDATA 'Olympia'
 $BackupDir = 'D:\oler-ide-v2\build\firstrun-backups'
 
 # dev 模式下用户装的市场扩展目录——首启时它应当是空的
-$UserExtDir = Join-Path $env:USERPROFILE '.olympia-ide-dev\extensions'
+$UserExtDir = Join-Path $env:USERPROFILE '.olympia-ide\extensions'
 
 # ---------------------------------------------------------------- helpers
 
@@ -147,15 +150,13 @@ function Start-Olympia {
         Write-Host '  [WhatIf] 将启动 Olympia' -ForegroundColor DarkGray
         return
     }
-    if (-not (Test-Path (Join-Path $OssRoot 'scripts\code.bat'))) {
-        Write-Host "  找不到 $($OssRoot)\scripts\code.bat" -ForegroundColor Red
+    if (-not (Test-Path (Join-Path $Product 'Olympia.exe'))) {
+        Write-Host "  找不到 $Product\Olympia.exe（先跑 build\oss-package.ps1）" -ForegroundColor Red
         return
     }
     Write-Host '  启动中（首次启动较慢，约 30-60 秒）...' -ForegroundColor Green
-    Start-Process -FilePath 'cmd.exe' `
-        -ArgumentList '/d', '/c', 'scripts\code.bat' `
-        -WorkingDirectory $OssRoot `
-        -WindowStyle Hidden
+    Start-Process -FilePath (Join-Path $Product 'Olympia.exe') `
+        -ArgumentList '--user-data-dir', $UserData
 }
 
 function Show-CurrentState {

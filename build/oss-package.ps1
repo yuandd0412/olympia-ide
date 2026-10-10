@@ -10,7 +10,9 @@
                       in earlier steps is what actually ships.
       2. toolchain  — assembles MinGW-w64 into `.build/toolchain/` unless it is already staged.
                       Skipped when present, because the download is the slow part.
-      3. package    — `gulp vscode-win32-x64-ci` writes the unpacked product and the installer.
+      3. package    — compiles the built-in extensions into `.build/extensions/` first, because the
+                      packaging task copies that directory verbatim and cannot build it itself; then
+                      `gulp vscode-win32-x64-ci` writes the unpacked product and the installer.
       4. cache      — launches the packaged app once in generation mode to emit the Node.js compile
                       cache under `resources/app/node-compile-cache`, cutting module compile cost on
                       every later start. Upstream folds this into stage 3, but gates it on
@@ -26,6 +28,10 @@
 
 .PARAMETER SkipToolchain
     Do not attempt the toolchain download even if it is missing.
+
+.PARAMETER SkipExtensions
+    Reuse the existing `.build/extensions/` instead of recompiling every built-in extension. Saves
+    several minutes when only the product tree, the toolchain or the cache changed.
 
 .PARAMETER SkipPackage
     Stop after the bundle stage; useful when only `out-vscode/` is wanted.
@@ -47,6 +53,7 @@
 param(
     [switch]$SkipBundle,
     [switch]$SkipToolchain,
+    [switch]$SkipExtensions,
     [switch]$SkipPackage
 )
 
@@ -120,6 +127,20 @@ if ($SkipPackage) {
 }
 
 # ---------------------------------------------------------------- 3. package
+
+if ($SkipExtensions) {
+    Write-Output '=== STAGE 3/4 extensions SKIPPED (reusing .build/extensions) ==='
+} else {
+    # `-ci` consumes `.build/extensions`; the tasks that fill it hang off the outer
+    # vscode-win32-x64 task, which this script does not run because it re-bundles the workbench.
+    Write-Output ("=== STAGE 3/4 extensions START " + (& $stamp) + " ===")
+    node node_modules/gulp/bin/gulp.js compile-extensions-build
+    $rc = $LASTEXITCODE
+    node node_modules/gulp/bin/gulp.js compile-extension-media
+    if ($rc -eq 0) { $rc = $LASTEXITCODE }
+    Write-Output ("=== STAGE 3/4 extensions EXITCODE=$rc  " + (& $stamp) + " ===")
+    if ($rc -ne 0) { exit $rc }
+}
 
 Write-Output ("=== STAGE 3/4 package START " + (& $stamp) + " ===")
 node node_modules/gulp/bin/gulp.js vscode-win32-x64-ci

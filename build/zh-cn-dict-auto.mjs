@@ -1670,7 +1670,7 @@ export default {
 	"Browse Additional Color Themes...": "浏览其他颜色主题...",
 	"Browse Additional Product Icon Themes...": "浏览其他产品图标主题...",
 	"Browse Agent Plugins": "浏览智能体插件",
-	"Browse and install [Model Context Protocol (MCP) servers](https://code.visualstudio.com/docs/agent-customization/mcp-servers) directly from VS Code to extend agent mode with extra tools for connecting to databases, invoking APIs and performing specialized tasks.": "直接从 VS Code 浏览并安装[模型上下文协议(MCP)服务器](https://code.visualstudio.com/docs/copilot/customization/mcp-servers)，以通过用于连接数据库、调用 API 和执行专门任务的额外工具扩展智能体模式。",
+	"Browse and install [Model Context Protocol (MCP) servers](https://code.visualstudio.com/docs/agent-customization/mcp-servers) directly from VS Code to extend agent mode with extra tools for connecting to databases, invoking APIs and performing specialized tasks.": "直接从 Olympia 浏览并安装[模型上下文协议(MCP)服务器](https://code.visualstudio.com/docs/copilot/customization/mcp-servers)，以通过用于连接数据库、调用 API 和执行专门任务的额外工具扩展智能体模式。",
 	"Browse and manage language models from different providers. Select models for use in chat, code completion, and other AI features.": "浏览和管理来自不同提供商的语言模型。选择用于聊天、代码补全和其他 AI 功能的模型。",
 	"Browse Color Themes in Marketplace": "在市场中浏览颜色主题",
 	"Browse contents of this profile\n": "浏览此配置文件的内容\r\n",

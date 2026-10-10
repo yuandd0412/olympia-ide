@@ -46,6 +46,24 @@ function isChineseBearing(text) {
 	return /[\u3400-\u4dbf\u4e00-\u9fff]/.test(text);
 }
 
+// A value can mix a genuine reference (a doc URL, a `command:vscode.openFolder` link) with a
+// brand mention that means this product, so whole-value suppression was too blunt: the git and
+// css/html help texts carry `https://aka.ms/vscode-scm` and lost their rebrand. Masking the spans
+// that must stay verbatim lets the phrase itself be replaced everywhere else.
+const PROTECTED_PATTERN = /https?:\/\/[^\s)\]]+|vscode:\/\/[^\s)\]]+|command:[^\s)\]]+/g;
+
+function rebrand(text) {
+	const protected_ = [];
+	const masked = text.replace(PROTECTED_PATTERN, span => {
+		protected_.push(span);
+		return `\u0000${protected_.length - 1}\u0000`;
+	});
+	return masked
+		.replace(/Visual Studio Code/g, REPLACEMENT)
+		.replace(/\bVS Code\b/g, REPLACEMENT)
+		.replace(/\u0000(\d+)\u0000/g, (_, index) => protected_[Number(index)]);
+}
+
 // Double-quoted literals on a line; localize messages are the only thing worth touching here.
 const literalPattern = /"([^"\\]*(?:\\.[^"\\]*)*)"/g;
 
@@ -77,30 +95,27 @@ for (const item of findings) {
 }
 
 // The donor pack's own extension translations carry the old name too, e.g. emmet's
-// "适用于 VS Code 的 Emmet 支持", so the manifest layer is scanned as well.
+// "适用于 VS Code 的 Emmet 支持", so the manifest layer is scanned as well. English-only
+// values count here too: a theme named "VS Code Modern Icons" shows that name in the picker.
 const EXTENSIONS_DIR = 'D:/oler-ide-v2/oss/extensions';
 const manifestFindings = [];
 for (const dir of fs.readdirSync(EXTENSIONS_DIR, { withFileTypes: true })) {
 	if (!dir.isDirectory()) {
 		continue;
 	}
-	const nlsPath = path.join(EXTENSIONS_DIR, dir.name, 'package.nls.json');
-	if (!fs.existsSync(nlsPath)) {
-		continue;
-	}
-	const contents = JSON.parse(fs.readFileSync(nlsPath, 'utf8'));
-	for (const [key, value] of Object.entries(contents)) {
-		if (typeof value !== 'string' || !isChineseBearing(value) || !value.includes('VS Code')) {
-			continue;
+	for (const name of fs.readdirSync(path.join(EXTENSIONS_DIR, dir.name)).filter(x => /^package\.nls[^/]*\.json$/.test(x))) {
+		const nlsPath = path.join(EXTENSIONS_DIR, dir.name, name);
+		const contents = JSON.parse(fs.readFileSync(nlsPath, 'utf8'));
+		for (const [key, value] of Object.entries(contents)) {
+			if (typeof value !== 'string' || value === rebrand(value)) {
+				continue;
+			}
+			manifestFindings.push({ file: nlsPath, key, value, replacement: rebrand(value) });
 		}
-		if (KEEP_PATTERNS.some(pattern => pattern.test(value))) {
-			continue;
-		}
-		manifestFindings.push({ file: nlsPath, key, value });
 	}
 }
 
-console.log(`${manifestFindings.length} 处扩展 package.nls.json 值仍写着 "VS Code"`);
+console.log(`${manifestFindings.length} 处扩展 package.nls*.json 值仍写着旧产品名`);
 for (const item of manifestFindings) {
 	console.log(`  ${path.relative('D:/oler-ide-v2/oss', item.file)} [${item.key}]  ${item.value.slice(0, 80)}`);
 }
@@ -115,11 +130,11 @@ if (apply) {
 	for (const [file, items] of byNlsFile) {
 		const contents = JSON.parse(fs.readFileSync(file, 'utf8'));
 		for (const item of items) {
-			contents[item.key] = item.value.replaceAll('VS Code', REPLACEMENT);
+			contents[item.key] = item.replacement;
 		}
 		fs.writeFileSync(file, JSON.stringify(contents, null, '\t') + '\n');
 	}
-	console.log(`已改写 ${byNlsFile.size} 份 package.nls.json`);
+	console.log(`已改写 ${byNlsFile.size} 份 package.nls*.json`);
 }
 
 if (!apply || (findings.length === 0 && manifestFindings.length === 0)) {
@@ -152,11 +167,15 @@ for (const name of dictFiles) {
 	const full = path.join(BUILD, name);
 	const original = fs.readFileSync(full, 'utf8');
 	const updated = original.replace(/^(\s*)"((?:[^"\\]|\\.)*)":\s*"((?:[^"\\]|\\.)*)"\s*,?$/gm, (whole, indent, key, value) => {
-		if (!/[\u4e00-\u9fff]/.test(value) || !value.includes('VS Code') || KEEP_PATTERNS.some(p => p.test(value))) {
+		if (!/[\u4e00-\u9fff]/.test(value) || !/VS Code|Visual Studio Code/.test(value)) {
+			return whole;
+		}
+		const rebranded = rebrand(value);
+		if (rebranded === value) {
 			return whole;
 		}
 		dictEntriesFixed++;
-		return `${indent}"${key}": "${value.replaceAll('VS Code', REPLACEMENT)}",`;
+		return `${indent}"${key}": "${rebranded}",`;
 	});
 	if (updated !== original) {
 		fs.writeFileSync(full, updated);

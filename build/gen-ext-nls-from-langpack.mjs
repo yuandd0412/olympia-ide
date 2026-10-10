@@ -72,9 +72,20 @@ function hasCJK(value) {
 	return /[\u3400-\u4dbf\u4e00-\u9fff]/.test(value);
 }
 
+/**
+ * The donor translates markdown link *targets* as if they were prose, so
+ * `[开始调试](command:javascript-walkthrough.commands.debugJsFile)` arrives as `](命令: …)` and the
+ * walkthrough button silently stops working. Only the scheme is restored; the id keeps whatever
+ * the donor wrote, because those are ASCII already.
+ */
+function repairLinkSchemes(value) {
+	return value.replace(/\]\(\s*(?:命令|指令|Command)\s*[:：]\s*/g, '](command:');
+}
+
 let localizedFiles = 0;
 let replacedValues = 0;
 let alreadyChinese = 0;
+let linkSchemesRepaired = 0;
 const shortfalls = [];
 const missingDonor = [];
 
@@ -100,8 +111,16 @@ for (const dir of fs.readdirSync(EXTENSIONS, { withFileTypes: true })) {
 	for (const [key, value] of Object.entries(english)) {
 		const translated = donor.contents[key];
 		if (typeof translated === 'string' && translated.trim().length > 0) {
-			out[key] = translated;
-			if (hasCJK(translated)) {
+			const repaired = repairLinkSchemes(translated);
+			if (repaired !== translated) {
+				linkSchemesRepaired++;
+			}
+			// Some donor entries are shipped untranslated (64 of them: theme names, icon labels), and
+			// writing them back would erase a hand translation made for exactly that gap, so an
+			// existing Chinese value wins whenever the donor has nothing Chinese to offer.
+			const handTranslated = typeof value === 'string' && hasCJK(value) && !hasCJK(repaired);
+			out[key] = handTranslated ? value : repaired;
+			if (hasCJK(out[key])) {
 				replacedValues++;
 			} else {
 				alreadyChinese++;
@@ -123,7 +142,7 @@ for (const dir of fs.readdirSync(EXTENSIONS, { withFileTypes: true })) {
 	localizedFiles++;
 }
 
-console.log(`${reportOnly ? '[report] ' : ''}处理 ${localizedFiles} 份 package.nls.json，写入 ${replacedValues} 条中文值（${alreadyChinese} 条译文本身无中文）`);
+console.log(`${reportOnly ? '[report] ' : ''}处理 ${localizedFiles} 份 package.nls.json，写入 ${replacedValues} 条中文值（${alreadyChinese} 条值本身无中文）`);
 if (missingDonor.length > 0) {
 	console.log(`语言包未收录的扩展 (${missingDonor.length}): ${missingDonor.join(', ')}`);
 }

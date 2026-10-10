@@ -64,6 +64,12 @@ never ported, and two live surfaces have no doc at all.
 | --- | --- | --- |
 | 压力测试 (stress tester) | `frontend/src/components/stress/StressTesterPage.tsx` | **none — doc gap** |
 | 比赛模式 (contest countdown / AI lock) | `frontend/src/components/common/ContestBar.tsx` | **none — doc gap** |
+| AI 教练聊天参与者 (fork 侧，需用户自配模型) | `oss/extensions/olympia-coach/` | **none — doc gap** |
+| 内置编译器 / 题面拉取 / 上手引导 (fork 侧) | `oss/extensions/olympia-{onboarding,contest}/` | **none — doc gap** |
+
+Everything above documents the Tauri mainline. The `oss/` tree is a separate VS Code fork with its
+own git repository (its `.gitignore` and build pipeline are upstream's), and none of it is covered
+by this docs set yet.
 
 ### 4. Editor
 

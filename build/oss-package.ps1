@@ -22,6 +22,11 @@
     only copies `.build/toolchain/**` if that directory exists, so a source-only build still
     produces a valid (compiler-less) package.
 
+    An installer build keeps that toolchain: `code.iss` excludes `\bin,\bin\*`, and per Inno's
+    pattern rules a leading backslash anchors a pattern to the start of the path, so only the
+    product root's `bin` is dropped — `resources\app\toolchain\mingw64\bin\g++.exe` survives,
+    which is exactly the path `olympia-onboarding/src/toolchain.ts` probes second.
+
 .PARAMETER SkipBundle
     Reuse the existing `out-vscode/` instead of rebuilding it. Saves ~2 minutes when only the
     packaging step changed.

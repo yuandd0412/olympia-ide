@@ -7,9 +7,13 @@ import {
   Code2,
   Filter,
   Loader2,
+  Search,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
 import { ProblemDetailModal } from './ProblemDetailModal';
+
+/** Filter chips; `全部` is the store's default `selectedDifficulty`. */
+const DIFFICULTIES = ['全部', '入门', '普及', '提高', '省选', 'NOI'];
 
 
 
@@ -18,6 +22,8 @@ export const ProblemsPage: React.FC = () => {
     problems,
     searchQuery,
     selectedDifficulty,
+    setSearchQuery,
+    setSelectedDifficulty,
     openProblemModal,
     isDetailModalOpen,
     modalProblem,
@@ -115,6 +121,47 @@ export const ProblemsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Search and difficulty filter. The store has carried `searchQuery` /
+          `selectedDifficulty` and the grid below has always filtered on them —
+          only the inputs were missing, so both were unreachable. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[220px] max-w-md">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] pointer-events-none" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="搜索题号 / 标题 / 标签"
+            aria-label="搜索题目"
+            className="w-full h-8 pl-9 pr-3 rounded-lg border text-sm bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)] outline-none focus:border-[var(--accent)] transition-colors"
+          />
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {DIFFICULTIES.map((d) => {
+            const active = selectedDifficulty === d;
+            return (
+              <button
+                key={d}
+                onClick={() => setSelectedDifficulty(d)}
+                aria-pressed={active}
+                className="px-2.5 h-7 rounded-lg text-xs font-medium border transition-all cursor-pointer"
+                style={{
+                  borderColor: active ? 'var(--accent)' : 'var(--border)',
+                  backgroundColor: active ? 'var(--accent-subtle)' : 'transparent',
+                  color: active
+                    ? 'var(--accent)'
+                    : d === '全部'
+                      ? 'var(--text-secondary)'
+                      : getDifficultyColor(d),
+                }}
+              >
+                {d}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Problems Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {filteredProblems.map((p) => {
@@ -188,12 +235,34 @@ export const ProblemsPage: React.FC = () => {
       {filteredProblems.length === 0 && (
         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
           <Filter className="w-8 h-8 text-[var(--text-tertiary)] mb-2 opacity-50" />
-          <p className="text-xs text-[var(--text-secondary)] font-medium">
-            未找到匹配的题目
-          </p>
-          <p className="text-[11px] text-[var(--text-tertiary)] mt-1">
-            尝试更换搜索关键词，或点击右上角「一键导入在线题目」
-          </p>
+          {problems.length === 0 ? (
+            <>
+              <p className="text-xs text-[var(--text-secondary)] font-medium">
+                本地题库还是空的
+              </p>
+              <p className="text-[11px] text-[var(--text-tertiary)] mt-1">
+                点击右上角「获取在线题目」按题号导入题面，或先「自由练习」写代码
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-[var(--text-secondary)] font-medium">
+                未找到匹配的题目
+              </p>
+              <p className="text-[11px] text-[var(--text-tertiary)] mt-1">
+                换个关键词，或清除当前筛选条件
+              </p>
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setSelectedDifficulty('全部');
+                }}
+                className="mt-3 px-3 h-7 rounded-lg text-xs font-medium border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all cursor-pointer"
+              >
+                清除筛选
+              </button>
+            </>
+          )}
         </div>
       )}
 

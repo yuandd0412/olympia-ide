@@ -87,8 +87,12 @@ if (-not $env:BUILD_SOURCEVERSION) {
     }
 }
 
+# Only instances this build actually touches: the packaged product, or an electron started
+# from the fork's own tree. Matching on the bare process name 'electron' blocked packaging
+# (exit 2) whenever any unrelated Electron app was running on the machine.
 $running = @(Get-Process -ErrorAction SilentlyContinue |
-    Where-Object { $_.ProcessName -like 'Olympia*' -or $_.ProcessName -eq 'electron' })
+    Where-Object { $_.ProcessName -like 'Olympia*' -or
+                   ($_.ProcessName -eq 'electron' -and $_.Path -and $_.Path.StartsWith($Oss, 'OrdinalIgnoreCase')) })
 if ($running.Count -gt 0) {
     Write-Output ("=== " + $running.Count + " app process(es) still running ===")
     Write-Output "Close Olympia IDE before packaging, then re-run this script."

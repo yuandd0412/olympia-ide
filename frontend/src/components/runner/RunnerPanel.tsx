@@ -46,7 +46,7 @@ export const RunnerPanel: React.FC = () => {
             initial={{ scale: 0.92, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
-            className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#34c759]/20 text-[#34c759] border border-[#34c759]/30 flex items-center gap-1 font-mono"
+            className="px-2 py-0.5 rounded text-[11px] font-bold bg-[var(--color-ac-soft)] text-[var(--color-ac)] border-[var(--color-ac)] flex items-center gap-1 font-mono"
           >
             <CheckCircle2 className="w-3 h-3" /> AC
           </motion.span>
@@ -57,7 +57,7 @@ export const RunnerPanel: React.FC = () => {
             initial={{ scale: 0.92, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
-            className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#ff453a]/20 text-[#ff453a] border border-[#ff453a]/30 flex items-center gap-1 font-mono"
+            className="px-2 py-0.5 rounded text-[11px] font-bold bg-[var(--color-wa-soft)] text-[var(--color-wa)] border-[var(--color-wa)] flex items-center gap-1 font-mono"
           >
             <XCircle className="w-3 h-3" /> WA
           </motion.span>
@@ -68,7 +68,7 @@ export const RunnerPanel: React.FC = () => {
             initial={{ scale: 0.92, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
-            className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#ff9f0a]/20 text-[#ff9f0a] border border-[#ff9f0a]/30 flex items-center gap-1 font-mono"
+            className="px-2 py-0.5 rounded text-[11px] font-bold bg-[var(--color-tle-soft)] text-[var(--color-tle)] border-[var(--color-tle)] flex items-center gap-1 font-mono"
           >
             <Clock className="w-3 h-3" /> TLE
           </motion.span>
@@ -79,7 +79,7 @@ export const RunnerPanel: React.FC = () => {
             initial={{ scale: 0.92, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
-            className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#5e5ce6]/20 text-[#5e5ce6] border border-[#5e5ce6]/30 flex items-center gap-1 font-mono"
+            className="px-2 py-0.5 rounded text-[11px] font-bold bg-[var(--color-mle-soft)] text-[var(--color-mle)] border-[var(--color-mle)] flex items-center gap-1 font-mono"
           >
             <Cpu className="w-3 h-3" /> MLE
           </motion.span>
@@ -90,7 +90,7 @@ export const RunnerPanel: React.FC = () => {
             initial={{ scale: 0.92, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
-            className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#c45c4a]/20 text-[#c45c4a] border border-[#c45c4a]/30 flex items-center gap-1 font-mono"
+            className="px-2 py-0.5 rounded text-[11px] font-bold bg-[var(--color-re-soft)] text-[var(--color-re)] border-[var(--color-re)] flex items-center gap-1 font-mono"
           >
             <AlertTriangle className="w-3 h-3" /> RE
           </motion.span>
@@ -132,7 +132,7 @@ export const RunnerPanel: React.FC = () => {
             <FileCode className="w-3.5 h-3.5" />
             <span>编译输出</span>
             {runResult?.isCompilationError && (
-              <span className="w-2 h-2 rounded-full bg-[#ff453a]" />
+              <span className="w-2 h-2 rounded-full bg-[var(--color-ce)]" />
             )}
           </button>
         </div>
@@ -141,7 +141,7 @@ export const RunnerPanel: React.FC = () => {
         {runResult && (
           <div className="flex items-center gap-3">
             {runResult.isCompilationError ? (
-              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#c49a3c]/20 text-[#c49a3c] border border-[#c49a3c]/30 font-mono">
+              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-[var(--color-ce-soft)] text-[var(--color-ce)] border border-[var(--color-ce)] font-mono">
                 Compilation Error
               </span>
             ) : (
@@ -195,7 +195,7 @@ export const RunnerPanel: React.FC = () => {
                           e.stopPropagation();
                           removeTestcase(tc.id);
                         }}
-                        className="opacity-0 hover:opacity-100 p-0.5 rounded text-[var(--text-tertiary)] hover:text-[#ff453a] transition-opacity cursor-pointer"
+                        className="opacity-0 hover:opacity-100 p-0.5 rounded text-[var(--text-tertiary)] hover:text-[var(--color-wa)] transition-opacity cursor-pointer"
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -259,13 +259,13 @@ export const RunnerPanel: React.FC = () => {
                     <span className="text-[11px] font-medium text-[var(--text-tertiary)] flex items-center gap-1.5">
                       <span>实际输出</span>
                       {activeResult.verdict === 'AC' ? (
-                        <span className="text-[#34c759] text-[10px] font-semibold">100% 匹配一致</span>
+                        <span className="text-[var(--color-ac)] text-[10px] font-semibold">100% 匹配一致</span>
                       ) : activeResult.verdict === 'MLE' ? (
                         <span className="text-[var(--color-mle)] text-[10px] font-semibold">超出内存限制（本例峰值 {memoryLabel(activeResult.memoryKb)}）</span>
                       ) : activeResult.actualOutput.trim() === activeInput?.expectedOutput.trim() ? (
-                        <span className="text-[#ff9f0a] text-[10px] font-semibold">末尾空格/换行差异</span>
+                        <span className="text-[var(--color-tle)] text-[10px] font-semibold">末尾空格/换行差异</span>
                       ) : (
-                        <span className="text-[#ff453a] text-[10px] font-semibold">内容不符 (Diff)</span>
+                        <span className="text-[var(--color-wa)] text-[10px] font-semibold">内容不符 (Diff)</span>
                       )}
                     </span>
                     <span className="font-mono text-[10px] text-[var(--text-tertiary)]">
@@ -273,7 +273,7 @@ export const RunnerPanel: React.FC = () => {
                     </span>
                   </div>
                   <pre
-                    className={'flex-1 w-full p-2.5 rounded-lg border font-mono text-xs overflow-auto leading-relaxed ' + (activeResult.verdict === 'AC' ? 'border-[#34c759]/40 bg-[#34c759]/5 text-[var(--text-primary)]' : activeResult.verdict === 'MLE' ? 'border-[#5e5ce6]/40 bg-[#5e5ce6]/5 text-[var(--text-primary)]' : 'border-[#ff453a]/40 bg-[#ff453a]/5 text-[var(--text-primary)]')}
+                    className={'flex-1 w-full p-2.5 rounded-lg border font-mono text-xs overflow-auto leading-relaxed ' + (activeResult.verdict === 'AC' ? 'border-[var(--color-ac)] bg-[var(--color-ac-soft)] text-[var(--text-primary)]' : activeResult.verdict === 'MLE' ? 'border-[var(--color-mle)] bg-[var(--color-mle-soft)] text-[var(--text-primary)]' : 'border-[var(--color-wa)] bg-[var(--color-wa-soft)] text-[var(--text-primary)]')}
                   >
                     {activeResult.actualOutput || (activeResult.errorMessage && ('[Error]: ' + activeResult.errorMessage)) || '(空输出)'}
                   </pre>
@@ -285,7 +285,7 @@ export const RunnerPanel: React.FC = () => {
           /* Compilation Stderr / Output Tab */
           <div className="flex-1 p-3 flex flex-col gap-1.5 overflow-hidden">
             <span className="text-[11px] font-medium text-[var(--text-tertiary)]">
-              编译器控制台日志 ({settings?.compilerPath || 'g++'} -O2 -std=c++17)
+              编译器控制台日志 ({settings?.compilerPath || 'g++'} {settings?.compilerFlags?.join(' ') || '-O2 -std=c++17'})
             </span>
             <pre className="flex-1 w-full p-3 rounded-lg border font-mono text-xs overflow-auto bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)] leading-relaxed whitespace-pre-wrap">
               {runResult?.compilerOutput || '暂无编译日志。点击上方「运行」开始编译。'}

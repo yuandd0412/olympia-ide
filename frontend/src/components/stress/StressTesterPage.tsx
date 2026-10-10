@@ -140,7 +140,7 @@ export const StressTesterPage: React.FC = () => {
                 {activeCodeTab === 'brute' && (
                   <motion.div layoutId="stressSubTab" className="absolute inset-0 rounded-md bg-[var(--bg-base)] shadow-xs border border-[var(--border)]" transition={{ duration: 0.15, ease: 'easeOut' }} />
                 )}
-                <FileCode2 className="w-3 h-3 text-[#34c759] relative z-10" />
+                <FileCode2 className="w-3 h-3 text-[var(--color-ac)] relative z-10" />
                 <span className="relative z-10">2. 暴力/基准 (Standard.cpp)</span>
               </button>
 
@@ -151,7 +151,7 @@ export const StressTesterPage: React.FC = () => {
                 {activeCodeTab === 'gen' && (
                   <motion.div layoutId="stressSubTab" className="absolute inset-0 rounded-md bg-[var(--bg-base)] shadow-xs border border-[var(--border)]" transition={{ duration: 0.15, ease: 'easeOut' }} />
                 )}
-                <FileCode2 className="w-3 h-3 text-[#ff9f0a] relative z-10" />
+                <FileCode2 className="w-3 h-3 text-[var(--color-tle)] relative z-10" />
                 <span className="relative z-10">3. 数据生成器 (Generator.cpp)</span>
               </button>
             </div>
@@ -214,18 +214,18 @@ export const StressTesterPage: React.FC = () => {
               {/* Status Banner */}
               <div className="flex items-center justify-between">
                 {stressResult.isCompilationError ? (
-                  <div className="flex items-center gap-2 text-[#ff9f0a] font-semibold">
+                  <div className="flex items-center gap-2 text-[var(--color-tle)] font-semibold">
                     <AlertTriangle className="w-4 h-4" />
                     <span>编译错误: 对拍前编译失败</span>
                   </div>
                 ) : stressResult.success ? (
-                  <div className="flex items-center gap-2 text-[#34c759] font-semibold">
+                  <div className="flex items-center gap-2 text-[var(--color-ac)] font-semibold">
                     <CheckCircle2 className="w-4 h-4" />
                     <span>对拍全部通过！已完成 {stressResult.totalRounds} / {stressResult.totalRounds} 组随机数据比对，未发现反例</span>
                   </div>
                 ) : (
                   <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-2 text-[#ff453a] font-semibold">
+                    <div className="flex items-center gap-2 text-[var(--color-wa)] font-semibold">
                       <XCircle className="w-4 h-4" />
                       <span>
                         在第 {stressResult.failedRound?.round} 组数据发现差异！({stressResult.failedRound?.errorMsg})
@@ -250,7 +250,7 @@ export const StressTesterPage: React.FC = () => {
                   <Cpu className="w-3 h-3" />
                   <span>
                     待测程序峰值内存 {memoryLabel(stressResult.maxSolMemoryKb)}
-                    {activeProblem ? ` / 本题限制 ${memoryLabel(activeProblem.memoryLimitKb)}` : ''}
+                    {activeProblem ? ` / 本题限制 ${Math.round(activeProblem.memoryLimitKb / 1024)} MB` : ''}
                   </span>
                   {activeProblem && stressResult.maxSolMemoryKb > activeProblem.memoryLimitKb && (
                     <span className="text-[var(--color-mle)] font-semibold">
@@ -262,7 +262,7 @@ export const StressTesterPage: React.FC = () => {
 
               {/* Compilation Error Details */}
               {stressResult.isCompilationError && (
-                <pre className="p-3 rounded-xl border bg-[var(--bg-elevated)] border-[var(--border)] text-[#ff9f0a] font-mono text-xs overflow-auto">
+                <pre className="p-3 rounded-xl border bg-[var(--bg-elevated)] border-[var(--border)] text-[var(--color-tle)] font-mono text-xs overflow-auto">
                   {stressResult.compilerOutput}
                 </pre>
               )}
@@ -282,7 +282,7 @@ export const StressTesterPage: React.FC = () => {
                       >
                         {copiedField === 'input' ? (
                           <>
-                            <Check className="w-3 h-3 text-[#34c759]" /> 已复制
+                            <Check className="w-3 h-3 text-[var(--color-ac)]" /> 已复制
                           </>
                         ) : (
                           <>
@@ -299,7 +299,7 @@ export const StressTesterPage: React.FC = () => {
                   {/* Solution Output (Wrong) */}
                   <div className="flex flex-col gap-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold text-[#ff453a]">
+                      <span className="font-semibold text-[var(--color-wa)]">
                         待测程序输出 (Solution Output)
                       </span>
                       {stressResult.failedRound.solMemoryKb != null && (
@@ -308,17 +308,17 @@ export const StressTesterPage: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <pre className="p-2.5 rounded-lg border font-mono text-xs overflow-auto h-32 bg-[#ff453a]/5 border-[#ff453a]/30 text-[var(--text-primary)]">
+                    <pre className="p-2.5 rounded-lg border font-mono text-xs overflow-auto h-32 bg-[var(--color-wa-soft)] border-[var(--color-wa)] text-[var(--text-primary)]">
                       {stressResult.failedRound.solOutput || '(无输出或运行崩溃)'}
                     </pre>
                   </div>
 
                   {/* Standard Output (Expected) */}
                   <div className="flex flex-col gap-1.5">
-                    <span className="font-semibold text-[#34c759]">
+                    <span className="font-semibold text-[var(--color-ac)]">
                       暴力标准输出 (Expected Output)
                     </span>
-                    <pre className="p-2.5 rounded-lg border font-mono text-xs overflow-auto h-32 bg-[#34c759]/5 border-[#34c759]/30 text-[var(--text-primary)]">
+                    <pre className="p-2.5 rounded-lg border font-mono text-xs overflow-auto h-32 bg-[var(--color-ac-soft)] border-[var(--color-ac)] text-[var(--text-primary)]">
                       {stressResult.failedRound.bruteOutput || '(无输出)'}
                     </pre>
                   </div>

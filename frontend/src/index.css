@@ -25,6 +25,14 @@
     --color-mle: #5e5ce6;
     --color-re: #e06c75;
     --color-ce: #d19a66;
+    /* Tinted fills for verdict badges — `var()` cannot carry a Tailwind alpha
+       modifier, so the soft value is its own token. */
+    --color-ac-soft: rgba(52, 199, 89, 0.16);
+    --color-wa-soft: rgba(255, 69, 58, 0.16);
+    --color-tle-soft: rgba(255, 159, 10, 0.16);
+    --color-mle-soft: rgba(94, 92, 230, 0.16);
+    --color-re-soft: rgba(224, 108, 117, 0.16);
+    --color-ce-soft: rgba(209, 154, 102, 0.16);
   }
 
   [data-theme="GitHubLight"] {
@@ -47,6 +55,12 @@
     --color-mle: #4433cf;
     --color-re: #8250df;
     --color-ce: #bc4c00;
+    --color-ac-soft: rgba(26, 127, 55, 0.12);
+    --color-wa-soft: rgba(207, 34, 46, 0.12);
+    --color-tle-soft: rgba(154, 103, 0, 0.12);
+    --color-mle-soft: rgba(68, 51, 207, 0.12);
+    --color-re-soft: rgba(130, 80, 223, 0.12);
+    --color-ce-soft: rgba(188, 76, 0, 0.12);
   }
 
   * {

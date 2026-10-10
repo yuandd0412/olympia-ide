@@ -33,6 +33,12 @@
     --color-mle-soft: rgba(94, 92, 230, 0.16);
     --color-re-soft: rgba(224, 108, 117, 0.16);
     --color-ce-soft: rgba(209, 154, 102, 0.16);
+    /* Difficulty tiers (题库 cards / filter chips). */
+    --diff-entry: #34c759;
+    --diff-basic: #ff9f0a;
+    --diff-advanced: #ff6b22;
+    --diff-provincial: #af52de;
+    --diff-noi: #ff453a;
   }
 
   [data-theme="GitHubLight"] {
@@ -61,6 +67,11 @@
     --color-mle-soft: rgba(68, 51, 207, 0.12);
     --color-re-soft: rgba(130, 80, 223, 0.12);
     --color-ce-soft: rgba(188, 76, 0, 0.12);
+    --diff-entry: #1a7f37;
+    --diff-basic: #9a6700;
+    --diff-advanced: #bc4c00;
+    --diff-provincial: #8250df;
+    --diff-noi: #cf222e;
   }
 
   * {

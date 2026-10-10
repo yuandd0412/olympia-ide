@@ -66,6 +66,23 @@ export const verdictColor = (verdictCode: string): string =>
   })[verdictCode] ?? verdict.wa;
 
 /**
+ * Difficulty tier colour. Matching stays substring-based because the stored
+ * labels are free text from the ingest step (`入门`, `普及-`, `NOI 提高`…).
+ * An unrecognised label gets the neutral text tone rather than 入门's green, so
+ * an unknown difficulty never reads as "accepted-easy".
+ */
+export const difficultyColor = (label: string): string => {
+  const tiers: ReadonlyArray<readonly [string, string]> = [
+    ['入门', cssVar('diff-entry')],
+    ['普及', cssVar('diff-basic')],
+    ['提高', cssVar('diff-advanced')],
+    ['省选', cssVar('diff-provincial')],
+    ['NOI', cssVar('diff-noi')],
+  ];
+  return tiers.find(([key]) => label.includes(key))?.[1] ?? fg.tertiary;
+};
+
+/**
  * Peak-memory label. The judge reports `0` when the Win32 sample failed, and
  * that must not read as "used 0 KB".
  */

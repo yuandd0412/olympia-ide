@@ -288,7 +288,7 @@ export const RunnerPanel: React.FC = () => {
               编译器控制台日志 ({settings?.compilerPath || 'g++'} {settings?.compilerFlags?.join(' ') || '-O2 -std=c++17'})
             </span>
             <pre className="flex-1 w-full p-3 rounded-lg border font-mono text-xs overflow-auto bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)] leading-relaxed whitespace-pre-wrap">
-              {runResult?.compilerOutput || '暂无编译日志。点击上方「运行」开始编译。'}
+              {runResult?.compilerOutput || '暂无编译日志。点击上方「运行评测」开始编译。'}
             </pre>
           </div>
         )}

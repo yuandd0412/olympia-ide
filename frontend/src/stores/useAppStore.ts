@@ -145,7 +145,6 @@ interface AppState {
   modalProblem: Problem | null;
   searchQuery: string;
   selectedDifficulty: string;
-  selectedVerdict: string;
 
   // Actions
   setActiveNav: (nav: NavTab) => void;
@@ -182,7 +181,6 @@ interface AppState {
   openProblemModal: (problem: Problem) => void;
   closeProblemModal: () => void;
   setViewerPdfUrl: (url: string | null) => void;
-  setViewerProblem: (problem: Problem | null) => void;
 
   // Practice Records (题集 / 比赛)
   practiceRecords: PracticeRecord[];
@@ -208,7 +206,6 @@ interface AppState {
   // Filters
   setSearchQuery: (q: string) => void;
   setSelectedDifficulty: (d: string) => void;
-  setSelectedVerdict: (v: string) => void;
 }
 
 const getSavedTheme = (): import('../types').ThemeType => {
@@ -413,7 +410,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   searchQuery: '',
   selectedDifficulty: '全部',
-  selectedVerdict: '全部',
 
   setActiveNav: (nav) => set({ activeNav: nav }),
 
@@ -880,9 +876,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   closeProblemModal: () => set({ isDetailModalOpen: false, modalProblem: null }),
 
   setViewerPdfUrl: (url) => set({ viewerPdfUrl: url }),
-  setViewerProblem: (problem) => set({ viewerProblem: problem }),
 
   setSearchQuery: (q) => set({ searchQuery: q }),
   setSelectedDifficulty: (d) => set({ selectedDifficulty: d }),
-  setSelectedVerdict: (v) => set({ selectedVerdict: v }),
 }));

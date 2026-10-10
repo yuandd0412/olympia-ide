@@ -10,10 +10,11 @@ import {
   Search,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
+import { difficultyColor } from '../../lib/design';
 import { ProblemDetailModal } from './ProblemDetailModal';
 
 /** Filter chips; `全部` is the store's default `selectedDifficulty`. */
-const DIFFICULTIES = ['全部', '入门', '普及', '提高', '省选', 'NOI'];
+const DIFFICULTIES = ['全部', '入门', '普及', '提高', '省选', 'NOI', '暂无'];
 
 
 
@@ -64,15 +65,6 @@ export const ProblemsPage: React.FC = () => {
     } finally {
       setIsFetching(false);
     }
-  };
-
-  const getDifficultyColor = (diff: string) => {
-    if (diff.includes('入门')) return '#34c759';
-    if (diff.includes('普及')) return '#ff9f0a';
-    if (diff.includes('提高')) return '#ff6b22';
-    if (diff.includes('省选')) return '#af52de';
-    if (diff.includes('NOI')) return '#ff453a';
-    return '#34c759';
   };
 
   const getOjBadgeStyle = (oj: string) => {
@@ -152,7 +144,7 @@ export const ProblemsPage: React.FC = () => {
                     ? 'var(--accent)'
                     : d === '全部'
                       ? 'var(--text-secondary)'
-                      : getDifficultyColor(d),
+                      : difficultyColor(d),
                 }}
               >
                 {d}
@@ -165,7 +157,7 @@ export const ProblemsPage: React.FC = () => {
       {/* Problems Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {filteredProblems.map((p) => {
-          const diffColor = getDifficultyColor(p.difficulty);
+          const diffColor = difficultyColor(p.difficulty);
           const ojBadge = getOjBadgeStyle(p.oj);
 
           return (
@@ -196,7 +188,7 @@ export const ProblemsPage: React.FC = () => {
                     className="w-2 h-2 rounded-full"
                     style={{
                       backgroundColor: diffColor,
-                      boxShadow: `0 0 6px ${diffColor}80`,
+                      boxShadow: `0 0 6px ${diffColor}`,
                     }}
                   />
                   <span className="text-[11px] font-medium text-[var(--text-tertiary)]">

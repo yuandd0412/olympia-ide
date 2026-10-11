@@ -107,9 +107,18 @@ legacy `olympia.olympia-coach` in `defaultChatAgent.extensionId` / `.chatExtensi
 silently and persistently disables any built-in whose id equals `chatExtensionId` until chat setup is
 completed, and `_isDisabledByUnification` (`:663`) disables `extensionId` while
 `chat.extensionUnification.enabled` is on. Claiming either field would ship the coach switched off on
-every fresh profile. The dangling ids are provably inert: each core consumer of the remaining
-`defaultChatAgent` fields either catches the missing command (e.g. `chatSetup.ts:126`) or is gated on
-`ChatContextKeys.Setup.installed`, which the phantom id keeps false.
+every fresh profile.
+
+The dangling ids were **not** as inert as they looked. `chatSetupContributions.ts:699-700` computes
+`ChatContextKeys.Setup.installed` by matching `chatExtensionId` against locally installed extensions,
+so the phantom id pinned it to `false`, and every `!installed` gate in the chat setup UI treated the
+product as "Copilot not installed yet" — the sign-in banner, the title-bar login item and the
+plan/upgrade surface were all live. Rather than match the ids (which would trip the disable trap
+above), `oss/product.json` now sets `defaultChatAgent.byokOnly: true`: `ChatEntitlementService` marks
+`Setup.hidden/installed/completed` and returns before constructing `ChatEntitlementContext` /
+`ChatEntitlementRequests`, so no entitlement or quota request is made at startup either, and
+`DefaultAccountProviderContribution` does not register an account provider whose auth id has no
+extension behind it. See [`AGENTS.md`](../../AGENTS.md) for the same rule in one line.
 
 Model access is bring-your-own-key only
 ([`src/model.ts`](../../oss/extensions/olympia-coach/src/model.ts)): `listModels()` goes through the

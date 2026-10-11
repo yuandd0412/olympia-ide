@@ -14,15 +14,27 @@ AREAS = sys.argv[1:] or [
     'src/vs/platform/accessibilitySignal',
 ]
 
-for area in AREAS:
-    print('=====', area)
+# Areas are named relative to the fork, so they must be resolved against the fork rather
+# than the caller's cwd — an unresolvable area used to print a heading and then nothing,
+# which reads exactly like "this area is fully translated".
+_FORK = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'oss'))
+targets = []
+for a in AREAS:
+    p = a if os.path.isabs(a) else os.path.join(_FORK, a)
+    if not os.path.isdir(p):
+        sys.exit('area does not exist: %s' % p)
+    targets.append((a, p))
+
+for label, area in targets:
+    print('=====', label)
     for root, dirs, files in os.walk(area):
         dirs[:] = [d for d in dirs if d != 'test']
         for name in sorted(files):
             if not name.endswith('.ts'):
                 continue
-            path = os.path.join(root, name).replace(os.sep, '/')
-            src = io.open(path, encoding='utf-8', errors='ignore').read()
+            real = os.path.join(root, name)
+            path = os.path.relpath(real, _FORK).replace(os.sep, '/')
+            src = io.open(real, encoding='utf-8', errors='ignore').read()
             for m in PAIR.finditer(src):
                 msg = m.group(3)
                 if CJK.search(msg) or not re.search(r'[A-Za-z]{3}', msg):

@@ -64,9 +64,27 @@ metadata).
 
 ## `olympia-coach` — the `@coach` chat participant
 
-A chat participant, not an assistant provider: it registers `olympia.coach` (display name `coach`,
-slash commands `/wa`, `/hint`, `/check`) and contributes one command, `olympia.coach.selectModel`.
-It activates on `onStartupFinished`.
+A chat participant **and** the BYOK model provider: it registers `olympia.coach` (display name
+`coach`, slash commands `/wa`, `/hint`, `/check`), contributes `olympia.coach.selectModel`,
+`olympia.coach.setApiKey`, the settings `olympia.ai.baseUrl` / `olympia.ai.models`, and contributes
+`languageModelChatProviders` with `vendor: "olympia"`, registering it through
+`vscode.lm.registerLanguageModelChatProvider` (stable API,
+[`vscode.d.ts:20851`](../../oss/src/vscode-dts/vscode.d.ts)). It activates on `onStartupFinished`.
+
+The provider half is new (oss `9a2bb6da`) and exists because nothing else in the build can supply
+models: the only other `languageModelChatProviders` contributor in the tree is `extensions/copilot`,
+which is not in the `compilations` array in `oss/build/gulpfile.extensions.ts`, so before this
+`selectModels()` was always empty and `@coach` could not answer. `provideLanguageModelChatResponse`
+POSTs to `${baseUrl}/chat/completions` with `stream: true`, parses SSE lines and reports each delta as
+a `LanguageModelTextPart`; `olympia.ai.models` decides which ids are offered. The API key lives only
+in `SecretStorage`, entered through a password `InputBox` (empty clears it) — never in
+`settings.json` or `globalState`. Text-only, no tool calling.
+
+Unverified consequence: `defaultChatAgent.provider.providerExtensionId` still names the legacy
+`olympia.olympia-coach`, while this extension's real id is `olympia.coach`, so core's own "manage
+language models" surface may not associate the two even though `selectModels()` returns the models.
+The coach's own picker (`olympia.coach.selectModel`) does not depend on it. Confirm on a device
+before treating the settings panel as the supported path.
 
 **It deliberately does not occupy the `defaultChatAgent` slot.** `oss/product.json` still names the
 legacy `olympia.olympia-coach` in `defaultChatAgent.extensionId` / `.chatExtensionId` /

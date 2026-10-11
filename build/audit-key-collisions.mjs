@@ -30,8 +30,18 @@ for (const l of collectLiterals(SRC)) {
 	byTrimmedText.get(t).push(rel);
 }
 
-let risky = 0, absent = 0, checked = 0;
-for (const dictPath of process.argv.slice(2)) {
+const args = process.argv.slice(2);
+if (args.length === 0) {
+	// Without arguments this loop body never ran, and the script still printed
+	// "checked: 0   multi-file (review): 0   absent: 0" — a summary that reads as a clean
+	// pass while auditing nothing at all.
+	console.error('usage: node build/audit-key-collisions.mjs build/zh-cn-dict-N.mjs [...]');
+	console.error('refusing to run with no dictionary (that would only prove the loop is empty)');
+	process.exit(2);
+}
+
+let risky = 0, absent = 0, checked = 0, applied = 0, appliedMulti = 0;
+for (const dictPath of args) {
 	const mod = await import(pathToFileURL(dictPath).href);
 	const obj = mod.default ?? mod;
 	console.log(`\n--- ${dictPath} ---`);
@@ -39,7 +49,24 @@ for (const dictPath of process.argv.slice(2)) {
 		if (typeof obj[k] !== 'string' || !/[A-Za-z]/.test(k)) { continue; }
 		checked++;
 		const sites = byText.get(k) ?? byTrimmedText.get(k.trim());
-		if (!sites) { absent++; console.log(`  ABSENT   "${k}"`); continue; }
+		if (!sites) {
+			// The applier rewrites in place, so for a batch that has already landed the
+			// English key is gone and this used to be reported as ABSENT — indistinguishable
+			// from a wrong key. The translated value is still in the tree, so look THAT up:
+			// it both proves the batch applied and reveals its real fan-out across files.
+			const valueSites = byText.get(obj[k]) ?? byTrimmedText.get(obj[k].trim());
+			if (valueSites) {
+				applied++;
+				const files = [...new Set(valueSites)];
+				if (files.length > 1) {
+					appliedMulti++;
+					console.log(`  APPLIED-MULTI(${files.length}) "${k}" -> ${JSON.stringify(obj[k])}`);
+					for (const f of files.sort()) { console.log(`            ${f}`); }
+				}
+				continue;
+			}
+			absent++; console.log(`  ABSENT   "${k}"`); continue;
+		}
 		const files = [...new Set(sites)];
 		if (files.length > 1) {
 			risky++;
@@ -48,4 +75,4 @@ for (const dictPath of process.argv.slice(2)) {
 		}
 	}
 }
-console.log(`\nchecked: ${checked}   multi-file (review): ${risky}   absent: ${absent}`);
+console.log(`\nchecked: ${checked}   multi-file (review): ${risky}   applied-multi-file (review): ${appliedMulti}   applied: ${applied}   absent (wrong or stale key): ${absent}`);

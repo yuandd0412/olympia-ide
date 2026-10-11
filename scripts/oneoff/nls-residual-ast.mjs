@@ -18,7 +18,7 @@
 //     template literals — so in aggregate the regex undercounts.
 // Use this script's number for anything that has to be true.
 //
-// Usage: node scripts/oneoff/nls-residual-ast.mjs [--dump] [--top=15]
+// Usage: node scripts/oneoff/nls-residual-ast.mjs [--dump] [--top=15] [--all-areas]
 import { readdirSync, readFileSync, statSync, existsSync } from 'fs';
 import { join, dirname, relative } from 'path';
 import { createRequire } from 'module';
@@ -36,6 +36,7 @@ const require = createRequire(join(FORK, 'package.json'));
 const ts = require('typescript');
 
 const DUMP = process.argv.includes('--dump');
+const ALL_AREAS = process.argv.includes('--all-areas');
 const TOP = Number((process.argv.find(a => a.startsWith('--top=')) || '--top=15').split('=')[1]);
 
 // Mirrors of the applier's selection rules. Keep in sync with build/apply-zh-cn-ast.mjs.
@@ -124,12 +125,17 @@ for (const file of walk(ROOT)) {
 					english++;
 					const rel = relative(ROOT, file).replace(/\\/g, '/');
 					if (!unreachable(rel)) { englishShipped++; }
-					const area = rel.split('/').slice(0, 3).join('/');
-					byArea.set(area, (byArea.get(area) || 0) + 1);
+					if (ALL_AREAS || !unreachable(rel)) {
+						const area = rel.split('/').slice(0, 3).join('/');
+						byArea.set(area, (byArea.get(area) || 0) + 1);
+					}
 					if (DUMP) {
 						const key = node.arguments[0] && ts.isStringLiteral(node.arguments[0]) ? node.arguments[0].text : '';
 						const line = sf.getLineAndCharacterOfPosition(literal.getStart()).line + 1;
-						rows.push(`${rel}:${line}\t${key}\t${msg.replace(/\n/g, '\\n').slice(0, 90)}`);
+						// No truncation: a cut message cannot be copied into a dictionary as a key,
+						// and a truncated key is reported as matching nothing anywhere. Batch 76 had
+						// to skip several long strings for exactly this reason.
+						rows.push(`${rel}:${line}\t${key}\t${msg.replace(/\n/g, '\\n')}${unreachable(rel) ? '\t[Copilot-only]' : ''}`);
 					}
 				}
 			}
@@ -150,7 +156,7 @@ console.log(`  English left:  ${english}`);
 console.log(`  ...and outside the Copilot-only subsystems this fork does not run: ${englishShipped}  <- the number worth acting on`);
 console.log(`regex-based counters report: ${regexHits}  (delta ${regexHits - english}; the two disagree in both directions — see the header)`);
 
-console.log(`\ntop ${TOP} areas by reachable English (ALL subsystems, incl. the Copilot-only ones above):`);
+console.log(`\ntop ${TOP} areas by reachable English${ALL_AREAS ? ' (ALL subsystems, incl. the Copilot-only ones)' : ' (product surfaces only — pass --all-areas for everything)'}:`);
 for (const [area, n] of [...byArea].sort((a, b) => b[1] - a[1]).slice(0, TOP)) {
 	console.log(`  ${String(n).padStart(5)}  ${area}`);
 }

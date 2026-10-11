@@ -70,7 +70,33 @@ function* walk(dir) {
 	}
 }
 
-let files = 0, reachable = 0, translated = 0, english = 0, regexHits = 0;
+// "4,6xx English remaining" is not "4,6xx strings a student might see": most of it is
+// Copilot-shaped machinery this fork does not run — the Sessions/Agents window (product.json's
+// `sessionsWindowAllowedExtensions` is empty), the agent host, MCP/voice/browser-view surfaces,
+// and the customization marketplace. Excluded here so the headline number means something; if
+// any of these surfaces is ever shipped, drop its prefix and re-measure.
+// Deliberately NOT excluded: workbench/contrib/chat and workbench/services/chat (the chat widget
+// is what @coach renders into) and workbench/api/common (Settings descriptions).
+const PRODUCT_UNREACHABLE = [
+	'sessions/',
+	'platform/agentHost/',
+	'platform/copilotConnectors/',
+	'platform/agentFinder/',
+	'platform/browserView/',
+	'platform/customizationMarketplace/',
+	'workbench/contrib/agentsVoice/',
+	'workbench/contrib/browserView/',
+	'workbench/contrib/remoteTunnel/',
+	'workbench/contrib/github/',
+	'workbench/services/dataChannel/',
+	'workbench/services/policies/',
+];
+
+function unreachable(rel) {
+	return PRODUCT_UNREACHABLE.some(p => rel.startsWith(p));
+}
+
+let files = 0, reachable = 0, translated = 0, english = 0, regexHits = 0, englishShipped = 0;
 const byArea = new Map();
 const rows = [];
 
@@ -97,6 +123,7 @@ for (const file of walk(ROOT)) {
 				} else if (/[A-Za-z]{3}/.test(msg) && msg.trim().length > 3) {
 					english++;
 					const rel = relative(ROOT, file).replace(/\\/g, '/');
+					if (!unreachable(rel)) { englishShipped++; }
 					const area = rel.split('/').slice(0, 3).join('/');
 					byArea.set(area, (byArea.get(area) || 0) + 1);
 					if (DUMP) {
@@ -120,6 +147,7 @@ console.log(`files parsed: ${files}`);
 console.log(`localize messages reachable by an AST pass: ${reachable}`);
 console.log(`  already zh-cn: ${translated}`);
 console.log(`  English left:  ${english}`);
+console.log(`  ...and outside the Copilot-only subsystems this fork does not run: ${englishShipped}  <- the number worth acting on`);
 console.log(`regex-based counters report: ${regexHits}  (delta ${regexHits - english}; the two disagree in both directions — see the header)`);
 
 console.log(`\ntop ${TOP} areas by reachable English:`);

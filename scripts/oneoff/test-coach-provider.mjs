@@ -24,9 +24,12 @@ const configStore = {
 	'olympia.ai.models': ['m-A', 'm-B']
 };
 
+const logs = [];
+const logStub = { info: m => logs.push(['info', m]), warn: m => logs.push(['warn', m]), error: m => logs.push(['error', m]) };
+
 const vscodeStub = {
 	LanguageModelTextPart: TextPart,
-	workspace: { getConfiguration: () => ({ get: key => configStore[`olympia.ai.${key}`] }) },
+	workspace: { getConfiguration: () => ({ get: key => configStore[`olympia.ai.${key}`] }), onDidChangeConfiguration: () => ({ dispose() { } }) },
 	lm: { registerLanguageModelChatProvider: () => ({ dispose() { } }) },
 	commands: { registerCommand: () => ({ dispose() { } }) },
 	window: { showInputBox: async () => undefined, showInformationMessage: async () => undefined },
@@ -38,19 +41,22 @@ Module._load = function (request, parent, isMain) {
 	return originalLoad.call(this, request, parent, isMain);
 };
 
-const { OlympiaChatProvider } = require('./provider.js');
+const { OlympiaChatProvider, parseModelIds } = require('./provider.js');
 
 const context = { secrets: { get: async () => 'sk-test' } };
-const provider = new OlympiaChatProvider(context);
+const provider = new OlympiaChatProvider(context, logStub);
 
-// ---- what does the provider advertise? ----
+// ---- an explicit list must win, and must not touch the network ----
+let modelRequests = 0;
+globalThis.fetch = async () => { modelRequests++; throw new Error('must not be called'); };
 const models = await provider.provideLanguageModelChatInformation({ silent: false }, { });
 assert.strictEqual(models.length, 2, 'one model per configured id');
 assert.strictEqual(models[0].vendor, 'olympia');
 assert.ok(models[0].capabilities, 'capabilities is required by the d.ts');
+assert.strictEqual(modelRequests, 0, 'a non-empty olympia.ai.models must short-circuit the /models fetch');
 
 // ---- no key must mean no models, and no crash ----
-const noKeyProvider = new OlympiaChatProvider({ secrets: { get: async () => undefined } });
+const noKeyProvider = new OlympiaChatProvider({ secrets: { get: async () => undefined } }, logStub);
 assert.deepStrictEqual(await noKeyProvider.provideLanguageModelChatInformation({ silent: true }, {}), []);
 
 // ---- request mapping + SSE parsing ----
@@ -117,5 +123,67 @@ await assert.rejects(
 	() => provider.provideLanguageModelChatResponse({ id: 'm-A' }, [{ role: 1, content: ['x'] }], {}, progress, { onCancellationRequested: () => ({ dispose() { } }) }),
 	/HTTP 401 invalid api key/,
 );
+
+// ---- GET /models, the default path once olympia.ai.models is left empty ----
+configStore['olympia.ai.models'] = [];
+let modelsFetches = 0;
+let lastModelsUrl;
+let lastModelsAuth;
+const serveModels = payload => {
+	globalThis.fetch = async (url, init) => {
+		modelsFetches++;
+		lastModelsUrl = url;
+		lastModelsAuth = init.headers.authorization;
+		return { ok: true, status: 200, text: async () => typeof payload === 'string' ? payload : JSON.stringify(payload) };
+	};
+};
+const list = () => provider.provideLanguageModelChatInformation({ silent: false }, {});
+
+provider.invalidateModelsCache();
+serveModels({ data: [{ id: 'ds-chat' }, { id: 'ds-Embedding-1' }, { id: 'ds-reasoner' }, { id: 'ds-chat' }] });
+let listed = (await list()).map(m => m.id);
+assert.strictEqual(lastModelsUrl, 'https://example.test/v1/models', 'listed from the same normalised baseUrl');
+assert.strictEqual(lastModelsAuth, 'Bearer sk-test');
+assert.deepStrictEqual(listed, ['ds-chat', 'ds-reasoner'], 'embedding filtered, order kept, duplicates removed');
+
+provider.invalidateModelsCache();
+serveModels(['a', 'b']);
+assert.deepStrictEqual((await list()).map(m => m.id), ['a', 'b'], 'root-array payload shape');
+
+provider.invalidateModelsCache();
+serveModels({ models: [{ name: 'x' }, { model: 'y' }] });
+assert.deepStrictEqual((await list()).map(m => m.id), ['x', 'y'], 'models[] with name/model as the id field');
+
+modelsFetches = 0;
+assert.deepStrictEqual((await list()).map(m => m.id), ['x', 'y'], 'the cached list is reused');
+assert.strictEqual(modelsFetches, 0, 'a cache hit must not hit the network');
+
+provider.invalidateModelsCache();
+globalThis.fetch = async () => ({ ok: false, status: 401, text: async () => 'invalid api key' });
+logs.length = 0;
+assert.deepStrictEqual((await list()).map(m => m.id), ['deepseek-chat', 'deepseek-reasoner'], '401 falls back to the built-in list');
+assert.ok(logs.some(([, message]) => /HTTP 401/.test(message)), 'the reason for the fallback is logged');
+
+provider.invalidateModelsCache();
+globalThis.fetch = async () => { throw new Error('ETIMEDOUT'); };
+logs.length = 0;
+assert.deepStrictEqual((await list()).map(m => m.id), ['deepseek-chat', 'deepseek-reasoner'], 'a network failure falls back too');
+assert.ok(logs.some(([, message]) => /ETIMEDOUT/.test(message)), 'the thrown reason is logged');
+
+provider.invalidateModelsCache();
+serveModels('this is not json');
+assert.deepStrictEqual((await list()).map(m => m.id), ['deepseek-chat', 'deepseek-reasoner'], 'an unparseable 200 falls back instead of returning an empty picker');
+
+provider.invalidateModelsCache();
+serveModels({ data: [{ id: 'text-embedding-3' }, { id: 'rerank-v1' }] });
+assert.deepStrictEqual((await list()).map(m => m.id), ['deepseek-chat', 'deepseek-reasoner'], 'a server that lists only non-chat models must not produce a dead picker');
+
+// ---- the parser is defensive about shape but never about content it cannot use ----
+assert.deepStrictEqual(parseModelIds({ data: [{ id: 'a' }, null, 5, { id: '' }, {}] }), ['a'], 'junk rows ignored');
+assert.deepStrictEqual(parseModelIds(null), []);
+assert.deepStrictEqual(parseModelIds(undefined), []);
+assert.deepStrictEqual(parseModelIds('string'), []);
+assert.deepStrictEqual(parseModelIds({ models: 'not-an-array' }), []);
+assert.deepStrictEqual(parseModelIds({ data: ['r', 'r', 'q'] }), ['r', 'q'], 'duplicates collapse, order preserved');
 
 console.log('coach provider harness: all assertions passed');

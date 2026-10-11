@@ -80,6 +80,12 @@ a `LanguageModelTextPart`; `olympia.ai.models` decides which ids are offered. Th
 in `SecretStorage`, entered through a password `InputBox` (empty clears it) — never in
 `settings.json` or `globalState`. Text-only, no tool calling.
 
+How to exercise it without a device: `scripts/oneoff/test-coach-provider.mjs` loads the compiled
+`out/provider.js` with `vscode` stubbed and asserts model listing, the no-key early return, URL
+normalisation, the bearer header, abort wiring, role/part mapping, SSE frame handling (malformed,
+keepalive, `[DONE]`), the two token weights and HTTP-error surfacing. Run
+`npm run gulp compile-extension:olympia-coach` first, then `node scripts/oneoff/test-coach-provider.mjs`.
+
 Why the mismatch above is harmless, traced rather than assumed: the only consumer of
 `defaultChatAgent.provider.providerExtensionId` is `maybeEnableAuthExtension`
 ([`chatSetup.ts:155-187`](../../oss/src/vs/workbench/contrib/chat/browser/chatSetup/chatSetup.ts)),

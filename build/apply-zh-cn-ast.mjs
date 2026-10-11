@@ -101,10 +101,22 @@ let total = 0;
 let fileCount = 0;
 const used = new Set();
 const touched = [];
+// "unmatched" used to be one flat list, and it is actively misleading: the applier rewrites
+// files in place, so a key that has ALREADY been applied disappears from the source and comes
+// back looking like a failure — while a key aimed at text that only exists inside a comment
+// (taskTemplates.ts's legacy `/* Version 1.0 templates */` block, the commented-out
+// MenuRegistry.addCommand pair, tokenClassificationRegistry.ts's `//errorMessage`) can never
+// match no matter what. Those are different problems with different fixes; telling them apart
+// needs the message texts we saw and the comment text we skipped.
+const seenMessages = new Set();
+const commentChunks = [];
 
 for (const file of walk(ROOT)) {
 	const text = readFileSync(file, 'utf8');
 	if (!/[A-Za-z]/.test(text)) { continue; }
+
+	const comments = text.match(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g);
+	if (comments) { commentChunks.push(...comments); }
 
 	let sf;
 	try { sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS); }
@@ -119,6 +131,7 @@ for (const file of walk(ROOT)) {
 				const start = literal.getStart(sf);
 				const end = literal.getEnd();
 				const cooked = literal.text;
+				seenMessages.add(cooked);
 				// VS Code registers many color descriptions with a LEADING SPACE, e.g.
 				// nls.localize('editorStickyScrollShadow', " Shadow color of sticky scroll ...").
 				// A dictionary key written without that space never matches, and the English
@@ -163,6 +176,22 @@ for (const [n, f] of touched.slice(0, 25)) { console.log(`  ${String(n).padStart
 const unused = [...dict.keys()].filter(k => !used.has(k));
 console.log(`\ndict entries matched: ${used.size} / ${dict.size}`);
 if (unused.length) {
-	console.log(`unmatched (${unused.length}):`);
-	for (const u of unused.slice(0, 80)) { console.log('  ' + JSON.stringify(u)); }
+	const blob = commentChunks.join('\n');
+	const applied = [];   // its Chinese output is live in the tree: the English left by design
+	const commented = []; // the text exists only inside comments: unreachable by any dictionary
+	const missing = [];   // the text is nowhere: the key itself is wrong, stale or renamed
+	for (const k of unused) {
+		const value = dict.get(k);
+		if (seenMessages.has(value) || seenMessages.has(value.trim())) { applied.push(k); }
+		else if (blob.includes(k)) { commented.push(k); }
+		else { missing.push(k); }
+	}
+	console.log(`unmatched (${unused.length}), split by cause:`);
+	const show = (label, list, note) => {
+		console.log(`  ${label} (${list.length})${note}`);
+		for (const k of list.slice(0, 20)) { console.log('    ' + JSON.stringify(k)); }
+	};
+	show('already applied in place', applied, ' — NOT a defect; re-runs always report these');
+	show('only inside comments', commented, ' — unreachable, delete the key or translate the live copy');
+	show('matches nothing anywhere', missing, ' — wrong or stale key, fix the text');
 }

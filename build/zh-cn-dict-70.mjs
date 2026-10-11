@@ -37,9 +37,10 @@ export default {
 		'常规字重（400），用于正文、标签与元信息。',
 	'SemiBold font weight (600) for headings and strong emphasis.':
 		'半粗字重（600），用于标题与强调文本。',
-	// workbench/contrib/tasks — task toolbar commands
-	'Run Rebuild Task': '运行重新构建任务',
-	'Run Clean Task': '运行清理任务',
+	// workbench/contrib/tasks — `Run Rebuild Task` / `Run Clean Task` removed: the
+	// MenuRegistry.addCommand calls that register them are commented out in
+	// task.contribution.ts:386-387, so the two localize() defaults exist only as comment text.
+	// No dictionary entry can reach them and neither command appears in the palette.
 	// workbench/contrib/tasks — three of the four labels `getTemplates()` returns; the
 	// Maven label was already carried by zh-cn-dict-auto. These three were applied in
 	// place by this batch, so a re-run of `apply-zh-cn-ast.mjs` reports them as

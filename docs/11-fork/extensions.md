@@ -80,11 +80,18 @@ a `LanguageModelTextPart`; `olympia.ai.models` decides which ids are offered. Th
 in `SecretStorage`, entered through a password `InputBox` (empty clears it) — never in
 `settings.json` or `globalState`. Text-only, no tool calling.
 
-Unverified consequence: `defaultChatAgent.provider.providerExtensionId` still names the legacy
-`olympia.olympia-coach`, while this extension's real id is `olympia.coach`, so core's own "manage
-language models" surface may not associate the two even though `selectModels()` returns the models.
-The coach's own picker (`olympia.coach.selectModel`) does not depend on it. Confirm on a device
-before treating the settings panel as the supported path.
+Why the mismatch above is harmless, traced rather than assumed: the only consumer of
+`defaultChatAgent.provider.providerExtensionId` is `maybeEnableAuthExtension`
+([`chatSetup.ts:155-187`](../../oss/src/vs/workbench/contrib/chat/browser/chatSetup/chatSetup.ts)),
+which is called from just two places — `ChatSetupController.signIn` (`chatSetupController.ts:168`) and
+`chatSetupProviders.ts:324` — i.e. the Copilot chat-setup sign-in flow, which this product never
+enters. It is doubly inert: with the phantom id, `extensionsWorkbenchService.local.find(...)` matches
+nothing and the function returns at `:167` before it can re-enable anything or show the leftover
+「正在启用 GitHub 身份验证」 progress label. Nothing in the LM provider registry keys off
+`providerExtensionId`; registration is by the contributing extension plus the `vendor` string, so the
+coach's models reach `selectModels()` regardless. Changing that product.json field is therefore neither
+required nor useful — and pointing it at `olympia.coach` would only matter if the setup flow existed.
+Remaining device check is simply whether `@coach` answers; the settings panel is not on that path.
 
 **It deliberately does not occupy the `defaultChatAgent` slot.** `oss/product.json` still names the
 legacy `olympia.olympia-coach` in `defaultChatAgent.extensionId` / `.chatExtensionId` /

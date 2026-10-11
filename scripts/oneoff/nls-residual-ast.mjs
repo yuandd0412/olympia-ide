@@ -150,7 +150,7 @@ console.log(`  English left:  ${english}`);
 console.log(`  ...and outside the Copilot-only subsystems this fork does not run: ${englishShipped}  <- the number worth acting on`);
 console.log(`regex-based counters report: ${regexHits}  (delta ${regexHits - english}; the two disagree in both directions — see the header)`);
 
-console.log(`\ntop ${TOP} areas by reachable English:`);
+console.log(`\ntop ${TOP} areas by reachable English (ALL subsystems, incl. the Copilot-only ones above):`);
 for (const [area, n] of [...byArea].sort((a, b) => b[1] - a[1]).slice(0, TOP)) {
 	console.log(`  ${String(n).padStart(5)}  ${area}`);
 }

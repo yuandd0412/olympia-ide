@@ -185,7 +185,7 @@ at the registration site (as `chat.titleBar.openInAgentsWindow.enabled` now does
 
 Four harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
 with `vscode` stubbed through a `Module._load` hook, so they test the shipped code path rather than a
-re-implementation. Compile first (`npm run gulp -- compile-extension:olympia-onboarding`), then run each
+re-implementation; the fifth, `check-command-wiring.mjs`, reads the manifests and sources instead. Compile first (`npm run gulp -- compile-extension:olympia-onboarding`), then run each
 with `node scripts/oneoff/<name>.mjs` from the repository root:
 
 | Harness | What it pins down |
@@ -194,6 +194,7 @@ with `node scripts/oneoff/<name>.mjs` from the repository root:
 | `test-judge-samples.mjs` | `parseSamples` against Markdown shaped exactly like `renderStatement` output, including the `ms` / `s` / `毫秒` / `秒` time-limit units and the 500 ms–10 s clamp |
 | `test-judge-pipeline.mjs` | the whole 跑样例 command against the **bundled g++**: AC on a correct file, WA with expected-vs-got printed, a compile failure reported as a failure instead of a pass, and a quick pick when no statement matches by name |
 | `test-stress-pipeline.mjs` | the whole 对拍 command: 25 agreeing rounds report 通过, an intentionally wrong solution stops the run and leaves `stress-fail/round-N.*` behind, and a silent generator errors out instead of "passing" zero rounds |
+| `check-command-wiring.mjs` | every command the UI points at (palette entry, `editor/title`, keybinding, walkthrough button, start entry) actually has a `registerCommand` behind it, and vice versa — the "button that does nothing" class. Bitten-ness is verified, not assumed: typo'ing one id in `olympia-onboarding/package.json` makes it report three problems and exit 1 |
 
 The bundled compiler is what makes the last two real rather than mocked: both resolve
 `VSCode-win32-x64/resources/app/toolchain/mingw64/bin/g++.exe` through the normal

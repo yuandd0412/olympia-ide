@@ -134,6 +134,14 @@ a `LanguageModelTextPart`; `olympia.ai.models` decides which ids are offered. Th
 in `SecretStorage`, entered through a password `InputBox` (empty clears it) — never in
 `settings.json` or `globalState`. Text-only, no tool calling.
 
+Contest lock: `handleRequest` starts by asking `olympia.contest.isRunning` (a command registered by
+`olympia-onboarding`, since extensions cannot read each other's state or context keys) and, while a
+contest is running, streams only a refusal that tells the student how to end it — no model request is
+made. A missing answer is treated as "no contest", so a broken link between the two extensions can
+lock the coach out permanently. The same state is published as the context key
+`olympia.contest.running` for `when` clauses; `publishRunning()` writes it only when the boolean
+flips, so the one-second ticker does not hammer `setContext`.
+
 How to exercise it without a device: `scripts/oneoff/test-coach-provider.mjs` loads the compiled
 `out/provider.js` with `vscode` stubbed and asserts model listing, the no-key early return, URL
 normalisation, the bearer header, abort wiring, role/part mapping, SSE frame handling (malformed,
@@ -232,9 +240,9 @@ the flag is falsy, and it was falsy only by omission), and the `defaultChatAgent
 
 ## How to verify without a device
 
-Five harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
+Six harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
 with `vscode` stubbed through a `Module._load` hook, so they test the shipped code path rather than a
-re-implementation; the sixth, `check-command-wiring.mjs`, reads the manifests and sources instead. Compile first (`npm run gulp -- compile-extension:olympia-onboarding`), then run each
+re-implementation; the seventh, `check-command-wiring.mjs`, reads the manifests and sources instead. Compile first (`npm run gulp -- compile-extension:olympia-onboarding`), then run each
 with `node scripts/oneoff/<name>.mjs` from the repository root:
 
 | Harness | What it pins down |
@@ -244,6 +252,7 @@ with `node scripts/oneoff/<name>.mjs` from the repository root:
 | `test-judge-pipeline.mjs` | the whole 跑样例 command against the **bundled g++**: AC on a correct file, WA with expected-vs-got printed, a compile failure reported as a failure instead of a pass, and a quick pick when no statement matches by name |
 | `test-stress-pipeline.mjs` | the whole 对拍 command: 25 agreeing rounds report 通过, an intentionally wrong solution stops the run and leaves `stress-fail/round-N.*` behind, and a silent generator errors out instead of "passing" zero rounds |
 | `test-cpp-snippets.mjs` | the 20-row C++ completion table: registration and `dispose`, every `detail`/hint line carries Chinese, aliases actually resolve (敲 `fast`/`sync`/`pow`/`union` 命中对应条目), placeholders close, the switch silences the list — and each body, with its placeholders filled, passes `g++ -std=c++17 -fsyntax-only` inside a generated translation unit |
+| `test-contest-gate.mjs` | the 比赛模式 → AI 教练 lock across both extensions: `setContext('olympia.contest.running')` flips exactly on start and stop (not every tick), `olympia.contest.isRunning` answers accordingly, and while it is set `@coach` writes only the refusal and never asks for the model list |
 | `check-command-wiring.mjs` | every command the UI points at (palette entry, `editor/title`, keybinding, walkthrough button, start entry) actually has a `registerCommand` behind it, and vice versa — the "button that does nothing" class. Bitten-ness is verified, not assumed: typo'ing one id in `olympia-onboarding/package.json` makes it report three problems and exit 1 |
 
 The bundled compiler is what makes the pipeline harnesses real rather than mocked: they resolve

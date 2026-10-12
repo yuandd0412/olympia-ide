@@ -112,7 +112,8 @@ function taskProviderTypes(srcDir) {
 const problems = [];
 const summary = [];
 // 只给测试台用的内部命令，故意不进命令面板。
-const INTERNAL_COMMANDS = new Set(['olympia.coach.debug.extensionState']);
+/** 没有界面入口的内部命令：被另一个扩展或核心调用，不该要求界面引用。 */
+const INTERNAL_COMMANDS = new Set(['olympia.coach.debug.extensionState', 'olympia.contest.isRunning']);
 for (const id of OLYMPIA_EXTENSIONS) {
 	const manifestPath = path.join(extensionsRoot, id, 'package.json');
 	const srcDir = path.join(extensionsRoot, id, 'src');

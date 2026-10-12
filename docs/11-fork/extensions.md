@@ -226,6 +226,14 @@ The bundled compiler is what makes the last two real rather than mocked: both re
 `VSCode-win32-x64/resources/app/toolchain/mingw64/bin/g++.exe` through the normal
 `olympia.compiler.path` config path, so a broken toolchain fails the harness instead of hiding.
 
+`check-website.mjs` is the same idea applied to the promises made on the site: every key in the
+keyboard table must be bound in one of the three manifests, every manifest binding must be listed on the
+site (it caught the undocumented `Ctrl+Alt+O` 打开已缓存的题面), the per-file download sizes must match
+the bytes in `dist/olympia-release-v1.0.0`, internal anchors must exist, and no link may be `http://` or
+a placeholder. It compares against `dist/olympia-release-v1.0.0` byte-for-byte (±1 %), so re-cutting the
+spanned set without updating the page fails the check — but it cannot tell a *stale* set from a current
+one; that is still the bundle-mtime rule in `AGENTS.md`.
+
 ## Copilot wording still in the tree (inventory, not yet device-checked)
 
 `byokOnly` closes the hosted-assistant *flows*, but it does not rewrite wording. Two labels were fixed

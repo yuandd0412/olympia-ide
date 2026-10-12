@@ -25,9 +25,34 @@ check. Commands and keybindings as declared in its `package.json`:
 | `olympia.compile` | 编译当前文件（按评测机参数） | `Shift+F9` (`editorTextFocus`) |
 | `olympia.compileJudgeAccurate` | 按评测机编译（强制 `-O2`） | `Ctrl+Shift+F9` (`editorTextFocus`) |
 | `olympia.preSubmitCheck` | 提交前体检 | `Ctrl+Alt+Enter` (`editorTextFocus`) |
+| `olympia.judgeSamples` | 跑样例（本地评测） | `Ctrl+Alt+J` (`editorTextFocus`) |
+| `olympia.stressTest` | 对拍（正解 vs 暴力） | `Ctrl+Alt+S` |
+| `olympia.contestMode` | 比赛模式（倒计时） | `Ctrl+Alt+C` |
 | `olympia.checkEnvironment` | 环境自检：检测内置编译器 | `Ctrl+Alt+D` |
 | `olympia.pickCompileProfile` | 选择评测机编译配置 | — |
+| `olympia.tools.refresh` | 刷新 Olympia 工具面板 | — (hidden from the palette) |
 | `olympia.openWebsite` | 打开 Olympia 官网 | — |
+
+The three commands after 体检 are the judge-shaped loop the Tauri app had and the fork did not:
+
+- **跑样例** ([`src/judgeSamples.ts`](../../oss/extensions/olympia-onboarding/src/judgeSamples.ts))
+  reads the cached statement Markdown for the current file (`.olympia/problems/<题号>.md`, same
+  directory `olympia-contest` writes, falling back to a quick pick when no file matches by name),
+  compiles with the active judge profile, runs every sample through it and prints `AC` / `WA` / `RE` /
+  `TLE` per case into the `Olympia 评测` channel. Comparison ignores whitespace like a real judge. The
+  time limit is read from the statement and accepts both units the product produces — `1000 ms` from
+  the pull chain and hand-written `1.00s`; an unrecognised unit falls back to 1 s rather than guessing.
+- **对拍** ([`src/stressTest.ts`](../../oss/extensions/olympia-onboarding/src/stressTest.ts)) asks for
+  three files (正解 / 暴力 / 生成器, remembered per workspace and floated to the top of the list),
+  compiles all three, then feeds generator output to both solutions round after round. A mismatch stops
+  the run and writes that one case into `stress-fail/round-N.{in,sol,brute}` so it can be pasted into a
+  test or shown to the coach. Settings: `olympia.stress.rounds` (default 100), `olympia.stress.timeoutMs`
+  (default 2000). The progress notification is cancellable.
+- **比赛模式** ([`src/contestMode.ts`](../../oss/extensions/olympia-onboarding/src/contestMode.ts)) is a
+  countdown in the status bar (left, priority 110 so it sits ahead of the compiler chips). Duration comes
+  from a quick pick or a free-form 1–600 minute input; `endsAt` survives reloads in `workspaceState`, the
+  item turns warning-coloured once time is up, and the tools panel shows a remaining-time row while a
+  contest runs.
 
 Two walkthroughs are contributed: `olympia.gettingStarted` ("三分钟上手 Olympia IDE", five steps —
 open a folder, pick the judge compile profile, run the environment check, ask the AI coach, learn
@@ -35,10 +60,21 @@ more) and `olympia.compiler` ("内置编译器与环境自检", one step). The c
 `@coach` participant is discoverable from the first run; it completes on `olympia.coach.selectModel`.
 `contributes.startEntries` puts 新建竞赛工程 and 环境自检 on the empty workbench.
 
+**Persistent entry points** (the reason the palette is no longer the only way in): an `Olympia`
+activity-bar container contributing one visible tree view, `olympia.tools` ("竞赛工具"), whose four
+sections are 当前环境 / 编译与运行 / 题目与模板 / AI 教练与帮助 — the middle one carries 编译并运行,
+只编译, 按评测机编译（-O2）, 提交前体检, 跑样例, 对拍, 比赛模式, each row showing its keybinding — and
+the first one shows the live compiler / profile / 体检 counts as clickable state rows. The tree redraws on
+active-editor, configuration and diagnostic changes; the countdown repaints through a narrower path that
+does not re-probe the toolchain. Four `editor/title` navigation buttons (编译并运行 / 编译 / 按评测机编译 /
+体检) appear only for `resourceLangId == cpp || c`, and three status-bar chips (compiler profile,
+编译运行 `F9`, 体检) stay visible all the time. `olympia.debug.showEntryPoints` switches the extra debug
+rows in the panel off.
+
 Settings: `olympia.compiler.*` (`path`, `profile` default `luogu`, `customFlags`, `optimization`
-default `none`, `showCompileCommand` default `true`), `olympia.check.*` (`enabled`, `onSave`, and the
-individual `rules.*` toggles `crlf`, `pragmaOptimize`, `onlineJudge`, `memoryLeak`, `reservedWord`,
-`freopen`), and `olympia.startPage.*` (`enabled`, `recentContest`).
+default `none`, `showCompileCommand` default `true`), `olympia.check.enabled` / `olympia.check.onSave`
+and the rule toggles that still exist — `olympia.check.rules.pragmaOptimize`, `.reservedWord`,
+`.removedCpp` — plus `olympia.stress.*` and `olympia.debug.showEntryPoints`.
 
 ## `olympia-contest` — statement pull and contest templates
 
@@ -131,10 +167,43 @@ it attaches the active document capped at 12k characters. Diagnostics land in th
 `Olympia AI Coach` log output channel (the id `product.json` refers to as
 `chatExtensionOutputId`) plus `olympia.coach.debug.extensionState`.
 
+## The one workbench-side Olympia contribution
+
+`byokOnly` removes the hosted-assistant *flows*, but two chrome items are gated by other checks and
+survive it: the chat status-bar entry (`chat.statusBarEntry`) and the accounts management button, whose
+visibility comes from the PROFILE storage key `workbench.activity.showAccounts` rather than from the
+product flag. [`oss/src/vs/workbench/contrib/olympia/browser/olympiaChrome.ts`](../../oss/src/vs/workbench/contrib/olympia/browser/olympiaChrome.ts)
+is a `WorkbenchPhase.BlockRestore` contribution registered from `workbench.common.main.ts`; when
+`defaultChatAgent.byokOnly` is set it calls `IStatusbarService.updateEntryVisibility('chat.statusBarEntry',
+false)` and seeds `showAccounts` to `false` **only when the user has never set it**, so a student who
+turns it back on stays turned on. The file is the place to add further product-level chrome trims —
+`product.defaultSettings` does not exist in this codebase, so defaults have to be changed either here or
+at the registration site (as `chat.titleBar.openInAgentsWindow.enabled` now does, defaulting to
+`!byokOnly`).
+
+## How to verify without a device
+
+Four harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
+with `vscode` stubbed through a `Module._load` hook, so they test the shipped code path rather than a
+re-implementation. Compile first (`npm run gulp -- compile-extension:olympia-onboarding`), then run each
+with `node scripts/oneoff/<name>.mjs` from the repository root:
+
+| Harness | What it pins down |
+| --- | --- |
+| `test-precheck.mjs` | 体检 rules: pragma reporting regardless of the local optimization switch, and nothing reported inside comments or string literals |
+| `test-judge-samples.mjs` | `parseSamples` against Markdown shaped exactly like `renderStatement` output, including the `ms` / `s` / `毫秒` / `秒` time-limit units and the 500 ms–10 s clamp |
+| `test-judge-pipeline.mjs` | the whole 跑样例 command against the **bundled g++**: AC on a correct file, WA with expected-vs-got printed, a compile failure reported as a failure instead of a pass, and a quick pick when no statement matches by name |
+| `test-stress-pipeline.mjs` | the whole 对拍 command: 25 agreeing rounds report 通过, an intentionally wrong solution stops the run and leaves `stress-fail/round-N.*` behind, and a silent generator errors out instead of "passing" zero rounds |
+
+The bundled compiler is what makes the last two real rather than mocked: both resolve
+`VSCode-win32-x64/resources/app/toolchain/mingw64/bin/g++.exe` through the normal
+`olympia.compiler.path` config path, so a broken toolchain fails the harness instead of hiding.
+
 ## Not built
 
-- The coach has no scoring/verdict integration: it cannot read the judge output of the Tauri app, and
-  there is no shared session between the two products.
+- The coach has no scoring/verdict integration with an **online** judge: 跑样例 produces a local AC/WA,
+  but the coach still cannot read a real submission's verdict, and there is no shared session with the
+  Tauri app.
 - No language pack is registered for the fork — Chinese comes from the in-place rewrites described
   above, so the workbench locale stays `en`. `product.json`'s `extensionsGallery` points at
   open-vsx.org, and [`oss/build/hygiene.ts`](../../oss/build/hygiene.ts) validates that the gallery host

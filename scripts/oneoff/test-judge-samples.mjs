@@ -172,5 +172,15 @@ check('总体判定取最严的一档，顺序和老版本 worse_verdict 一致'
 	assert.equal(of(['RE', 'WA', 'MLE', 'TLE']), 'RE', '乱序也要挑出最严的');
 });
 
+check('样例带着题面里的编号，跳过没填完的之后不会认错号', () => {
+	const parsed = judge.parseSamples([
+		'### 样例 1', '', '**输入**', '', '```', '1', '```', '', '**输出**', '', '```', 'A', '```', '',
+		'### 样例 2', '', '**输入**', '', '```', '2', '```', '', '**输出**', '', '```', '', '```', '',
+		'### 样例 3', '', '**输入**', '', '```', '3', '```', '', '**输出**', '', '```', 'C', '```', ''
+	].join('\n'));
+	assert.deepEqual(parsed.samples.map(s => s.number), [1, 2, 3], '编号要按题面里写的走');
+	assert.equal(parsed.samples.filter(s => s.expected.trim() !== '').length, 2, '没填期望输出的那组要能被识别出来');
+});
+
 console.log(failures ? '\nFAILED' : '\nall judge-sample assertions passed');
 process.exitCode = failures ? 1 : 0;

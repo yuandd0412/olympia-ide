@@ -242,5 +242,31 @@ await check('题面没写内存限制 → 只报峰值，绝不判 MLE', async (
 	assert.match(judgeChannel().lines.join('\n'), /峰值内存/, '题面没写限制时也应当把测到的峰值告诉学生');
 });
 
+await check('没填完的自定义样例：跳过并说明，不报成 WA', async () => {
+	fs.writeFileSync(path.join(fixture, 'P1001_partial.cpp'), fs.readFileSync(path.join(fixture, 'P1001.cpp'), 'utf8'), 'utf8');
+	fs.writeFileSync(path.join(problemsDir, 'P1001_partial.md'), [
+		'# P1001_partial A+B Problem', '',
+		'> 来源：洛谷 ｜ 时限：1000 ms', '',
+		'## 样例数据', '',
+		'### 样例 1', '',
+		'**输入**', '', '```', '3 4', '```', '',
+		'**输出**', '', '```', '7', '```', '',
+		'### 样例 2', '',
+		'**输入**', '', '```', '', '```', '',
+		'**输出**', '', '```', '', '```', '',
+		'**说明**：自己加的样例：把数据填进上面两个代码块再跑样例，期望输出空着的那组会被跳过。', ''
+	].join('\n'), 'utf8');
+	openFile('P1001_partial.cpp');
+	messages.length = 0;
+	await registered['olympia.judgeSamples']();
+	const summary = messages.map(m => m[1]).join('\n');
+	assert.match(summary, /AC/, `填完的那组应该判 AC：${summary}`);
+	assert.match(summary, /1\/1/, `只该判一组：${summary}`);
+	const log = judgeChannel().lines.join('\n');
+	assert.match(log, /没填期望输出/, `日志要说清楚为什么少了一组：${log}`);
+	assert.match(log, /样例 2/, '跳过的那组要按题面里的编号说，别让人以为是判了样例 1');
+	assert.ok(!/WA/.test(log), `没填完的样例被判成了 WA：${log}`);
+});
+
 console.log(failed ? '\nFAILED' : '\nall judge-pipeline assertions passed');
 process.exitCode = failed ? 1 : 0;

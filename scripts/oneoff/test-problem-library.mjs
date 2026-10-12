@@ -150,6 +150,9 @@ const library = await import(pathToFileURL(path.join(contestOut, 'problemLibrary
 const contest = await import(pathToFileURL(path.join(contestOut, 'extension.js')).href);
 const toolsView = await import(pathToFileURL(path.join(onboardingOut, 'toolsView.js')).href);
 const problemFiles = await import(pathToFileURL(path.join(onboardingOut, 'problemFiles.js')).href);
+// 补进题面的样例最终要被跑样例读出来，所以这里用产品自己的解析器验收
+const judge = await import(pathToFileURL(path.join(onboardingOut, 'judgeSamples.js')).href);
+const judgeParse = markdown => judge.parseSamples(markdown);
 
 const context = () => ({ subscriptions: [], workspaceState: { get: (_k, d) => d, update: async () => { } } });
 
@@ -342,6 +345,36 @@ await check('onboarding 自己数的题面数和 contest 数的一致（两处�
 	const viaPanel = await problemFiles.statementFiles();
 	const viaLibrary = await library.readLibrary(problemsDir);
 	assert.equal(viaPanel.length, viaLibrary.length, '面板说的份数和题库列表的数量不一样');
+});
+
+await check('从面板加自定义样例：挑一道题，末尾多一组空的占位样例并把题面打开', async () => {
+	freshWorkspace();
+	writeStatement('P1001', 'A+B Problem');
+	const append = registered['olympia.problem.appendSample'];
+	assert.ok(append, 'olympia.problem.appendSample 必须由 olympia-contest 注册');
+	const before = fs.readFileSync(path.join(problemsDir, 'P1001.md'), 'utf8');
+	await append();
+	assert.equal(picks.length, 1, '没弹出让学生选题面的列表');
+	assert.match(picks[0].options.title, /哪道题/);
+	const after = fs.readFileSync(path.join(problemsDir, 'P1001.md'), 'utf8');
+	assert.ok(after.startsWith(before.slice(0, 200)), '加样例不该重写整份题面');
+	assert.match(after, /### 样例 3/, `题面里两组样例，新加的应该叫样例 3：\n${after}`);
+	assert.match(after, /自己加的样例/, '要留一句提示，告诉学生往哪填');
+	assert.match(shown.join('\n'), /P1001\.md$/, '加完应该直接把题面打开让人填');
+	// 空的期望输出不能被当成答案：跑样例那边按「没填完」跳过
+	const parsed = judgeParse(after);
+	assert.equal(parsed.samples.length, 3);
+	assert.equal(parsed.samples[2].expected.trim(), '');
+});
+
+await check('只给了一半数据就不写，别留一组判不了的样例在题面里', async () => {
+	freshWorkspace();
+	writeStatement('P1001', 'A+B Problem');
+	const before = fs.readFileSync(path.join(problemsDir, 'P1001.md'), 'utf8');
+	const ok = await registered['olympia.problem.appendSample']({ hint: 'P1001', input: '1 2' });
+	assert.equal(ok, false, '少了期望输出却继续写了');
+	assert.match(messages.map(m => m[1]).join('\n'), /同时给出/);
+	assert.equal(fs.readFileSync(path.join(problemsDir, 'P1001.md'), 'utf8'), before, '题面被动过了');
 });
 
 console.log(failed ? '\nFAILED' : '\nall problem-library assertions passed');

@@ -136,7 +136,7 @@ id; a file that cannot be read at all still gets listed instead of taking the li
 | `olympia.problem.pullFromClipboard` | 从剪贴板题号拉取题面 | `Ctrl+Alt+V` (`editorTextFocus`) | command palette |
 | `olympia.template.insert` | 插入赛制模板... | `Ctrl+Alt+T` (`editorTextFocus`) | editor tab context (`resourceLangId == cpp`) |
 | `olympia.problem.openStatement` | 打开题面库（已缓存的题面） | `Ctrl+Alt+O` (`editorTextFocus`) | command palette |
-| `olympia.problem.appendSample` | 把这一组数据补进题面样例 | — | hidden from the palette (`when: false`): without the arguments 对拍 passes it has nothing to write |
+| `olympia.problem.appendSample` | 给这道题加一组自定义样例 | — | also called by 对拍 with `{hint, input, output}` |
 
 [`src/statementSamples.ts`](../../oss/extensions/olympia-contest/src/statementSamples.ts) appends one
 case to a statement's `## 样例数据` section (or starts the section before the pull footer when the
@@ -145,6 +145,14 @@ statement has no samples yet) and numbers it from the largest existing 样例. T
 what 对拍 appends is byte-for-byte the shape `parseSamples` reads back; a second copy of that layout is
 how a hand-added case would silently stop being judged. Which statement to write into is resolved by
 file stem first (对拍 passes the 正解's filename), falling back to the problem bank's quick pick.
+
+The command has two modes on purpose. With arguments it is 对拍's "keep this case"; with none it is the
+palette entry, which appends an empty `### 样例 N` scaffold with a 说明 line and opens the statement so
+the student fills it in — the statement *is* the editable, persisted test-case file, so there is no
+second case format to keep in sync. A case whose `**输出**` block is still empty cannot be judged
+against anything, so 跑样例 skips it, says which numbers were skipped, and counts only the filled ones
+(`通过 1/1`, not a false WA). Sample numbers are carried from the heading rather than derived from the
+array index, because the list is no longer dense once something is skipped.
 
 Settings: `olympia.problem.problemsDir` (default `.olympia/problems`, where pulled statements are
 cached), `olympia.problem.templateOnPull` (default `false`), `olympia.problem.requestTimeoutMs`

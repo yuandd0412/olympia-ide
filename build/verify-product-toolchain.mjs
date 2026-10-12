@@ -44,12 +44,19 @@ console.log(`版本: ${first.trim()}`);
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olympia-prod-'));
 const src = path.join(dir, 'main.cpp');
+/**
+ * The probe has to look like what a student actually writes. `#include <cstdio>` never pulls
+ * libstdc++'s `gthr.h`, so the previous version of this check passed on a toolchain whose
+ * `pthread.h` was missing — every real `<iostream>` / `<bits/stdc++.h>` program still failed.
+ */
 fs.writeFileSync(src, [
-	'#include <cstdio>',
+	'#include <bits/stdc++.h>',
+	'using namespace std;',
 	'int main() {',
 	'  int a, b;',
-	'  if (scanf("%d%d", &a, &b) != 2) { return 1; }',
-	'  printf("%d\\n", a + b);',
+	'  if (!(cin >> a >> b)) { return 1; }',
+	'  vector<int> v{ a, b };',
+	'  cout << accumulate(v.begin(), v.end(), 0) << endl;',
 	'  return 0;',
 	'}',
 	'',

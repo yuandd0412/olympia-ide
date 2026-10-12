@@ -1,268 +1,316 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Olympia IDE — 为 OI 而生的竞赛编程 IDE</title>
-  <meta name="description" content="Olympia IDE 是一款面向 OI / ACM 竞赛选手的桌面编程 IDE：内置编译评测、自动化对拍、洛谷 / Codeforces / AtCoder 一键导入、真实比赛模式与 AI 竞赛教练，一站式本地闭环。" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath d='M 294.8 111.1 A 150 150 0 1 0 400.9 217.2' fill='none' stroke='%232f9ce8' stroke-width='56' stroke-linecap='round'/%3E%3Cpath d='M 170 266 L 243 340 L 350 205' fill='none' stroke='%2334c759' stroke-width='56' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="style.css" />
-  <script>document.documentElement.classList.add('js');</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Olympia IDE — 装完，就打比赛</title>
+<meta name="description" content="Olympia IDE 是面向信息学竞赛的 Windows 编辑器：内置 MinGW 15.2.0，装完直接 F9 编译运行；洛谷 / NOI 评测机参数预设、提交前体检、题面拉取、ACM/IOI 模板，全中文界面。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath d='M 294.8 111.1 A 150 150 0 1 0 400.9 217.2' fill='none' stroke='%2361afef' stroke-width='56' stroke-linecap='round'/%3E%3Cpath d='M 170 266 L 243 340 L 350 205' fill='none' stroke='%2398c379' stroke-width='56' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <!-- ======= 导航 ======= -->
-  <header class="nav">
-    <div class="nav-inner">
-      <a class="brand" href="#top">
-        <span class="brand-mark"><svg width="22" height="22" viewBox="0 0 512 512" aria-hidden="true"><path d="M 294.8 111.1 A 150 150 0 1 0 400.9 217.2" fill="none" stroke="#2f9ce8" stroke-width="56" stroke-linecap="round"/><path d="M 170 266 L 243 340 L 350 205" fill="none" stroke="#34c759" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-        <span class="brand-name">Olympia IDE</span>
-      </a>
-      <nav class="nav-links">
-        <a href="#showcase">界面</a>
-        <a href="#features">特性</a>
-        <a href="#download">下载</a>
-        <a href="#roadmap">路线图</a>
-        <a class="nav-cta" href="#download">免费下载</a>
-      </nav>
-    </div>
-  </header>
+<header class="site-head">
+	<a class="brand" href="#top">
+		<svg viewBox="0 0 512 512" aria-hidden="true"><path d="M 294.8 111.1 A 150 150 0 1 0 400.9 217.2" fill="none" stroke="currentColor" stroke-width="56" stroke-linecap="round"/><path d="M 170 266 L 243 340 L 350 205" fill="none" stroke="currentColor" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/></svg>
+		<span>Olympia IDE</span>
+	</a>
+	<nav id="site-nav">
+		<a href="#features">功能</a>
+		<a href="#workflow">界面</a>
+		<a href="#keys">快捷键</a>
+		<a href="#coach">AI 教练</a>
+		<a href="#faq">常见问题</a>
+		<a class="btn btn-small" href="#download">下载</a>
+	</nav>
+	<button class="nav-toggle" id="nav-toggle" aria-label="打开菜单" aria-expanded="false">
+		<span></span><span></span><span></span>
+	</button>
+</header>
 
-  <!-- ======= 首屏 ======= -->
-  <section class="hero" id="top">
-    <div class="hero-glow" aria-hidden="true"></div>
-    <div class="hero-inner">
-      <p class="hero-badge"><span class="dot"></span>v0.1.0 · Windows x64 · 免费开源 (MIT)</p>
-      <h1>为 OI 而生的<br /><em>竞赛编程 IDE</em></h1>
-      <p class="hero-sub">
-        题库管理、编译评测、对拍验证、比赛模式与 AI 教练——
-        从读题到 AC，一站式本地闭环，不为环境配置浪费一分钟。
-      </p>
-      <div class="hero-actions">
-        <a class="btn btn-primary" href="#download">
-          <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M8 1v8.5L4.8 6.3 3.7 7.4 8 11.7l4.3-4.3-1.1-1.1L8 9.5V1H7v8.5L3.8 6.3 2.7 7.4 7 11.7V15h2v-3.3l4.3-4.3-1.1-1.1L9 9.5V1H8z"/></svg>
-          下载 Windows 安装包
-        </a>
-        <a class="btn btn-ghost" href="#features">了解特性 →</a>
-      </div>
-      <p class="hero-note">中文安装器 · 全中文界面 · 支持 Windows 10 / 11</p>
+<main id="top">
 
-      <!-- 仿真编辑器窗口 -->
-      <div class="window" id="showcase">
-        <div class="window-titlebar">
-          <span class="win-logo">O</span>
-          <span class="win-title">Olympia IDE</span>
-          <span class="win-controls" aria-hidden="true"><i></i><i></i><i class="close"></i></span>
-        </div>
-        <div class="window-tabbar">
-          <span class="tab active">P1001.cpp</span>
-          <span class="tab">brute.cpp</span>
-          <button class="tab-demo" id="demo-btn" type="button" aria-pressed="false">▶ 看演示</button>
-          <span class="tab-run">▶ 运行评测 <kbd>Ctrl+R</kbd></span>
-        </div>
-        <div class="window-body">
-          <div class="editor">
-            <ol id="editor-code">
-              <li><span class="k">#include</span> <span class="str">&lt;bits/stdc++.h&gt;</span></li>
-              <li><span class="k">using namespace</span> std;</li>
-              <li></li>
-              <li><span class="k">long long</span> <span class="fn">qpow</span>(<span class="k">long long</span> a, <span class="k">long long</span> b) {</li>
-              <li>    <span class="k">long long</span> res = <span class="num">1</span>;</li>
-              <li>    <span class="k">for</span> (; b; b &gt;&gt;= <span class="num">1</span>, a = a * a % mod)</li>
-              <li>        <span class="k">if</span> (b &amp; <span class="num">1</span>) res = res * a % mod;</li>
-              <li>    <span class="k">return</span> res;</li>
-              <li>}</li>
-              <li></li>
-              <li><span class="k">int</span> <span class="fn">main</span>() {</li>
-              <li>    <span class="cmt">// 快速幂求逆元，处理模意义下的除法</span></li>
-              <li>    cin &gt;&gt; n &gt;&gt; m;  mod = <span class="num">998244353</span>;</li>
-              <li>    cout &lt;&lt; qpow(n, m - <span class="num">2</span>) &lt;&lt; <span class="str">'\n'</span>;</li>
-              <li>}</li>
-            </ol>
-          </div>
-          <div class="runner" id="runner">
-            <div class="runner-head">测试结果</div>
-            <div class="runner-cases">
-              <div class="case pass"><span class="verdict">AC</span> 样例 1 · 2 ms</div>
-              <div class="case pass"><span class="verdict">AC</span> 样例 2 · 3 ms</div>
-              <div class="case pass"><span class="verdict">AC</span> 样例 3 · 2 ms</div>
-            </div>
-            <div class="runner-foot">✔ 全部通过 · 最长 3 ms / 1.8 MB</div>
-          </div>
-        </div>
-        <div class="window-status">
-          <span class="st-ok">MinGW 13.1.0 (x64) · C++17</span>
-          <span>P1001 · 1s / 256MB</span>
-          <span class="st-run" id="st-run">就绪 (Ctrl+R 运行评测)</span>
-        </div>
-      </div>
-    </div>
-  </section>
+<section class="hero">
+	<div class="hero-copy">
+		<p class="eyebrow">Windows 10 / 11 · 64 位 · 全中文</p>
+		<h1>装完，就打比赛</h1>
+		<p class="lede">
+			基于 VS Code 的信息学竞赛编辑器。编译器、评测机参数、题面拉取、提交前体检都装好了，
+			不用配 <code>tasks.json</code>，不用改 <code>PATH</code>，不用装 Python 跑脚本。
+		</p>
+		<div class="hero-actions">
+			<a class="btn btn-primary" href="https://gitee.com/yuanddMSK/olympia-ide/releases" data-download="OlympiaSetup-web.exe">
+				下载完整版<span class="btn-note">1.8 MB 引导器 · 自动校验</span>
+			</a>
+			<a class="btn btn-ghost" href="#download">查看分卷文件</a>
+		</div>
+		<p class="hero-meta">v1.0.0 · 完整包 282 MiB · GPL-3.0-or-later 开源</p>
+	</div>
 
-  <!-- ======= 数据一览 ======= -->
-  <section class="stats" aria-label="关键数据">
-    <div class="stats-inner">
-      <div class="stat reveal"><span class="stat-num" data-count="49" data-suffix=" MB">49 MB</span><span class="stat-label">安装包 · 内置工具链</span></div>
-      <div class="stat reveal"><span class="stat-num" data-count="3">3</span><span class="stat-label">OJ 一键导入（洛谷 / CF / AtCoder）</span></div>
-      <div class="stat reveal"><span class="stat-num" data-count="0">0</span><span class="stat-label">配置 · 工具链离线可用</span></div>
-    </div>
-  </section>
+	<div class="mock" aria-hidden="true">
+		<div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="mock-title">A+B 问题 - demo - Olympia IDE</span></div>
+		<div class="mock-body">
+			<div class="mock-side">
+				<span class="side-title">Olympia：竞赛工具</span>
+				<span class="side-group">当前环境</span>
+				<span class="side-item ok">编译器：g++ 15.2.0</span>
+				<span class="side-item">编译配置：洛谷 · C++23</span>
+				<span class="side-item ok">提交前体检：无问题</span>
+				<span class="side-group">编译与运行</span>
+				<span class="side-item run">编译并运行 &nbsp;<em>F9</em></span>
+				<span class="side-item">只编译 &nbsp;<em>Shift+F9</em></span>
+				<span class="side-item">按评测机编译（-O2）</span>
+			</div>
+			<div class="mock-code">
+<pre><span class="k">#include</span> <span class="h">&lt;bits/stdc++.h&gt;</span>
+<span class="k">using namespace</span> std;
 
-  <!-- ======= 特性 ======= -->
-  <section class="section" id="features">
-    <h2>为竞赛细节打磨的每一处</h2>
-    <p class="section-sub">不是通用编辑器加了个皮肤——评测、对拍、比赛锁，都是 OI 选手每天真实在用的东西。</p>
-    <div class="grid">
-      <article class="card reveal">
-        <div class="card-icon i-ac">✔</div>
-        <h3>内置极速评测</h3>
-        <p>多样例毫秒级比对，自动判定 AC / WA / MLE / TLE / RE，每个样例展示真实耗时与峰值内存占用。评测全程静默无黑窗。</p>
-      </article>
-      <article class="card reveal">
-        <div class="card-icon i-warn">⚔</div>
-        <h3>自动化对拍器</h3>
-        <p>内置随机数据生成器，批量对比待测解法与暴力正解，拍出构造数据的反例只需一键。</p>
-      </article>
-      <article class="card reveal">
-        <div class="card-icon i-accent">📚</div>
-        <h3>题库 · 一键导入</h3>
-        <p>本地题库沉淀题目与样例，洛谷 / Codeforces / AtCoder 一键导入，AI 自动补全缺失的样例与输入输出格式；题目与源码文件自动绑定，练习文件夹里写过的代码再次打开直接加载。</p>
-      </article>
-      <article class="card reveal">
-        <div class="card-icon i-warn">🏆</div>
-        <h3>真实比赛模式</h3>
-        <p>NOIP / CSP 式倒计时，比赛期间 AI 教练自动锁定，倒计时归零自动解锁。导入 PDF 试卷即可一键创建比赛，整场比赛自动存入练习记录。</p>
-      </article>
-      <article class="card reveal">
-        <div class="card-icon i-accent">🤖</div>
-        <h3>AI 竞赛教练</h3>
-        <p>接入你自己的大模型 API：防剧透的思路提示、时空复杂度分析、边界 Bug 排查。平时是你的陪练，赛时懂得闭嘴。</p>
-      </article>
-      <article class="card reveal">
-        <div class="card-icon i-ac">🌙</div>
-        <h3>双主题 · 全中文</h3>
-        <p>One Dark Pro 深色沉浸，GitHub Light 清爽明快；安装器与界面全中文，键盘快捷键开箱即用。</p>
-      </article>
-    </div>
+<span class="t">int</span> <span class="f">main</span>() {
+    <span class="t">int</span> a, b;
+    cin &gt;&gt; a &gt;&gt; b;
+    cout &lt;&lt; a + b &lt;&lt; endl;
+    <span class="k">return</span> <span class="n">0</span>;
+}</pre>
+				<div class="mock-out">
+					<span class="out-title">Olympia · 运行输出</span>
+					<span class="out-line dim">$ g++ -x c++ -std=c++23 -fPIC -DONLINE_JUDGE -Wall -fno-asm -lm -march=native -o A.exe A.cpp</span>
+					<span class="out-line">输入：3 4</span>
+					<span class="out-line ok">输出：7　·　用时 0.4 s</span>
+				</div>
+			</div>
+		</div>
+		<div class="mock-status">
+			<span class="chip">◎ 洛谷 · C++23</span>
+			<span class="chip">▶ 编译运行 F9</span>
+			<span class="chip ok">✓ 体检通过</span>
+			<span class="chip grow">C++　UTF-8</span>
+		</div>
+	</div>
+</section>
 
-    <!-- D3 · Harness 式能力切换 -->
-    <div class="caps reveal">
-      <div class="cap-tabs" role="tablist" aria-label="核心能力切换">
-        <button class="cap-tab" id="cap-tab-0" type="button" role="tab" aria-selected="true" aria-controls="cap-panel-0">⚡ 评测</button>
-        <button class="cap-tab" id="cap-tab-1" type="button" role="tab" aria-selected="false" aria-controls="cap-panel-1" tabindex="-1">⚔ 对拍</button>
-        <button class="cap-tab" id="cap-tab-2" type="button" role="tab" aria-selected="false" aria-controls="cap-panel-2" tabindex="-1">🏆 比赛模式</button>
-        <button class="cap-tab" id="cap-tab-3" type="button" role="tab" aria-selected="false" aria-controls="cap-panel-3" tabindex="-1">🤖 AI 教练</button>
-      </div>
-      <div class="cap-panels">
-        <div class="cap-panel active" id="cap-panel-0" role="tabpanel" aria-labelledby="cap-tab-0">
-          <div class="cap-copy">
-            <h3>内置极速评测</h3>
-            <p>多样例自动比对；每个样例给出真实耗时与峰值内存，全程静默无黑窗。</p>
-          </div>
-          <div class="cap-demo">
-            <div class="mini-runner">
-              <div class="case pass"><span class="verdict">AC</span> 样例 1 · 2 ms · 1.6 MB</div>
-              <div class="case pass"><span class="verdict">AC</span> 样例 2 · 3 ms · 1.8 MB</div>
-              <div class="case tle"><span class="verdict tle">TLE</span> 样例 3 · 超过 1000 ms</div>
-            </div>
-          </div>
-        </div>
-        <div class="cap-panel" id="cap-panel-1" role="tabpanel" aria-labelledby="cap-tab-1">
-          <div class="cap-copy">
-            <h3>自动化对拍器</h3>
-            <p>内置随机数据生成器，批量对比待测解法与暴力正解；拍出反例后一键导入评测复现，构造数据不再靠运气。</p>
-          </div>
-          <div class="cap-demo">
-            <div class="mini-duel">
-              <div class="duel-col"><div class="duel-head">暴力正解</div><div class="duel-out">6</div></div>
-              <div class="duel-vs">Round 42<br><b>答案不一致</b></div>
-              <div class="duel-col"><div class="duel-head">待测解法</div><div class="duel-out bad">0</div></div>
-            </div>
-          </div>
-        </div>
-        <div class="cap-panel" id="cap-panel-2" role="tabpanel" aria-labelledby="cap-tab-2">
-          <div class="cap-copy">
-            <h3>真实比赛模式</h3>
-            <p>NOIP / CSP 式倒计时，比赛期间 AI 教练自动锁定、归零自动解锁；导入 PDF 试卷一键创建比赛，全程存入练习记录。</p>
-          </div>
-          <div class="cap-demo">
-            <div class="mini-contest">
-              <div class="contest-clock">01:59:32</div>
-              <div class="contest-bar"><i style="width: 33%"></i></div>
-              <div class="contest-locked">🔒 AI 教练已锁定 · 倒计时结束自动解除</div>
-            </div>
-          </div>
-        </div>
-        <div class="cap-panel" id="cap-panel-3" role="tabpanel" aria-labelledby="cap-tab-3">
-          <div class="cap-copy">
-            <h3>AI 竞赛教练</h3>
-            <p>接入你自己的大模型 API：防剧透的分阶段思路提示、时空复杂度分析、边界 Bug 排查；比赛期间懂得闭嘴。</p>
-          </div>
-          <div class="cap-demo">
-            <div class="mini-chat">
-              <div class="bubble user">这题 n 到 1e18，暴力会不会超时？</div>
-              <div class="bubble coach">提示阶段 1：注意「因数成对出现」的性质——只枚举到 √n 就能拿到所有因子，想想怎么把 O(n) 压到 O(√n)。</div>
-              <div class="chat-chip">防剧透模式 · 分阶段提示</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+<section class="strip">
+	<div class="step"><b>1</b><span>双击安装，一路下一步</span><small>装到当前用户目录，不需要管理员权限</small></div>
+	<div class="step"><b>2</b><span>打开题目文件夹</span><small>内置 g++ 15.2.0 自动被找到，不碰系统 PATH</small></div>
+	<div class="step"><b>3</b><span>按 F9</span><small>按评测机参数编译并运行，输入直接喂给程序</small></div>
+</section>
 
-  <!-- ======= 下载 ======= -->
-  <section class="section download" id="download">
-    <div class="dl-card reveal">
-      <h2>下载 Olympia IDE</h2>
-      <p class="dl-meta">v0.1.0 · Windows 10 / 11 · x64 · 中文安装器</p>
-      <!-- 精简/完整双版本已合并：唯一版本内置 MinGW 工具链，随 Pages 静态发布 -->
-      <div class="dl-variants">
-        <div class="variant v-hot" style="grid-column: 1 / -1; max-width: 480px; margin: 0 auto;">
-          <h3>Olympia IDE <span class="v-badge">内置工具链</span></h3>
-          <p class="v-size">约 49 MB</p>
-          <p class="v-desc">内置 MinGW 13.1.0 编译工具链，安装即用、离线可用，零配置。国内直连快（Gitee）；GitHub 亦有同版备份。</p>
-          <a class="btn btn-primary btn-lg" id="dl-btn" href="https://gitee.com/yuanddMSK/olympia-ide/releases/download/v0.1.0/Olympia%20IDE_0.1.0_x64-setup.exe">
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 1v8.5L4.8 6.3 3.7 7.4 8 11.7l4.3-4.3-1.1-1.1L8 9.5V1H7v8.5L3.8 6.3 2.7 7.4 7 11.7V15h2v-3.3l4.3-4.3-1.1-1.1L9 9.5V1H8z"/></svg>
-            下载 Windows 安装包
-            <span class="dl-badge">49 MB</span>
-          </a>
-          <p class="dl-toast" id="dl-toast" role="status" aria-live="polite"></p>
-        </div>
-      </div>
-      <p class="dl-note">安装需要管理员权限（全机安装），自动创建开始菜单与桌面快捷方式。</p>
-      <ul class="dl-reqs">
-        <li>系统自带 WebView2 运行时（Win 11 已内置，Win 10 缺失时安装器会提示）</li>
-        <li>无需任何网络：工具链已内置，安装即用</li>
-      </ul>
-    </div>
-  </section>
+<section id="features">
+	<h2>为竞赛写的那部分</h2>
+	<p class="section-lede">这些是 Olympia 自己加的，不是插件市场里拼出来的。</p>
+	<div class="grid">
+		<article>
+			<h3>自带编译器</h3>
+			<p>MinGW-w64（GCC 15.2.0，posix 线程模型）整个打进安装器。机房机器上什么都没有也能直接编译，
+			不需要装任何东西、不需要配环境变量。</p>
+			<p class="tagline"><code>bits/stdc++.h</code> 与 <code>pthread.h</code> 都在包里。</p>
+		</article>
+		<article>
+			<h3>评测机参数预设</h3>
+			<p>洛谷（C++23）、NOI（C++14）、自定义三档。状态栏左下角常驻显示当前档位，
+			点一下就能换；把评测机的开关套到本地编译，避免「本地过、评测机挂」。</p>
+			<p class="tagline"><code>-x c++ -std=c++23 -fPIC -DONLINE_JUDGE -Wall -fno-asm -lm -march=native</code></p>
+		</article>
+		<article>
+			<h3>提交前体检</h3>
+			<p>保存时扫描会在评测机上导致编译失败的写法，只报真会挂的，不管代码风格：</p>
+			<ul class="tight">
+				<li><code>#pragma GCC optimize</code> 一类优化属性</li>
+				<li><code>asm</code>、<code>and</code>、<code>or</code>、<code>not</code> 等 MSVC 能用、GNU C++ 是关键字的名字</li>
+				<li><code>gets</code>、<code>random_shuffle</code> 等 C++17 起删掉的设施</li>
+			</ul>
+		</article>
+		<article>
+			<h3>拉题面</h3>
+			<p>洛谷、LibreOJ、Codeforces 题号或链接直接拉进编辑器，也可以从剪贴板识别。
+			题面、样例、代码在同一个窗口里，不用来回切浏览器。</p>
+		</article>
+		<article>
+			<h3>模板与键位</h3>
+			<p>ACM / IOI 赛制模板一键插入，<code>freopen</code>、快读这些常见起手都写好。
+			所有动作都有快捷键，也都能在 Olympia 侧栏里点到。</p>
+		</article>
+		<article>
+			<h3>全中文，去掉用不上的</h3>
+			<p>界面、向导、报错文案汉化；调试器、源代码管理这些竞赛用不到的入口从侧栏摘掉，
+			左边只剩 资源管理器 / 搜索 / 扩展 / Olympia。</p>
+		</article>
+	</div>
+</section>
 
-  <!-- ======= 路线图 ======= -->
-  <section class="section" id="roadmap">
-    <h2>路线图</h2>
-    <p class="section-sub">项目处于活跃开发期，以下是近期的方向。</p>
-      <div class="timeline">
-        <div class="tl-item done reveal"><span class="tl-tag">已完成</span>核心闭环：编辑 · 评测 · 对拍 · 题库 · 比赛模式 · AI 教练</div>
-        <div class="tl-item done reveal"><span class="tl-tag">已完成</span>OJ 题目一键导入（洛谷 / Codeforces / AtCoder）</div>
-        <div class="tl-item done reveal"><span class="tl-tag">已完成</span>中文安装器（内置工具链）· 双主题 · 题目与文件绑定 · 自由练习</div>
-        <div class="tl-item reveal"><span class="tl-tag next">计划中</span>OJ 凭据管理与一键提交</div>
-        <div class="tl-item reveal"><span class="tl-tag next">计划中</span>训练打卡 · 错题本（按判定归档复盘）</div>
-        <div class="tl-item reveal"><span class="tl-tag plan">远期</span>更多主题 · 训练数据统计报表</div>
-      </div>
-  </section>
+<section id="workflow" class="alt">
+	<h2>不用去命令面板里翻</h2>
+	<p class="section-lede">
+		竞赛动作放在三个常驻位置：左侧 Olympia 面板、底部状态栏、编辑器标题栏。
+		面板顶部还会实时显示编译器版本、当前评测机档位和体检结果。
+	</p>
+	<div class="cols">
+		<div>
+			<h3>Olympia 侧栏</h3>
+			<ul class="check">
+				<li>当前环境：编译器、编译配置、体检状态</li>
+				<li>编译与运行：编译并运行、只编译、按评测机编译、提交前体检</li>
+				<li>题目与模板：拉取题面、从剪贴板拉题号、插入赛制模板</li>
+				<li>AI 教练与帮助：AI 设置、环境自检、打开官网与文档</li>
+			</ul>
+		</div>
+		<div>
+			<h3>状态栏与标题栏</h3>
+			<ul class="check">
+				<li>左下角三枚 chip：评测机档位、编译运行、体检结果，点击即执行</li>
+				<li>编辑器右上角：编译并运行、按评测机编译、提交前体检、拉取题面</li>
+				<li>运行不弹黑窗，输出在 Olympia 自己的面板里</li>
+			</ul>
+		</div>
+	</div>
+</section>
 
-  <!-- ======= 页脚 ======= -->
-  <footer class="footer">
-    <div class="footer-inner">
-      <div class="brand">
-        <span class="brand-mark"><svg width="22" height="22" viewBox="0 0 512 512" aria-hidden="true"><path d="M 294.8 111.1 A 150 150 0 1 0 400.9 217.2" fill="none" stroke="#2f9ce8" stroke-width="56" stroke-linecap="round"/><path d="M 170 266 L 243 340 L 350 205" fill="none" stroke="#34c759" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-        <span class="brand-name">Olympia IDE</span>
-      </div>
-      <p>由 OI 选手，为 OI 选手打造。</p>
-      <p class="footer-meta">MIT License · <a href="https://github.com/yuandd0412/olympia-ide">GitHub</a> · <a href="#top">回到顶部</a></p>
-    </div>
-  </footer>
+<section id="keys">
+	<h2>快捷键</h2>
+	<p class="section-lede">装完就能按，不需要自己绑。</p>
+	<div class="table-wrap">
+		<table>
+			<thead><tr><th>操作</th><th>键位</th><th>说明</th></tr></thead>
+			<tbody>
+				<tr><td>编译并运行</td><td><kbd>F9</kbd></td><td>按当前评测机档位编译，成功后直接运行</td></tr>
+				<tr><td>只编译</td><td><kbd>Shift</kbd>+<kbd>F9</kbd></td><td>只看有没有编译错误，不运行</td></tr>
+				<tr><td>按评测机编译（-O2）</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F9</kbd></td><td>打开优化复现评测机行为</td></tr>
+				<tr><td>提交前体检</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Enter</kbd></td><td>扫描会在评测机上编译失败的写法</td></tr>
+				<tr><td>环境自检</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd></td><td>逐项检查编译器、参数、AI 配置</td></tr>
+				<tr><td>切换评测机档位</td><td>点状态栏 <em>洛谷 · C++23</em></td><td>洛谷 / NOI / 自定义</td></tr>
+				<tr><td>拉取题面</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd></td><td>洛谷、LibreOJ、Codeforces</td></tr>
+				<tr><td>从剪贴板拉题号</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd></td><td>复制网页链接后直接识别</td></tr>
+				<tr><td>插入赛制模板</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd></td><td>ACM / IOI 起手代码</td></tr>
+			</tbody>
+		</table>
+	</div>
+</section>
 
-  <script src="main.js"></script>
+<section id="coach" class="alt">
+	<h2>AI 教练：你自己的 Key</h2>
+	<p class="section-lede">
+		不绑账号、不订阅、不上传代码到我们的服务器。填一个 OpenAI 兼容的地址和自己的 API Key 就能用，
+		不填也完全不影响编译运行。
+	</p>
+	<div class="cols">
+		<div>
+			<h3>怎么配</h3>
+			<ol class="steps">
+				<li>侧栏 Olympia → <em>AI 教练与帮助</em> → <em>AI 设置（地址 / 密钥 / 模型）</em></li>
+				<li>填 <code>baseUrl</code>，Key 在密码框里输入（存在系统密钥库，不写进配置文件）</li>
+				<li>模型列表自动从 <code>/models</code> 拉，拉不到就手动填，两行一个</li>
+			</ol>
+		</div>
+		<div>
+			<h3>怎么用</h3>
+			<p>在聊天面板里 <code>@coach</code> 唤出教练，四个指令：</p>
+			<ul class="check">
+				<li><code>/wa</code>：对着这份代码分析可能Wrong Answer在哪</li>
+				<li><code>/hint</code>：只给思路，不给完整代码</li>
+				<li><code>/check</code>：解释体检报出来的问题</li>
+				<li><code>/coach</code>：常规答疑与复杂度分析</li>
+			</ul>
+		</div>
+	</div>
+</section>
+
+<section id="download">
+	<h2>下载</h2>
+
+	<div class="editions">
+		<article class="edition is-primary">
+		<h3>完整版 <span class="pill">推荐</span></h3>
+			<p class="edition-size">282 MiB</p>
+			<p>内置 MinGW 编译器，装完直接能用。机房、家里、重装系统的机器都选这个。</p>
+			<a class="btn btn-primary btn-block" href="https://gitee.com/yuanddMSK/olympia-ide/releases" data-download="OlympiaSetup-web.exe">下载网络引导安装器</a>
+			<p class="hint">1.8 MB，自动下载全部分卷并逐个校验 SHA256，然后进入中文安装向导。</p>
+			<details>
+				<summary>网络不好？手动下载分卷</summary>
+				<p>把下面 5 个文件放进<b>同一个文件夹</b>，双击 <code>OlympiaSetup.exe</code>。缺任何一片，向导会提示「安装程序需要下一张磁盘」。</p>
+				<table class="files">
+					<thead><tr><th>文件</th><th>大小</th><th></th></tr></thead>
+					<tbody>
+						<tr><td><code>OlympiaSetup.exe</code></td><td>2.6 MB</td><td><button class="copy" data-copy="OlympiaSetup.exe">复制文件名</button></td></tr>
+						<tr><td><code>OlympiaSetup-1.bin</code></td><td>91.8 MB</td><td><button class="copy" data-copy="OlympiaSetup-1.bin">复制文件名</button></td></tr>
+						<tr><td><code>OlympiaSetup-2.bin</code></td><td>94.4 MB</td><td><button class="copy" data-copy="OlympiaSetup-2.bin">复制文件名</button></td></tr>
+						<tr><td><code>OlympiaSetup-3.bin</code></td><td>94.4 MB</td><td><button class="copy" data-copy="OlympiaSetup-3.bin">复制文件名</button></td></tr>
+						<tr><td><code>OlympiaSetup-4.bin</code></td><td>12.7 MB</td><td><button class="copy" data-copy="OlympiaSetup-4.bin">复制文件名</button></td></tr>
+					</tbody>
+				</table>
+				<p class="hint">全部文件共 295,781,193 字节，校验值见同目录 <code>SHA256SUMS.txt</code>。</p>
+			</details>
+		</article>
+
+		<article class="edition">
+			<h3>精简版 <span class="pill pill-wait">待发布</span></h3>
+			<p class="edition-size">187 MiB</p>
+			<p>不含内置编译器，体积小三分之一。只适合系统里已经有 <code>g++</code> 的机器。</p>
+			<button class="btn btn-primary btn-block" disabled>暂未提供</button>
+			<p class="hint">没有编译器也不用担心：完整版装上后 Olympia 会自己找到自己的 g++，不依赖系统环境。</p>
+		</article>
+	</div>
+
+	<div class="install">
+		<h3>装完之后</h3>
+		<ol class="steps">
+			<li>第一次打开会问你配色和键位，直接确认就行 —— 出厂主题是 One Dark Pro。</li>
+			<li>新建或打开一个 <code>.cpp</code>，按 <kbd>F9</kbd>。第一次会提示选择样例输入方式：直接敲，或选一个数据文件。</li>
+			<li>想复现评测机行为，点状态栏的「洛谷 · C++23」换档位，或用 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F9</kbd> 打开 <code>-O2</code>。</li>
+		</ol>
+		<p class="hint">安装位置是 <code>%LocalAppData%\Programs</code>，不需要管理员权限，也不会改动系统 PATH。</p>
+	</div>
+</section>
+
+<section id="faq" class="alt">
+	<h2>常见问题</h2>
+	<div class="faq">
+		<details>
+			<summary>这算不算「VS Code 装了个插件」？</summary>
+			<p>不是。Olympia 是 VS Code 的 fork，竞赛功能改在工作台本身：侧栏容器、状态栏、标题栏、菜单、
+			出厂主题和默认设置都在产品里，安装完就是竞赛环境，不需要再去扩展市场装东西。</p>
+		</details>
+		<details>
+			<summary>为什么安装包这么大？</summary>
+			<p>里面是整个 Electron 运行时 + 内置 MinGW（455 MB 解包后）。体积换的是「拿到机器上就能编译」，
+			机房机器不需要再装任何东西。单文件 100 MB 以内对这个产品不可能做到，所以走分卷 + 网络引导。</p>
+		</details>
+		<details>
+			<summary>装完提示「已阻止未识别的应用」/ SmartScreen？</summary>
+			<p>因为安装包还没有代码签名证书。选「仍要运行」即可；安装器本身是 Inno Setup 生成的标准程序，
+			也可以先用 <code>SHA256SUMS.txt</code> 核对校验值。</p>
+		</details>
+		<details>
+			<summary>需要联网吗？</summary>
+			<p>编译、运行、体检、模板、题面文件全部离线。只有拉取在线题面和 AI 教练需要网络，
+			两者都是可选功能，不配也不影响其他部分。</p>
+		</details>
+		<details>
+			<summary>支持 macOS / Linux 吗？</summary>
+			<p>只出 Windows x64。竞赛机房的现实就是 Windows，其他平台不做。</p>
+		</details>
+	</div>
+</section>
+
+<section class="cta">
+	<h2>把时间留给算法</h2>
+	<p>装完，就打比赛。</p>
+	<a class="btn btn-primary" href="https://gitee.com/yuanddMSK/olympia-ide/releases" data-download="OlympiaSetup-web.exe">下载 Olympia IDE v1.0.0</a>
+</section>
+
+</main>
+
+<footer class="site-foot">
+	<p><b>Olympia IDE</b> 是面向信息学竞赛的 VS Code fork，Windows 10 / 11 x64。</p>
+	<p>
+		源码：<a href="https://github.com/yuandd0412/olympia-ide">GitHub</a> ·
+		发行版与安装包：<a href="https://gitee.com/yuanddMSK/olympia-ide/releases">Gitee Releases</a>
+	</p>
+	<p class="legal">
+		Olympia 的修改以 GPL-3.0-or-later 发布；基于 Microsoft Visual Studio Code（MIT License）。
+		内置 One Dark Pro 配色（MIT，来自 zhuangtongfa.material-theme），捆绑的工具链为 MinGW-w64 / MSYS2 发行，
+		各自遵循其原始许可证。
+	</p>
+</footer>
+
+<script src="main.js"></script>
 </body>
 </html>

@@ -29,6 +29,13 @@ const MIRRORS = [
 ];
 
 /**
+ * Windows' own bsdtar is pinned rather than looked up. Git Bash puts a GNU tar without zstd support
+ * earlier on PATH, and that one also reads an absolute `C:\…` argument as `host:path`, so an
+ * assembly started from a Git shell fails on the very first package instead of producing a tree.
+ */
+const TAR = fs.existsSync('C:/Windows/System32/tar.exe') ? 'C:/Windows/System32/tar.exe' : 'tar';
+
+/**
  * The packages a working g++ needs at runtime.
  *
  * `zlib`, `zstd` and `gettext-runtime` look optional but are not: `ld.exe` from binutils imports
@@ -45,7 +52,15 @@ const PACKAGES = [
 	{ name: 'crt', why: 'crt*.o startup objects' },
 	{ name: 'headers', why: 'standard headers plus what they transitively include' },
 	{ name: 'libwinpthread', why: 'libwinpthread-1.dll — the POSIX threads runtime' },
-	{ name: 'winpthreads-stub', why: 'libpthread.a etc. — the import libraries ld links -lpthread against' },
+	/**
+	 * `winpthreads-git`, not `winpthreads-stub`. The stub carries only `libpthread.a` plus the three
+	 * `pthread_*.h` sub-headers, and the staged tree then compiles every program that reaches
+	 * libstdc++'s `gthr-default.h` — i.e. anything including `<iostream>` or `<bits/stdc++.h>` —
+	 * with `fatal error: pthread.h: No such file or directory`, because this GCC was configured
+	 * `--enable-threads=posix` and only the -git package installs `pthread.h` / `semaphore.h`.
+	 * The -git package is a superset of the stub's link libraries, so nothing else is lost.
+	 */
+	{ name: 'winpthreads-git', why: 'pthread.h / semaphore.h and the -lpthread import libraries' },
 	{ name: 'zlib', why: 'zlib1.dll — ld.exe will not start without it' },
 	{ name: 'zstd', why: 'libzstd.dll — imported by ld.exe for compressed debug sections' },
 	{ name: 'gettext-runtime', why: 'libintl-8.dll — imported by ld.exe' },
@@ -152,7 +167,7 @@ function cmpVersion(a, b) {
  */
 function extractPkg(pkgPath, dest) {
 	return new Promise((resolve, reject) => {
-		const child = spawn('tar', ['-xf', pkgPath, '-C', dest], {
+		const child = spawn(TAR, ['-xf', pkgPath, '-C', dest], {
 			windowsHide: true,
 			stdio: ['ignore', 'pipe', 'pipe'],
 		});

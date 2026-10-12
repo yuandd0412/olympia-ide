@@ -41,7 +41,7 @@ Module._load = function (request, parent, isMain) {
 	return originalLoad.call(this, request, parent, isMain);
 };
 
-const { OlympiaChatProvider, parseModelIds } = require('./provider.js');
+const { OlympiaChatProvider, parseModelIds, invalidateModelsCache } = require('./provider.js');
 
 const context = { secrets: { get: async () => 'sk-test' } };
 const provider = new OlympiaChatProvider(context, logStub);
@@ -139,18 +139,18 @@ const serveModels = payload => {
 };
 const list = () => provider.provideLanguageModelChatInformation({ silent: false }, {});
 
-provider.invalidateModelsCache();
+invalidateModelsCache();
 serveModels({ data: [{ id: 'ds-chat' }, { id: 'ds-Embedding-1' }, { id: 'ds-reasoner' }, { id: 'ds-chat' }] });
 let listed = (await list()).map(m => m.id);
 assert.strictEqual(lastModelsUrl, 'https://example.test/v1/models', 'listed from the same normalised baseUrl');
 assert.strictEqual(lastModelsAuth, 'Bearer sk-test');
 assert.deepStrictEqual(listed, ['ds-chat', 'ds-reasoner'], 'embedding filtered, order kept, duplicates removed');
 
-provider.invalidateModelsCache();
+invalidateModelsCache();
 serveModels(['a', 'b']);
 assert.deepStrictEqual((await list()).map(m => m.id), ['a', 'b'], 'root-array payload shape');
 
-provider.invalidateModelsCache();
+invalidateModelsCache();
 serveModels({ models: [{ name: 'x' }, { model: 'y' }] });
 assert.deepStrictEqual((await list()).map(m => m.id), ['x', 'y'], 'models[] with name/model as the id field');
 
@@ -158,23 +158,23 @@ modelsFetches = 0;
 assert.deepStrictEqual((await list()).map(m => m.id), ['x', 'y'], 'the cached list is reused');
 assert.strictEqual(modelsFetches, 0, 'a cache hit must not hit the network');
 
-provider.invalidateModelsCache();
+invalidateModelsCache();
 globalThis.fetch = async () => ({ ok: false, status: 401, text: async () => 'invalid api key' });
 logs.length = 0;
 assert.deepStrictEqual((await list()).map(m => m.id), ['deepseek-chat', 'deepseek-reasoner'], '401 falls back to the built-in list');
 assert.ok(logs.some(([, message]) => /HTTP 401/.test(message)), 'the reason for the fallback is logged');
 
-provider.invalidateModelsCache();
+invalidateModelsCache();
 globalThis.fetch = async () => { throw new Error('ETIMEDOUT'); };
 logs.length = 0;
 assert.deepStrictEqual((await list()).map(m => m.id), ['deepseek-chat', 'deepseek-reasoner'], 'a network failure falls back too');
 assert.ok(logs.some(([, message]) => /ETIMEDOUT/.test(message)), 'the thrown reason is logged');
 
-provider.invalidateModelsCache();
+invalidateModelsCache();
 serveModels('this is not json');
 assert.deepStrictEqual((await list()).map(m => m.id), ['deepseek-chat', 'deepseek-reasoner'], 'an unparseable 200 falls back instead of returning an empty picker');
 
-provider.invalidateModelsCache();
+invalidateModelsCache();
 serveModels({ data: [{ id: 'text-embedding-3' }, { id: 'rerank-v1' }] });
 assert.deepStrictEqual((await list()).map(m => m.id), ['deepseek-chat', 'deepseek-reasoner'], 'a server that lists only non-chat models must not produce a dead picker');
 

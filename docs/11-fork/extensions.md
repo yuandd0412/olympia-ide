@@ -58,7 +58,17 @@ Two walkthroughs are contributed: `olympia.gettingStarted` ("三分钟上手 Oly
 open a folder, pick the judge compile profile, run the environment check, ask the AI coach, learn
 more) and `olympia.compiler` ("内置编译器与环境自检", one step). The coach step exists so the
 `@coach` participant is discoverable from the first run; it completes on `olympia.coach.selectModel`.
-`contributes.startEntries` puts 新建竞赛工程 and 环境自检 on the empty workbench.
+
+The compile task provider (`compile.ts:168`, type `olympia-compile`) must stay declared in
+`contributes.taskDefinitions`: while it was missing, the packaged app logged
+`The task [olympia-compile, …] uses an undefined task type. The task will be ignored in the future.`,
+i.e. a saved build task silently stops working later. The provider's task definition only carries
+`source` (an absolute path, because `TaskDefinition` must be serialisable — `resolveTask` re-wraps it
+with `Uri.file`).
+
+Pre-submit check on save is a fire-and-forget `onWillSaveTextDocument` listener with **no**
+`event.waitUntil(...)`: 体检 must never delay the write itself, and a participant that returns an
+unresolved promise gets its save killed after 1750 ms by the workbench.
 
 **Persistent entry points** (the reason the palette is no longer the only way in): an `Olympia`
 activity-bar container contributing one visible tree view, `olympia.tools` ("竞赛工具"), whose four

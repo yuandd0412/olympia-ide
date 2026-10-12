@@ -88,6 +88,27 @@ function registeredCommands(srcDir) {
 	return found;
 }
 
+/** 任务提供器注册用的类型字符串（字面量或模块里导出的常量）。 */
+function taskProviderTypes(srcDir) {
+	const types = new Set();
+	const consts = new Map();
+	const files = fs.readdirSync(srcDir).filter(f => f.endsWith('.ts'));
+	for (const file of files) {
+		const text = fs.readFileSync(path.join(srcDir, file), 'utf8');
+		for (const m of text.matchAll(/export const (\w+)\s*=\s*'([^']+)'/g)) {
+			consts.set(m[1], m[2]);
+		}
+	}
+	for (const file of files) {
+		const text = fs.readFileSync(path.join(srcDir, file), 'utf8');
+		for (const m of text.matchAll(/registerTaskProvider\(\s*(?:'([^']+)'|([\w.]+))\s*,/g)) {
+			const value = m[1] ?? (m[2] ? consts.get(m[2]) : undefined);
+			if (value) { types.add(value); }
+		}
+	}
+	return types;
+}
+
 const problems = [];
 const summary = [];
 // 只给测试台用的内部命令，故意不进命令面板。
@@ -125,6 +146,14 @@ for (const id of OLYMPIA_EXTENSIONS) {
 	for (const kb of manifest.contributes?.keybindings ?? []) {
 		if (!declared.has(kb.command) && !registered.has(kb.command)) {
 			problems.push(`${id}: 快捷键 ${kb.key} 指向不存在的 ${kb.command}`);
+		}
+	}
+	// 4) 任务提供器的类型必须在 contributes.taskDefinitions 里声明，
+	//    否则产品日志会报「uses an undefined task type. The task will be ignored in the future」。
+	const declaredTaskTypes = new Set((manifest.contributes?.taskDefinitions ?? []).map(t => t.type));
+	for (const type of taskProviderTypes(srcDir)) {
+		if (!declaredTaskTypes.has(type)) {
+			problems.push(`${id}: registerTaskProvider('${type}') 但 contributes.taskDefinitions 里没有这个类型`);
 		}
 	}
 	summary.push(`${id}: 声明 ${(manifest.contributes?.commands ?? []).length} 条，注册 ${registered.size} 条，界面引用 ${referenced.length} 处`);

@@ -151,10 +151,15 @@
 	<ol class="steps">
 		<li>先用 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd> 拉题面，或 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd> 打开一份已经缓存的题面。</li>
 		<li>写好代码，按 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>J</kbd>。</li>
-		<li>Olympia 用当前档位编译，把每组样例的输入喂进去，按 token 比对输出，并读题面里写的时限来判断有没有超时。</li>
+		<li>Olympia 用当前档位编译，把每组样例的输入喂进去，按 token 比对输出，并按题面里写的时限和内存限制判断有没有超时、超内存。</li>
 	</ol>
-	<p>结果给出 <b>AC</b> / <b>WA</b> / <b>RE</b> / <b>TLE</b>，WA 会把「期望输出」和「你的输出」并排列出来，直接对着看差异。</p>
-	<p class="hint">读不到题面或题面里没有样例时，命令会让你先选一份缓存题面，不会凭空判你错。时限认「时限：1000ms」「时限：1 秒」这两种写法。</p>
+	<p>结果给出 <b>AC</b> / <b>WA</b> / <b>RE</b> / <b>TLE</b> / <b>MLE</b>，WA 会把「期望输出」和「你的输出」并排列出来，直接对着看差异。
+	每组还会打印耗时和<b>峰值内存</b>，超内存时按「峰值 &gt; 上限」判 MLE。</p>
+	<p class="hint">读不到题面或题面里没有样例时，命令会让你先选一份缓存题面，不会凭空判你错。时限认「时限：1000ms」「时限：1 秒」这两种写法，
+	内存认「内存限制：128.00 MB」「内存：128M」「内存：1GB」这类写法。</p>
+	<p class="hint">峰值内存是每隔 30 毫秒采样一次的，短命进程会漏掉峰值，所以这个数字只会<b>偏小不会偏大</b>：
+	判了 MLE 就是真超了，没判不代表一定安全。题面没写内存限制时只报峰值、不判 MLE；想强制一条上限就填
+	<code>olympia.judge.memoryLimitMb</code>。</p>
 </section>
 
 <section id="stress" class="alt">
@@ -262,7 +267,7 @@
 				<tr><td>只编译</td><td><kbd>Shift</kbd>+<kbd>F9</kbd></td><td>只看有没有编译错误</td></tr>
 				<tr><td>按评测机编译</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F9</kbd></td><td>强制 <code>-O2</code>，复现评测机</td></tr>
 				<tr><td>提交前体检</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Enter</kbd></td><td>扫描会在评测机上编译失败的写法</td></tr>
-				<tr><td>跑样例</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>J</kbd></td><td>本地判定 AC / WA / RE / TLE</td></tr>
+				<tr><td>跑样例</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>J</kbd></td><td>本地判定 AC / WA / RE / TLE / MLE</td></tr>
 				<tr><td>对拍</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd></td><td>随机数据比对正解与暴力</td></tr>
 				<tr><td>比赛模式</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd></td><td>开始 / 结束倒计时</td></tr>
 				<tr><td>环境自检</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd></td><td>逐项检查编译器、参数、AI 配置</td></tr>
@@ -296,6 +301,7 @@
 				<tr><td><code>olympia.check.rules.removedCpp</code></td><td><code>true</code></td><td>检查标准里已删除的写法</td></tr>
 				<tr><td><code>olympia.stress.rounds</code></td><td><code>100</code></td><td>对拍轮数</td></tr>
 				<tr><td><code>olympia.stress.timeoutMs</code></td><td><code>2000</code></td><td>对拍单程序运行上限</td></tr>
+				<tr><td><code>olympia.judge.memoryLimitMb</code></td><td><code>0</code></td><td>跑样例判 MLE 的内存上限，<code>0</code> 表示按题面里写的算</td></tr>
 				<tr><td><code>olympia.problem.problemsDir</code></td><td><code>.olympia/problems</code></td><td>题面缓存目录</td></tr>
 				<tr><td><code>olympia.problem.templateOnPull</code></td><td><code>false</code></td><td>拉完题面自动建 <code>main.cpp</code></td></tr>
 				<tr><td><code>olympia.problem.requestTimeoutMs</code></td><td><code>15000</code></td><td>拉题面的网络超时</td></tr>
@@ -363,7 +369,7 @@
 		<li>常驻入口：左侧 Olympia 面板、状态栏三枚 chip、编辑器标题栏按钮</li>
 		<li>评测机档位：洛谷 / NOI Linux 2.0 / 自定义，可打印完整编译命令</li>
 		<li>提交前体检改为只报编译期问题，保存时静默写入「问题」面板</li>
-		<li>跑样例：按 token 比对、按题面时限判 TLE，WA 给出期望与实际输出</li>
+		<li>跑样例：按 token 比对、按题面时限判 TLE、按题面内存限制判 MLE 并报峰值内存，WA 给出期望与实际输出</li>
 		<li>对拍、比赛模式、题面拉取（洛谷 / Codeforces / AtCoder）、ACM 与 IOI 模板全部配齐快捷键</li>
 		<li>AI 教练改为自带 Key（BYOK）：不再有任何登录、账号、订阅入口</li>
 		<li>出厂主题 One Dark Pro；活动栏精简；界面与向导文案汉化</li>

@@ -39,9 +39,16 @@ The three commands after 体检 are the judge-shaped loop the Tauri app had and 
   reads the cached statement Markdown for the current file (`.olympia/problems/<题号>.md`, same
   directory `olympia-contest` writes, falling back to a quick pick when no file matches by name),
   compiles with the active judge profile, runs every sample through it and prints `AC` / `WA` / `RE` /
-  `TLE` per case into the `Olympia 评测` channel. Comparison ignores whitespace like a real judge. The
+  `TLE` / `MLE` per case into the `Olympia 评测` channel. Comparison ignores whitespace like a real judge. The
   time limit is read from the statement and accepts both units the product produces — `1000 ms` from
   the pull chain and hand-written `1.00s`; an unrecognised unit falls back to 1 s rather than guessing.
+  The memory limit is read the same way (`内存限制：128.00 MB`, `内存：128M`, `内存：1GB`) and comes from
+  [`src/memoryProbe.ts`](../../oss/extensions/olympia-onboarding/src/memoryProbe.ts), which samples the
+  child's working set every 30 ms through `tasklist.exe` and reports the maximum. Sampling can only
+  *under*-report — a spike shorter than the interval is missed — so a reported MLE is real, and the
+  verdict additionally requires an explicit limit: `olympia.judge.memoryLimitMb` (0 = use the
+  statement, which is the default) or a limit written in the statement. With no limit at all the case
+  still prints its peak memory but can never be judged MLE.
 - **对拍** ([`src/stressTest.ts`](../../oss/extensions/olympia-onboarding/src/stressTest.ts)) asks for
   three files (正解 / 暴力 / 生成器, remembered per workspace and floated to the top of the list),
   compiles all three, then feeds generator output to both solutions round after round. A mismatch stops
@@ -240,16 +247,18 @@ the flag is falsy, and it was falsy only by omission), and the `defaultChatAgent
 
 ## How to verify without a device
 
-Six harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
-with `vscode` stubbed through a `Module._load` hook, so they test the shipped code path rather than a
-re-implementation; the seventh, `check-command-wiring.mjs`, reads the manifests and sources instead. Compile first (`npm run gulp -- compile-extension:olympia-onboarding`), then run each
+Seven harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
+with `vscode` stubbed through a `Module._load` hook (the memory probe needs no stub — it only talks to
+`child_process` and `tasklist.exe`), so they test the shipped code path rather than a
+re-implementation; the eighth, `check-command-wiring.mjs`, reads the manifests and sources instead. Compile first (`npm run gulp -- compile-extension:olympia-onboarding`), then run each
 with `node scripts/oneoff/<name>.mjs` from the repository root:
 
 | Harness | What it pins down |
 | --- | --- |
 | `test-precheck.mjs` | 体检 rules: pragma reporting regardless of the local optimization switch, and nothing reported inside comments or string literals |
-| `test-judge-samples.mjs` | `parseSamples` against Markdown shaped exactly like `renderStatement` output, including the `ms` / `s` / `毫秒` / `秒` time-limit units and the 500 ms–10 s clamp |
-| `test-judge-pipeline.mjs` | the whole 跑样例 command against the **bundled g++**: AC on a correct file, WA with expected-vs-got printed, a compile failure reported as a failure instead of a pass, and a quick pick when no statement matches by name |
+| `test-judge-samples.mjs` | `parseSamples` against Markdown shaped exactly like `renderStatement` output, including the `ms` / `s` / `毫秒` / `秒` time-limit units, the 500 ms–10 s clamp, and the memory-limit spellings (`内存限制：128.00 MB` / `内存：128M` / `内存：1GB`) plus the "no limit written" case |
+| `test-judge-pipeline.mjs` | the whole 跑样例 command against the **bundled g++**: AC on a correct file, WA with expected-vs-got printed, a compile failure reported as a failure instead of a pass, a quick pick when no statement matches by name, a memory hog judged MLE with its peak reported when the statement writes a limit — and never judged MLE when it does not |
+| `test-memory-probe.mjs` | the probe itself: the memory column parsed **by position** (labels are localized on zh Windows) with thousands separators, a program whose path contains spaces, a run too fast to sample (no peak, still not a failure), a 120 MB allocation actually seen, the timeout kill, a non-zero exit counted as failure while stdout is still collected, and the fallback to a plain run when the probe reads nothing |
 | `test-stress-pipeline.mjs` | the whole 对拍 command: 25 agreeing rounds report 通过, an intentionally wrong solution stops the run and leaves `stress-fail/round-N.*` behind, and a silent generator errors out instead of "passing" zero rounds |
 | `test-cpp-snippets.mjs` | the 20-row C++ completion table: registration and `dispose`, every `detail`/hint line carries Chinese, aliases actually resolve (敲 `fast`/`sync`/`pow`/`union` 命中对应条目), placeholders close, the switch silences the list — and each body, with its placeholders filled, passes `g++ -std=c++17 -fsyntax-only` inside a generated translation unit |
 | `test-contest-gate.mjs` | the 比赛模式 → AI 教练 lock across both extensions: `setContext('olympia.contest.running')` flips exactly on start and stop (not every tick), `olympia.contest.isRunning` answers accordingly, and while it is set `@coach` writes only the refusal and never asks for the model list |
@@ -258,6 +267,14 @@ with `node scripts/oneoff/<name>.mjs` from the repository root:
 The bundled compiler is what makes the pipeline harnesses real rather than mocked: they resolve
 `VSCode-win32-x64/resources/app/toolchain/mingw64/bin/g++.exe` through the normal
 `olympia.compiler.path` config path, so a broken toolchain fails the harness instead of hiding.
+
+Why the memory probe drives the child itself instead of asking PowerShell: `Start-Process -PassThru`
+returns an object whose `ExitCode` is frequently empty under PowerShell 5.1, so a crashing program
+would have been reported as a clean run — a missed RE is worse than no memory number. The probe keeps
+Node's own `spawn` (exit code, stdin and the timeout kill all stay in our hands) and only borrows
+`tasklist.exe` for the reading. One call costs 200–800 ms, so the sampler must never queue up behind
+itself, and the value is read from column 5 by position because the header labels follow the OS
+language.
 
 `check-website.mjs` is the same idea applied to the promises made on the site: every key in the
 keyboard table must be bound in one of the three manifests, every manifest binding must be listed on the

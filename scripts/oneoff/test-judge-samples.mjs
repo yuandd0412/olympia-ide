@@ -147,5 +147,30 @@ check('代码块里带语言的围栏也能解析', () => {
 	assert.equal(parsed.samples[0].expected.trim(), '7');
 });
 
+check('内存限制：两种写法、单位与「没写」都要有正确结果', () => {
+	// 真实题面（洛谷）写的是「内存限制：128.00 MB」，只认「内存：」就一条都读不到。
+	assert.equal(judge.parseSamples('> 来源：洛谷 ｜ 时限：1.00s ｜ 内存限制：128.00 MB').memoryLimitMb, 128);
+	assert.equal(judge.parseSamples('> 内存：256 MB').memoryLimitMb, 256);
+	assert.equal(judge.parseSamples('> 内存：1.00 GB').memoryLimitMb, 1024);
+	assert.equal(judge.parseSamples('> 内存：65536 KB').memoryLimitMb, 64);
+	assert.equal(judge.parseSamples('> 内存：128').memoryLimitMb, 128);   // 省了单位就按 MB 理解
+	assert.equal(judge.parseSamples('# P1001 某题\n\n没有写内存限制。\n').memoryLimitMb, 0);
+	assert.equal(judge.parseSamples('> 内存限制：0 MB').memoryLimitMb, 0);
+});
+
+check('总体判定取最严的一档，顺序和老版本 worse_verdict 一致', () => {
+	assert.equal(typeof judge.verdictOf, 'function', 'out/judgeSamples.js 必须导出 verdictOf');
+	// AC < WA < MLE < TLE < RE（frontend/src-tauri/src/runner.rs 的 RANK）
+	const caseOf = verdict => ({ index: 1, verdict, got: '', detail: '', ms: 0 });
+	const of = verdicts => judge.verdictOf(verdicts.map(caseOf));
+	assert.equal(of([]), 'AC', '一组都没跑过不能报失败');
+	assert.equal(of(['AC', 'AC']), 'AC');
+	assert.equal(of(['AC', 'WA', 'AC']), 'WA');
+	assert.equal(of(['WA', 'MLE']), 'MLE', '超内存比答案错误更该先说');
+	assert.equal(of(['MLE', 'TLE']), 'TLE', '超时比超内存更该先说');
+	assert.equal(of(['TLE', 'RE']), 'RE', '运行出错是最严的一档');
+	assert.equal(of(['RE', 'WA', 'MLE', 'TLE']), 'RE', '乱序也要挑出最严的');
+});
+
 console.log(failures ? '\nFAILED' : '\nall judge-sample assertions passed');
 process.exitCode = failures ? 1 : 0;

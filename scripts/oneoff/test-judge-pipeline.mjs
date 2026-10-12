@@ -173,5 +173,74 @@ await check('没有同名题面时从候选里选，而不是直接失败', asyn
 	assert.match(messages.map(m => m[1]).join('\n'), /AC/, '选完题面后没有判成 AC');
 });
 
+// ---- MLE：只有题面写了内存限制才判，采样只报峰值不猜 ----
+const problemsDir = path.join(fixture, '.olympia', 'problems');
+
+/** 答得对，但一口吃掉 24 MB 并抱着 1.2 秒——足够被采样看到。 */
+const MEMORY_HOG = [
+	'#include <bits/stdc++.h>',
+	'using namespace std;',
+	'int main() {',
+	'    int a, b;',
+	'    cin >> a >> b;',
+	'    const size_t n = 24ull * 1024 * 1024;',
+	'    char* p = (char*)malloc(n);',
+	'    for (size_t i = 0; i < n; i += 4096) { p[i] = 1; }',
+	'    this_thread::sleep_for(chrono::milliseconds(1200));',
+	'    cout << a + b << endl;',
+	'    return 0;',
+	'}',
+	''
+].join('\n');
+
+function writeHogCase(stem, metaLine) {
+	fs.writeFileSync(path.join(fixture, `${stem}.cpp`), MEMORY_HOG, 'utf8');
+	fs.mkdirSync(problemsDir, { recursive: true });
+	fs.writeFileSync(path.join(problemsDir, `${stem}.md`), [
+		`# ${stem} A+B Problem`,
+		'',
+		metaLine,
+		'',
+		'## 样例数据',
+		'',
+		'### 样例 1',
+		'',
+		'**输入**',
+		'',
+		'```',
+		'3 4',
+		'```',
+		'',
+		'**输出**',
+		'',
+		'```',
+		'7',
+		'```',
+		''
+	].join('\n'), 'utf8');
+}
+
+await check('题面写了内存限制、程序超了 → 判 MLE 并给出峰值', async () => {
+	writeHogCase('P1001_mem', '> 来源：洛谷 ｜ 时限：1.00s ｜ 内存限制：8.00 MB');
+	openFile('P1001_mem.cpp');
+	messages.length = 0;
+	await registered['olympia.judgeSamples']();
+	const summary = messages.map(m => m[1]).join('\n');
+	assert.match(summary, /MLE|超内存/, `提示里没有 MLE：${summary}`);
+	const log = judgeChannel().lines.join('\n');
+	assert.match(log, /峰值内存 \d+(\.\d+)? MB/, `日志里没有峰值内存：${log}`);
+});
+
+await check('题面没写内存限制 → 只报峰值，绝不判 MLE', async () => {
+	writeHogCase('P1001_nomem', '> 来源：洛谷 ｜ 时限：1.00s');
+	openFile('P1001_nomem.cpp');
+	messages.length = 0;
+	await registered['olympia.judgeSamples']();
+	const summary = messages.map(m => m[1]).join('\n');
+	assert.ok(!/MLE|超内存/.test(summary), `题面没写限制却判了 MLE：${summary}`);
+	assert.match(summary, /AC/, `应该按输出判 AC：${summary}`);
+	assert.match(judgeChannel().lines.join('\n'), /峰值内存/, '题面没写限制时也应当把测到的峰值告诉学生');
+});
+
 console.log(failed ? '\nFAILED' : '\nall judge-pipeline assertions passed');
 process.exitCode = failed ? 1 : 0;

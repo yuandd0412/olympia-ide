@@ -45,11 +45,11 @@ function check(name, fn) {
 	}
 }
 
-/** 与 olympia-contest 的 renderSamples 逐字对齐的形状。 */
+/** 与 olympia-contest 的 renderStatement 逐字对齐：它写的是「时限：1000 ms」「内存：128 MB」。 */
 const statement = [
 	'# P1001 A+B Problem',
 	'',
-	'> 来源：洛谷 ｜ 难度：入门 ｜ 时限：1.00s ｜ 内存限制：128.00 MB',
+	'> 来源：洛谷 ｜ 难度：入门 ｜ 时限：1000 ms ｜ 内存：128 MB',
 	'> 原文链接：https://www.luogu.com.cn/problem/P1001',
 	'',
 	'## 题目描述',
@@ -104,13 +104,24 @@ check('两组样例都被解析出来', () => {
 	assert.equal(samples[1].expected.trim(), '0');
 });
 
-check('时限从题面元信息里读出来（1.00s → 1000ms）', () => {
+check('拉题面写出的 ms 时限被正确读出来（不再是默认 1s）', () => {
 	assert.equal(judge.parseSamples(statement).timeLimitMs, 1000);
+	assert.equal(judge.parseSamples('> 时限：2000 ms').timeLimitMs, 2000);
+});
+
+check('手写题面的秒也认，两种单位不混', () => {
+	assert.equal(judge.parseSamples('> 时限：1.00s').timeLimitMs, 1000);
+	assert.equal(judge.parseSamples('> 时限：2s').timeLimitMs, 2000);
+	assert.equal(judge.parseSamples('> 时限：1500毫秒').timeLimitMs, 1500);
+	assert.equal(judge.parseSamples('> 时限：3 秒').timeLimitMs, 3000);
+	// 认不出单位时回到默认值，而不是把 1000 当 1000 秒
+	assert.equal(judge.parseSamples('> 时限：1000').timeLimitMs, 1000);
 });
 
 check('时限被夹在 500ms 到 10s 之间', () => {
 	assert.equal(judge.parseSamples('> 时限：0.01s\n\n### 样例 1\n\n**输入**\n\n```\n1\n```\n\n**输出**\n\n```\n1\n```\n').timeLimitMs, 500);
 	assert.equal(judge.parseSamples('> 时限：99s\n\n### 样例 1\n\n**输入**\n\n```\n1\n```\n\n**输出**\n\n```\n1\n```\n').timeLimitMs, 10000);
+	assert.equal(judge.parseSamples('> 时限：60000 ms').timeLimitMs, 10000);
 });
 
 check('没有时限也不炸', () => {

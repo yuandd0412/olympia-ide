@@ -131,12 +131,11 @@ check('a reserved word in a string is ignored', rules('int main(){ puts("int asm
 check('gets is reported', rules('int main(){ char s[10]; gets(s); return 0; }').includes('removedCpp'));
 check('random_shuffle is reported', rules('int main(){ vector<int> v; random_shuffle(v.begin(), v.end()); return 0; }').includes('removedCpp'));
 
-// ---- pragma optimize only matters when the build is actually optimized ----
+// ---- 源码级优化属性：交上去就是编译期风险，跟本地开不开优化无关 ----
 const pragma = '#pragma GCC optimize("O2")\nint main(){ return 0; }';
-check('pragma optimize is silent when local optimization is off', rules(pragma).length === 0);
-optimization = '-O2';
-check('pragma optimize is an error when the build optimizes', rules(pragma).includes('pragmaOptimize'));
-optimization = 'none';
+check('pragma optimize is reported regardless of local optimization', rules(pragma).includes('pragmaOptimize'));
+check('pragma optimize inside a comment is ignored', rules('// #pragma GCC optimize("O2")\nint main(){ return 0; }').length === 0);
+check('pragma optimize inside a string is ignored', rules('const char* s = "#pragma GCC optimize(\\"O2\\")";\nint main(){ return 0; }').length === 0);
 
 ruleSwitches.reservedWord = false;
 check('turning a rule off silences it', rules(asmTrap).length === 0);

@@ -11,8 +11,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../..');
 const extensionOut = path.join(repoRoot, 'oss/extensions/olympia-onboarding/out');
-const fixture = path.join(repoRoot, '.scratch/judgetest');
+// 用独立的目录：这里会往 .olympia/problems 里写题面，和跑样例那套测试共用一个工作区的话，
+// 跑样例的「没有同名题面就从候选里选」会多出一个候选，选到别的题上。
+const fixture = path.join(repoRoot, '.scratch/stresstest');
 const GPP = path.join(repoRoot, 'VSCode-win32-x64/resources/app/toolchain/mingw64/bin/g++.exe');
+
+fs.mkdirSync(fixture, { recursive: true });
 
 const GEN = `#include <bits/stdc++.h>
 using namespace std;
@@ -51,6 +55,8 @@ fs.rmSync(path.join(fixture, 'stress-fail'), { recursive: true, force: true });
 const messages = [];
 const channels = [];
 const registered = {};
+/** 点错误提示里的哪个按钮；undefined 等于按 Esc。 */
+let errorAction;
 /** 每个角色该选哪个文件：按 quick pick 的 placeHolder 关键字匹配。 */
 const pickFor = { solution: 'fast.cpp', brute: 'slow.cpp', generator: 'gen.cpp' };
 
@@ -100,7 +106,7 @@ const vscodeStub = {
 	window: {
 		showWarningMessage: async (...a) => { messages.push(['warning', a[0]]); return undefined; },
 		showInformationMessage: async (...a) => { messages.push(['info', a[0]]); return undefined; },
-		showErrorMessage: async (...a) => { messages.push(['error', a[0]]); return undefined; },
+		showErrorMessage: async (...a) => { messages.push(['error', a[0]]); return errorAction; },
 		showQuickPick: async (items, options) => {
 			const wanted = pickFor[roleOf(options?.placeHolder ?? '')] ?? 'fast.cpp';
 			return items.find(item => item.label === wanted) ?? items[0];
@@ -116,9 +122,10 @@ const vscodeStub = {
 	},
 	commands: {
 		registerCommand: (id, handler) => { registered[id] = handler; return { dispose() { } }; },
-		executeCommand: async id => registered[id]?.()
+		// 命令可以带参数：对拍把抓到的那组数据交给 olympia.problem.appendSample
+		executeCommand: async (...args) => registered[args[0]]?.(...args.slice(1))
 	},
-	languages: { getDiagnostics: () => [] },
+	languages: { getDiagnostics: () => [], registerCompletionItemProvider: () => ({ dispose() { } }) },
 	env: { openExternal: async () => true }
 };
 
@@ -133,6 +140,17 @@ const store = {};
 const context = { subscriptions: [], workspaceState: { get: (_k, d) => store[_k] ?? d, update: async (k, v) => { store[k] = v; } } };
 stress.registerStressTest(context);
 assert.ok(registered['olympia.stressTest'], 'olympia.stressTest 必须被注册');
+
+// 「补进题面样例」是竞赛助手实现的命令：两个扩展在同一个 stub 上注册，才能测出这一条跨扩展的路
+const contestOut = path.join(repoRoot, 'oss/extensions/olympia-contest/out');
+const contest = await import(pathToFileURL(path.join(contestOut, 'extension.js')).href);
+contest.activate({ subscriptions: [], workspaceState: { get: (_k, d) => d, update: async () => { } } });
+assert.ok(registered['olympia.problem.appendSample'], 'olympia.problem.appendSample 必须被注册');
+
+// 用产品自己的解析器读回题面：写回去的形状不对，跑样例会少一组数据
+const judge = await import(pathToFileURL(path.join(extensionOut, 'judgeSamples.js')).href);
+const judgeParse = markdown => judge.parseSamples(markdown);
+const normalizeText = text => text.split(/\s+/).filter(Boolean).join(' ');
 
 let failed = 0;
 async function check(name, fn) {
@@ -158,7 +176,23 @@ await check('正解 vs 暴力：25 轮一致，报通过', async () => {
 await check('正解 vs 故意写错的解：报不一致并留下那组数据', async () => {
 	pickFor.brute = 'wrong.cpp';
 	messages.length = 0;
+	fs.rmSync(path.join(fixture, 'stress-fail'), { recursive: true, force: true });
+	// 正解叫 fast.cpp，题面就叫 fast.md：命令按文件名找题面，找到了就直接写
+	const problems = path.join(fixture, '.olympia', 'problems');
+	fs.mkdirSync(problems, { recursive: true });
+	fs.writeFileSync(path.join(problems, 'fast.md'), [
+		'# P1001 求和', '',
+		'> 来源：洛谷 ｜ 时限：1000 ms', '',
+		'## 样例数据', '',
+		'### 样例 1', '',
+		'**输入**', '', '```', '3', '1 2 3', '```', '',
+		'**输出**', '', '```', '6', '```', '',
+		'## 说明 / 提示', '', '别把这段当输出读走。', '',
+		'---', '', '页脚。', ''
+	].join('\n'), 'utf8');
+	errorAction = '补进题面样例';
 	await registered['olympia.stressTest']();
+	errorAction = undefined;
 	assert.match(allMessages(), /不一致|超时|出错/, `没有报出问题：${allMessages()}`);
 	const folder = path.join(fixture, 'stress-fail');
 	assert.ok(fs.existsSync(folder), '没有写出 stress-fail 目录');
@@ -167,6 +201,18 @@ await check('正解 vs 故意写错的解：报不一致并留下那组数据', 
 	const data = fs.readFileSync(path.join(folder, files.find(f => /\.in$/.test(f))), 'utf8');
 	assert.match(data.trim(), /^-?\d+\s/, '数据文件不像一组合法输入');
 	assert.match(log(), /第 \d+ 轮/, '日志里没有轮数');
+
+	// 点「补进题面样例」以后，这组数据应该变成题面里的第二组样例
+	const statement = fs.readFileSync(path.join(problems, 'fast.md'), 'utf8');
+	assert.match(statement, /### 样例 2/, `题面里没有补上第二组样例：\n${statement}`);
+	assert.match(statement, /对拍第 \d+ 轮/, '补上的样例要写明它是哪来的');
+	assert.match(allMessages(), /写进 P1001/, `没有告诉学生写进了哪道题：${allMessages()}`);
+	const parsed = judgeParse(statement);
+	assert.equal(parsed.samples.length, 2, `补完样例后跑样例只读得出 ${parsed.samples.length} 组，写回去的形状不对`);
+	assert.equal(normalizeText(parsed.samples[0].expected), '6', '原有的样例被改坏了');
+	assert.ok(!parsed.samples[1].expected.includes('别把这段当输出读走'), '下一节的正文漏进了新样例的输出里');
+	assert.match(statement, /别把这段当输出读走/, '说明小节被挤掉了');
+	assert.match(statement, /页脚。/, '页脚被挤掉了');
 	pickFor.brute = 'slow.cpp';
 });
 

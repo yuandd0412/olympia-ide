@@ -65,7 +65,7 @@
 			<ul class="check">
 				<li><em>当前环境</em>：编译器版本、编译档位、体检结果、比赛剩余时间</li>
 				<li><em>编译与运行</em>：编译并运行、只编译、按评测机编译、提交前体检、对拍、比赛模式</li>
-				<li><em>题目与模板</em>：拉取题面、从剪贴板拉题号、打开已缓存题面、插入赛制模板</li>
+				<li><em>题目与模板</em>：拉取题面、从剪贴板拉题号、打开题面库、插入赛制模板</li>
 				<li><em>AI 教练与帮助</em>：AI 设置、环境自检、打开官网</li>
 			</ul>
 		</article>
@@ -202,6 +202,13 @@
 				<li>AtCoder：<code>ABC300_A</code></li>
 				<li><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd> 从剪贴板识别题号，不用重打</li>
 			</ul>
+			<h3>题面库</h3>
+			<p>按 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd> 打开：列表里是缓存过的每道题，
+			标题、来源、难度、时限、内存、样例组数都直接写在行上，最近拉的排最前面。
+			按题号搜也按标题搜，打「并查集」就能找到 <code>P3367</code>。
+			左侧 Olympia 面板的「当前环境」里有一行 <em>题面库：N 份</em>，点它就是打开这个列表；
+			一份都还没有时这行会变成「还没拉过题面」，点进去直接开始拉。</p>
+			<p class="hint">手写的、或只抓了一半的题面也照样进库：读不出题号就用文件名当题号，不会把整份列表带崩。</p>
 			<p class="hint">题面存成 Markdown 放在 <code>olympia.problem.problemsDir</code>（默认 <code>.olympia/problems</code>），
 			之后断网也能用 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd> 打开。</p>
 			<p class="hint">Codeforces 的题面网页有 Cloudflare 人机校验，抓不到正文时 Olympia 会留下题目信息和原题链接，并提示你在浏览器里看；
@@ -274,7 +281,7 @@
 				<tr><td>切换评测机档位</td><td>点状态栏 <em>洛谷 · C++23</em></td><td>洛谷 / NOI / 自定义</td></tr>
 				<tr><td>拉取题面</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd></td><td>洛谷、Codeforces、AtCoder</td></tr>
 				<tr><td>从剪贴板拉题号</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd></td><td>复制网页链接后直接识别</td></tr>
-				<tr><td>打开已缓存的题面</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd></td><td>离线，按题号选</td></tr>
+				<tr><td>打开题面库</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd></td><td>离线，按题号或标题搜</td></tr>
 				<tr><td>插入赛制模板</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd></td><td>ACM / IOI 起手代码</td></tr>
 			</tbody>
 		</table>
@@ -371,6 +378,7 @@
 		<li>提交前体检改为只报编译期问题，保存时静默写入「问题」面板</li>
 		<li>跑样例：按 token 比对、按题面时限判 TLE、按题面内存限制判 MLE 并报峰值内存，WA 给出期望与实际输出</li>
 		<li>对拍、比赛模式、题面拉取（洛谷 / Codeforces / AtCoder）、ACM 与 IOI 模板全部配齐快捷键</li>
+		<li>题面库：缓存的题面按标题、来源、时限列成可搜索的清单，最近拉的排前面，面板上常驻一行份数</li>
 		<li>AI 教练改为自带 Key（BYOK）：不再有任何登录、账号、订阅入口</li>
 		<li>出厂主题 One Dark Pro；活动栏精简；界面与向导文案汉化</li>
 		<li>安装器改为分卷 + 网络引导，用户级安装，不需要管理员权限</li>

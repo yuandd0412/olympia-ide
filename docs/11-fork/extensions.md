@@ -81,7 +81,12 @@ unresolved promise gets its save killed after 1750 ms by the workbench.
 activity-bar container contributing one visible tree view, `olympia.tools` ("竞赛工具"), whose four
 sections are 当前环境 / 编译与运行 / 题目与模板 / AI 教练与帮助 — the middle one carries 编译并运行,
 只编译, 按评测机编译（-O2）, 提交前体检, 跑样例, 对拍, 比赛模式, each row showing its keybinding — and
-the first one shows the live compiler / profile / 体检 counts as clickable state rows. The tree redraws on
+the first one shows the live compiler / profile / 体检 / 题面库 counts as clickable state rows. The
+题面库 row reads `.olympia/problems` through [`src/problemFiles.ts`](../../oss/extensions/olympia-onboarding/src/problemFiles.ts)
+— the one place this extension lists that directory, shared with 跑样例 so the two cannot disagree —
+and it follows the watcher: with nothing cached it reads 还没拉过题面 and points at 拉取题面 instead of
+opening an empty list. 题目与模板 gained the 打开题面库 row (`Ctrl+Alt+O`), so the bank is reachable
+without the palette. The tree redraws on
 active-editor, configuration and diagnostic changes; the countdown repaints through a narrower path that
 does not re-probe the toolchain. Four `editor/title` navigation buttons (编译并运行 / 编译 / 按评测机编译 /
 体检) appear only for `resourceLangId == cpp || c`, and three status-bar chips (compiler profile,
@@ -110,12 +115,24 @@ the detail and the alias list, so `ios`, `fast` and `快速` all hit the same ro
 VS Code snippet syntax, and they are written as ordinary strings — inside a template literal the
 `${1:x}` placeholder is a JS expression and silently ships a broken body.
 
+[`src/problemLibrary.ts`](../../oss/extensions/olympia-contest/src/problemLibrary.ts) is the local
+problem bank — the old app kept one page of JSON; here it is the directory the extension already
+writes. `olympia.problem.openStatement` lists every `.olympia/problems/*.md` as
+`P1001 A+B Problem` + `洛谷 · 入门 · 时限 1000 ms · 内存 128 MB · 样例 2 组` + relative path + "今天",
+most recently pulled first, with `matchOnDescription`/`matchOnDetail` on so a Chinese title finds the
+row. The metadata is read back from the statement itself, so nothing needs the network: `FIELD` in
+`templates.ts` is shared by the writer (`renderStatement`) and the reader (`metaOf`), which is the
+only reason a renamed field cannot make the bank silently lose its titles. `来源：` is written as the
+platform's Chinese name, and `summaryOf` still maps the older `来源：luogu` files back to 洛谷. A file
+whose heading is not a problem id keeps its whole heading as the title and takes the filename as the
+id; a file that cannot be read at all still gets listed instead of taking the list down with it.
+
 | Command | Title | Keybinding (`when`) | Also in menus |
 | --- | --- | --- | --- |
 | `olympia.problem.pull` | 拉取题面... | `Ctrl+Alt+P` | explorer context |
 | `olympia.problem.pullFromClipboard` | 从剪贴板题号拉取题面 | `Ctrl+Alt+V` (`editorTextFocus`) | command palette |
 | `olympia.template.insert` | 插入赛制模板... | `Ctrl+Alt+T` (`editorTextFocus`) | editor tab context (`resourceLangId == cpp`) |
-| `olympia.problem.openStatement` | 打开已缓存的题面 | `Ctrl+Alt+O` (`editorTextFocus`) | command palette |
+| `olympia.problem.openStatement` | 打开题面库（已缓存的题面） | `Ctrl+Alt+O` (`editorTextFocus`) | command palette |
 
 Settings: `olympia.problem.problemsDir` (default `.olympia/problems`, where pulled statements are
 cached), `olympia.problem.templateOnPull` (default `false`), `olympia.problem.requestTimeoutMs`
@@ -247,10 +264,10 @@ the flag is falsy, and it was falsy only by omission), and the `defaultChatAgent
 
 ## How to verify without a device
 
-Seven harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
+Eight harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
 with `vscode` stubbed through a `Module._load` hook (the memory probe needs no stub — it only talks to
 `child_process` and `tasklist.exe`), so they test the shipped code path rather than a
-re-implementation; the eighth, `check-command-wiring.mjs`, reads the manifests and sources instead. Compile first (`npm run gulp -- compile-extension:olympia-onboarding`), then run each
+re-implementation; the ninth, `check-command-wiring.mjs`, reads the manifests and sources instead. Compile first (`npm run gulp -- compile-extension:olympia-onboarding`), then run each
 with `node scripts/oneoff/<name>.mjs` from the repository root:
 
 | Harness | What it pins down |
@@ -262,7 +279,8 @@ with `node scripts/oneoff/<name>.mjs` from the repository root:
 | `test-stress-pipeline.mjs` | the whole 对拍 command: 25 agreeing rounds report 通过, an intentionally wrong solution stops the run and leaves `stress-fail/round-N.*` behind, and a silent generator errors out instead of "passing" zero rounds |
 | `test-cpp-snippets.mjs` | the 20-row C++ completion table: registration and `dispose`, every `detail`/hint line carries Chinese, aliases actually resolve (敲 `fast`/`sync`/`pow`/`union` 命中对应条目), placeholders close, the switch silences the list — and each body, with its placeholders filled, passes `g++ -std=c++17 -fsyntax-only` inside a generated translation unit |
 | `test-contest-gate.mjs` | the 比赛模式 → AI 教练 lock across both extensions: `setContext('olympia.contest.running')` flips exactly on start and stop (not every tick), `olympia.contest.isRunning` answers accordingly, and while it is set `@coach` writes only the refusal and never asks for the model list |
-| `check-command-wiring.mjs` | every command the UI points at (palette entry, `editor/title`, keybinding, walkthrough button, start entry) actually has a `registerCommand` behind it, and vice versa — the "button that does nothing" class. Bitten-ness is verified, not assumed: typo'ing one id in `olympia-onboarding/package.json` makes it report three problems and exit 1 |
+| `test-problem-library.mjs` | the local problem bank end to end: statements written by the real `renderStatement` are read back with title / 来源 / 时限 / 内存 / 样例数 intact (writer and reader share `FIELD`, so this is the drift guard), ordering by pull time, a heading that is not a problem id falling back to the filename, an unreadable file still listed instead of taking the list down, the quick-pick rows showing title + limits + relative path + 「今天」, `Ctrl+Alt+O` opening exactly the picked file and refusing to open an empty list, and the panel's 题面库 row (份数, and 还没拉过题面 → points at 拉取题面). Breaking the written field label in `out/templates.js` makes two checks fail — the assertions discriminate |
+| `check-command-wiring.mjs` | every command the UI points at (palette entry, `editor/title`, keybinding, walkthrough button, start entry) actually has a `registerCommand` behind it, and vice versa — the "button that does nothing" class. It also resolves the ids the **code** clicks (tree rows, status chips, notification buttons) and requires them to be registered by one of the three extensions, which is what makes a typo in a cross-extension row (`olympia.problem.openStatement`) a build failure instead of a dead button. Bitten-ness is verified, not assumed: typo'ing one id in `olympia-onboarding/package.json` makes it report three problems and exit 1, and so does typo'ing the panel's library command |
 
 The bundled compiler is what makes the pipeline harnesses real rather than mocked: they resolve
 `VSCode-win32-x64/resources/app/toolchain/mingw64/bin/g++.exe` through the normal

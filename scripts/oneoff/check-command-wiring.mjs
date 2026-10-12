@@ -109,11 +109,54 @@ function taskProviderTypes(srcDir) {
 	return types;
 }
 
+/** 代码里点掉的命令（面板的行、状态栏的 chip、通知上的按钮），不只是 package.json 声明的那些。 */
+function invokedCommands(srcDir) {
+	const found = new Map();
+	const tableEntries = commandTables(srcDir);
+	const patterns = [
+		[/command\s*[:=]\s*(CMD\.\w+)/g, '面板/状态栏的行'],
+		[/command\s*[:=]\s*'(olympia\.[^']+)'/g, '面板/状态栏的行'],
+		[/executeCommand\(\s*(CMD\.\w+|'olympia\.[^']+')/g, '提示框按钮'],
+	];
+	for (const file of fs.readdirSync(srcDir).filter(f => f.endsWith('.ts'))) {
+		const text = fs.readFileSync(path.join(srcDir, file), 'utf8');
+		for (const [pattern, label] of patterns) {
+			for (const m of text.matchAll(pattern)) {
+				const id = m[1].startsWith('CMD.') ? tableEntries.get(m[1]) : m[1].slice(1, -1);
+				// 核心命令（workbench.*）由产品自己注册，不归这里管
+				if (id && id.startsWith('olympia.')) {
+					found.set(id, `${file} 的${label}`);
+				}
+			}
+		}
+	}
+	return found;
+}
+
+function commandTables(srcDir) {
+	const tableEntries = new Map();
+	for (const file of fs.readdirSync(srcDir).filter(f => f.endsWith('.ts'))) {
+		const text = fs.readFileSync(path.join(srcDir, file), 'utf8');
+		for (const m of text.matchAll(/export const (CMD|[\w]*COMMAND[\w]*)\s*=\s*\{([\s\S]*?)\n\}/g)) {
+			for (const entry of m[2].matchAll(/(\w+)\s*:\s*'([^']+)'/g)) {
+				tableEntries.set(`${m[1]}.${entry[1]}`, entry[2]);
+			}
+		}
+	}
+	return tableEntries;
+}
+
 const problems = [];
 const summary = [];
 // 只给测试台用的内部命令，故意不进命令面板。
 /** 没有界面入口的内部命令：被另一个扩展或核心调用，不该要求界面引用。 */
 const INTERNAL_COMMANDS = new Set(['olympia.coach.debug.extensionState', 'olympia.contest.isRunning']);
+const registrationsByExtension = new Map();
+for (const id of OLYMPIA_EXTENSIONS) {
+	registrationsByExtension.set(id, registeredCommands(path.join(extensionsRoot, id, 'src')));
+}
+/** 三个扩展注册的全部命令：面板可以跨扩展点别人的命令，所以判定要放宽到全体。 */
+const registeredAnywhere = new Set([...registrationsByExtension.values()].flatMap(set => [...set]));
 for (const id of OLYMPIA_EXTENSIONS) {
 	const manifestPath = path.join(extensionsRoot, id, 'package.json');
 	const srcDir = path.join(extensionsRoot, id, 'src');
@@ -122,7 +165,7 @@ for (const id of OLYMPIA_EXTENSIONS) {
 	const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
 	const referenced = referencedCommands(manifest);
-	const registered = registeredCommands(srcDir);
+	const registered = registrationsByExtension.get(id);
 	// 1) 界面引用了我们自己的命令，但代码里没注册 → 点了没反应。workbench.* 由核心注册，不归这里管。
 	const ours = ref => ref.id.startsWith('olympia.');
 
@@ -157,7 +200,15 @@ for (const id of OLYMPIA_EXTENSIONS) {
 			problems.push(`${id}: registerTaskProvider('${type}') 但 contributes.taskDefinitions 里没有这个类型`);
 		}
 	}
-	summary.push(`${id}: 声明 ${(manifest.contributes?.commands ?? []).length} 条，注册 ${registered.size} 条，界面引用 ${referenced.length} 处`);
+	// 5) 代码里点掉的命令（面板行、状态栏 chip、通知按钮）必须真有人注册。
+	//    跨扩展点是允许的（面板点竞赛助手的命令），但打错一个字就是「点了没反应」。
+	const invoked = invokedCommands(srcDir);
+	for (const [cmd, where] of invoked) {
+		if (!registeredAnywhere.has(cmd)) {
+			problems.push(`${id}: ${where} 点了 ${cmd}，三个扩展里都没注册`);
+		}
+	}
+	summary.push(`${id}: 声明 ${(manifest.contributes?.commands ?? []).length} 条，注册 ${registered.size} 条，界面引用 ${referenced.length} 处，代码点掉 ${invoked.size} 条`);
 }
 
 console.log(summary.join('\n'));

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>隐私声明 — Olympia IDE</title>
+<meta name="description" content="Olympia IDE 的隐私声明：编译与判题完全本地、遥测出厂关闭、题面直连原题站、AI 教练只发往你自己填写的服务地址、API Key 存系统密钥库。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath d='M 294.8 111.1 A 150 150 0 1 0 400.9 217.2' fill='none' stroke='%2361afef' stroke-width='56' stroke-linecap='round'/%3E%3Cpath d='M 170 266 L 243 340 L 350 205' fill='none' stroke='%2398c379' stroke-width='56' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<header class="site-head">
+	<a class="brand" href="../index.html">
+		<svg viewBox="0 0 512 512" aria-hidden="true"><path d="M 294.8 111.1 A 150 150 0 1 0 400.9 217.2" fill="none" stroke="currentColor" stroke-width="56" stroke-linecap="round"/><path d="M 170 266 L 243 340 L 350 205" fill="none" stroke="currentColor" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/></svg>
+		<span>Olympia IDE</span>
+	</a>
+	<nav id="site-nav">
+		<a href="#what-not">我们不收什么</a>
+		<a href="#local">本地功能</a>
+		<a href="#network">联网功能</a>
+		<a href="#ai">AI 教练</a>
+		<a href="#files">本机文件</a>
+		<a class="btn btn-small" href="../index.html#download">下载</a>
+	</nav>
+	<button class="nav-toggle" id="nav-toggle" aria-label="打开菜单" aria-expanded="false">
+		<span></span><span></span><span></span>
+	</button>
+</header>
+
+<main id="top">
+
+<section class="hero">
+	<div class="hero-copy">
+		<p class="eyebrow">隐私声明 · 更新于 2026-10-12</p>
+		<h1>Olympia 没有服务器</h1>
+		<p class="lede">
+			这句话能解释下面全部内容：Olympia 不发数据回我们，也没有账号系统。
+			需要联网的两个功能——拉在线题面和 AI 教练——都是你的机器直连你指定的地址。
+		</p>
+	</div>
+</section>
+
+<section id="what-not">
+	<h2>我们不收集什么</h2>
+	<div class="grid">
+		<article>
+			<h3>不注册、不登录</h3>
+			<p>产品没有账号体系，也不需要邮箱、手机号。我们不知道谁在用 Olympia，
+			也就无从收集与之绑定的任何信息。</p>
+		</article>
+		<article>
+			<h3>遥测出厂关闭</h3>
+			<p>产品内置 <code>enableTelemetry = false</code>，使用统计与崩溃报告都不会发送。
+			这一项在代码里是产品开关，不是设置项，用户不需要自己去关。</p>
+		</article>
+		<article>
+			<h3>不读你的代码</h3>
+			<p>编译、体检、跑样例、对拍、比赛模式、模板都在本机执行。
+			你的源码不会因为「软件需要联网」而出门。</p>
+		</article>
+	</div>
+</section>
+
+<section id="local" class="alt">
+	<h2>完全本地的功能</h2>
+	<p>下面这些即使拔网线也能用，不发生任何网络请求：
+	编译与运行、评测机档位、提交前体检、跑样例判定、对拍、比赛模式、ACM / IOI 模板、
+	打开已经缓存的题面、编辑器的全部基础功能。</p>
+	<p class="hint">唯一的例外是扩展市场：只有你主动搜索或安装扩展时，编辑器才会向 open-vsx.org 发请求。</p>
+</section>
+
+<section id="network">
+	<h2>会联网的两个功能</h2>
+	<div class="cols">
+		<div>
+			<h3>拉取在线题面</h3>
+			<p>你的机器直接向洛谷、Codeforces、AtCoder 请求对应题目页面，
+			不经过我们的服务器，也不携带任何本机标识。抓取到的题面存进你自己工作区的缓存目录。</p>
+			<p class="hint">题面内容的版权归原题站与作者，Olympia 只是把它显示在你正在用的编辑器里。</p>
+		</div>
+		<div>
+			<h3>AI 教练</h3>
+			<p>只有你填写了服务地址并主动提问时才会发请求，请求直接发往
+			<code>olympia.ai.baseUrl</code> 指定的地址——通常是你自己订阅的 DeepSeek、OpenAI 兼容服务，
+			或者本机跑的 Ollama。我们既不是转发方，也不是接收方。</p>
+			<p>随请求带过去的是你当前打开的代码和题目上下文，这是让回答有用的前提；
+			数据在你所选服务的使用协议下处理，请把这份声明一起转给学校和家长说明这一点。</p>
+		</div>
+	</div>
+</section>
+
+<section id="ai" class="alt">
+	<h2>API Key 存在哪里</h2>
+	<p>Key 通过密码框输入，保存在 <b>Windows 凭据管理器</b>（VS Code 的 SecretStorage），
+	不会写进 <code>settings.json</code>，不会出现在同步配置里，也不会打进日志。</p>
+	<ul class="check">
+		<li>设置文件里只有 <code>olympia.ai.baseUrl</code> 与 <code>olympia.ai.models</code>，不含密钥</li>
+		<li>想清除：设置 AI 教练的 API Key 时选清除，或者在「控制面板 → 凭据管理器」里删掉对应条目</li>
+		<li>不用 AI 教练就什么都不用填，其他功能不受影响</li>
+	</ul>
+</section>
+
+<section id="files">
+	<h2>本机留下的文件</h2>
+	<div class="table-wrap">
+		<table>
+			<thead><tr><th>位置</th><th>内容</th><th>怎么清掉</th></tr></thead>
+			<tbody>
+				<tr><td><code>工作区\.olympia\problems</code></td><td>抓下来的题面（Markdown）</td><td>直接删目录</td></tr>
+				<tr><td><code>工作区\stress-fail</code></td><td>对拍不一致时留下的数据与两份输出</td><td>直接删目录</td></tr>
+				<tr><td><code>%APPDATA%\Olympia</code></td><td>界面配置、扩展状态、运行日志</td><td>删目录，或卸载时勾选清除用户数据</td></tr>
+				<tr><td><code>%LOCALAPPDATA%\Programs\Olympia IDE</code></td><td>程序本体与内置工具链</td><td>用「设置 → 应用」里的 <em>Olympia IDE (User)</em> 卸载</td></tr>
+			</tbody>
+		</table>
+	</div>
+	<p class="hint">日志只写在本机，不会被上传；出现故障时你可以自己选择把哪段日志贴进 issue。</p>
+</section>
+
+<section id="minors" class="alt">
+	<h2>关于未成年使用者</h2>
+	<p>Olympia 面向中学阶段的竞赛学习，因此刻意做成「不需要账号、不上传内容、可以完全离线」的形态。
+	如果学校或家长要求连 AI 教练也不使用，把 <code>olympia.ai.baseUrl</code> 留空即可：
+	所有联网功能都要使用者主动点击才会发生。</p>
+</section>
+
+<section id="contact">
+	<h2>问题与更改</h2>
+	<p>这份声明如有变化，会同时更新页面顶部的日期。
+	对本声明或产品有任何问题，可以在<a href="https://github.com/yuandd0412/olympia-ide">源码仓库</a>提 issue，
+	用中文描述就行。</p>
+</section>
+
+</main>
+
+<footer class="site-foot">
+	<p><b>Olympia IDE</b> 是面向信息学竞赛的 VS Code fork，Windows 10 / 11 x64。</p>
+	<p>
+		<a href="../index.html">首页</a> ·
+		<a href="../docs/">使用手册</a> ·
+		<a href="https://github.com/yuandd0412/olympia-ide">源码</a> ·
+		<a href="../terms/">使用条款</a>
+	</p>
+	<p class="legal">
+		Olympia 的修改以 GPL-3.0-or-later 发布；基于 Microsoft Visual Studio Code（MIT License）。
+		内置 One Dark Pro 配色（MIT，来自 zhuangtongfa.material-theme），捆绑的工具链为 MinGW-w64 / MSYS2 发行，
+		各自遵循其原始许可证。
+	</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

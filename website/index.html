@@ -20,6 +20,7 @@
 		<a href="#workflow">界面</a>
 		<a href="#keys">快捷键</a>
 		<a href="#coach">AI 教练</a>
+		<a href="docs/">文档</a>
 		<a href="#faq">常见问题</a>
 		<a class="btn btn-small" href="#download">下载</a>
 	</nav>
@@ -121,7 +122,7 @@
 		</article>
 		<article>
 			<h3>拉题面</h3>
-			<p>洛谷、LibreOJ、Codeforces 题号或链接直接拉进编辑器，也可以从剪贴板识别。
+			<p>洛谷、Codeforces、AtCoder 题号或链接直接拉进编辑器，也可以从剪贴板识别。
 			题面、样例、代码在同一个窗口里，不用来回切浏览器。</p>
 		</article>
 		<article>
@@ -142,7 +143,8 @@
 		</article>
 		<article>
 			<h3>模板与键位</h3>
-			<p>ACM / IOI 赛制模板一键插入，<code>freopen</code>、快读这些常见起手都写好。
+			<p>ACM / IOI 赛制模板一键插入，另有 20 条竞赛常用写法的补全：快速 IO、<code>freopen</code>、
+			并查集、快速幂、Dijkstra，中英文都搜得到。
 			所有动作都有快捷键，也都能在 Olympia 侧栏里点到。</p>
 		</article>
 		<article>
@@ -196,7 +198,7 @@
 				<tr><td>比赛模式</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd></td><td>选时长开始倒计时，再点一次结束</td></tr>
 				<tr><td>环境自检</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd></td><td>逐项检查编译器、参数、AI 配置</td></tr>
 				<tr><td>切换评测机档位</td><td>点状态栏 <em>洛谷 · C++23</em></td><td>洛谷 / NOI / 自定义</td></tr>
-				<tr><td>拉取题面</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd></td><td>洛谷、LibreOJ、Codeforces</td></tr>
+				<tr><td>拉取题面</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd></td><td>洛谷、Codeforces、AtCoder</td></tr>
 				<tr><td>从剪贴板拉题号</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd></td><td>复制网页链接后直接识别</td></tr>
 				<tr><td>打开已缓存的题面</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd></td><td>在 <code>.olympia/problems</code> 里按题号选，不用联网</td></tr>
 				<tr><td>插入赛制模板</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd></td><td>ACM / IOI 起手代码</td></tr>
@@ -222,12 +224,11 @@
 		</div>
 		<div>
 			<h3>怎么用</h3>
-			<p>在聊天面板里 <code>@coach</code> 唤出教练，四个指令：</p>
+			<p>在聊天面板里 <code>@coach</code> 唤出教练，它会自动带上当前文件的代码。三个内置指令：</p>
 			<ul class="check">
-				<li><code>/wa</code>：对着这份代码分析可能Wrong Answer在哪</li>
-				<li><code>/hint</code>：只给思路，不给完整代码</li>
-				<li><code>/check</code>：解释体检报出来的问题</li>
-				<li><code>/coach</code>：常规答疑与复杂度分析</li>
+				<li><code>/wa</code>：结合题面、样例与你的输出，列出最可能的错因和验证方法</li>
+				<li><code>/hint</code>：只给方向性提示与关键不变量，不输出完整代码</li>
+				<li><code>/check</code>：提交前风险清单：边界、溢出、复杂度、读入终止、多组数据</li>
 			</ul>
 		</div>
 	</div>
@@ -322,7 +323,10 @@
 	<p><b>Olympia IDE</b> 是面向信息学竞赛的 VS Code fork，Windows 10 / 11 x64。</p>
 	<p>
 		源码：<a href="https://github.com/yuandd0412/olympia-ide">GitHub</a> ·
-		发行版与安装包：<a href="https://gitee.com/yuanddMSK/olympia-ide/releases">Gitee Releases</a>
+		发行版与安装包：<a href="https://gitee.com/yuanddMSK/olympia-ide/releases">Gitee Releases</a> ·
+		<a href="docs/">使用手册</a> ·
+		<a href="privacy/">隐私声明</a> ·
+		<a href="terms/">使用条款</a>
 	</p>
 	<p class="legal">
 		Olympia 的修改以 GPL-3.0-or-later 发布；基于 Microsoft Visual Studio Code（MIT License）。

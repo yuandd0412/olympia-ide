@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Olympia IDE 使用手册 — 从装完到打比赛</title>
+<meta name="description" content="Olympia IDE 使用手册：编译档位、提交前体检、跑样例、对拍、比赛模式、题面拉取、AI 教练、全部快捷键与设置项，以及装完之后的常见故障排查。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath d='M 294.8 111.1 A 150 150 0 1 0 400.9 217.2' fill='none' stroke='%2361afef' stroke-width='56' stroke-linecap='round'/%3E%3Cpath d='M 170 266 L 243 340 L 350 205' fill='none' stroke='%2398c379' stroke-width='56' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<header class="site-head">
+	<a class="brand" href="../index.html">
+		<svg viewBox="0 0 512 512" aria-hidden="true"><path d="M 294.8 111.1 A 150 150 0 1 0 400.9 217.2" fill="none" stroke="currentColor" stroke-width="56" stroke-linecap="round"/><path d="M 170 266 L 243 340 L 350 205" fill="none" stroke="currentColor" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/></svg>
+		<span>Olympia IDE</span>
+	</a>
+	<nav id="site-nav">
+		<a href="#start">上手</a>
+		<a href="#compile">编译</a>
+		<a href="#samples">跑样例</a>
+		<a href="#stress">对拍</a>
+		<a href="#keys">快捷键</a>
+		<a href="#settings">设置</a>
+		<a href="#trouble">排错</a>
+		<a class="btn btn-small" href="../index.html#download">下载</a>
+	</nav>
+	<button class="nav-toggle" id="nav-toggle" aria-label="打开菜单" aria-expanded="false">
+		<span></span><span></span><span></span>
+	</button>
+</header>
+
+<main id="top">
+
+<section class="hero">
+	<div class="hero-copy">
+		<p class="eyebrow">使用手册 · 对应 v1.140.0 / Olympia v1.0.0</p>
+		<h1>每一件事在哪里点</h1>
+		<p class="lede">
+			Olympia 是面向信息学竞赛的 VS Code fork。这份手册只讲 Olympia 自己加的那部分：
+			编译器与评测机档位、提交前体检、跑样例、对拍、比赛模式、题面与模板、AI 教练，
+			以及装完之后最容易卡住的地方。编辑器本身的操作和 VS Code 一样。
+		</p>
+		<p class="hero-meta">不想读全文？直接看<a href="#start">十分钟上手</a>或<a href="#keys">快捷键表</a>。</p>
+	</div>
+</section>
+
+<section id="start">
+	<h2>十分钟上手</h2>
+	<p class="section-lede">装完到第一次运行，正常只需要这三步。</p>
+	<ol class="steps">
+		<li><b>打开题目文件夹。</b>「文件 → 打开文件夹」选你放 <code>.cpp</code> 的目录。内置 g++ 15.2.0 会被自动找到，不需要配 <code>PATH</code>。</li>
+		<li><b>写代码，按 <kbd>F9</kbd>。</b>Olympia 按当前评测机档位编译；编译通过后直接在面板里运行，输入可以现场敲，也可以选一个数据文件。</li>
+		<li><b>保存即体检。</b>每次保存都会静默扫描会在评测机上编译失败的写法，结果显示在「问题」面板，不弹窗、不打断你打字。</li>
+	</ol>
+	<p class="hint">第一次启动会问你配色和键位。出厂主题是 One Dark Pro，直接确认即可。</p>
+</section>
+
+<section id="bars" class="alt">
+	<h2>功能放在哪里</h2>
+	<p class="section-lede">不用去命令面板里翻，三个常驻位置都能点。</p>
+	<div class="grid">
+		<article>
+			<h3>左侧 Olympia 面板</h3>
+			<ul class="check">
+				<li><em>当前环境</em>：编译器版本、编译档位、体检结果、比赛剩余时间</li>
+				<li><em>编译与运行</em>：编译并运行、只编译、按评测机编译、提交前体检、对拍、比赛模式</li>
+				<li><em>题目与模板</em>：拉取题面、从剪贴板拉题号、打开已缓存题面、插入赛制模板</li>
+				<li><em>AI 教练与帮助</em>：AI 设置、环境自检、打开官网</li>
+			</ul>
+		</article>
+		<article>
+			<h3>底部状态栏</h3>
+			<p>左下角三枚 chip，点一下就执行：<em>洛谷 · C++23</em>（换档位）、<em>编译运行 F9</em>、<em>体检结果</em>。
+			比赛开始后这里还会出现倒计时。</p>
+		</article>
+		<article>
+			<h3>编辑器标题栏</h3>
+			<p>当前文件右上角放了最常用的四个动作：编译并运行、按评测机编译、提交前体检、拉取题面。</p>
+		</article>
+		<article>
+			<h3>帮助菜单</h3>
+			<p>菜单栏 <em>帮助</em> 里有「文档」「快捷键参考」「欢迎」「报告问题」。
+			调试器、源代码管理这些竞赛用不到的入口默认从侧栏摘掉了。</p>
+		</article>
+	</div>
+</section>
+
+<section id="compile">
+	<h2>编译与评测机档位</h2>
+	<p class="section-lede">本地能过、交上去挂，多数是编译参数不一样。Olympia 直接把评测机的开关拿来用。</p>
+	<div class="cols">
+		<div>
+			<h3>三档预设</h3>
+			<ul class="check">
+				<li><b>洛谷</b>：GCC 15.1.0 口径，<code>-std=c++23</code></li>
+				<li><b>NOI Linux 2.0（洛谷默认提交）</b>：GCC 9.3.0 口径，<code>-std=c++14</code></li>
+				<li><b>自定义</b>：自己填参数，见 <code>olympia.compiler.customFlags</code></li>
+			</ul>
+			<p class="hint">两档预设共用的开关：<code>-x c++ -fPIC -DONLINE_JUDGE -Wall -fno-asm -lm -march=native</code>。</p>
+		</div>
+		<div>
+			<h3>怎么切</h3>
+			<p>点状态栏的 <em>洛谷 · C++23</em>，或者用命令「选择评测机编译配置」。</p>
+			<p>三个编译动作和它们的键位：</p>
+			<ul class="tight">
+				<li><kbd>F9</kbd> 编译并运行</li>
+				<li><kbd>Shift</kbd>+<kbd>F9</kbd> 只编译，看有没有错误</li>
+				<li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F9</kbd> 按评测机编译（强制 <code>-O2</code>，用来复现评测机行为）</li>
+			</ul>
+		</div>
+	</div>
+	<p>默认 <code>olympia.compiler.optimization</code> 是 <code>none</code>：本地调试保持不优化，报错信息才对得上行号。
+	想确认 Olympia 到底跑了什么命令，状态栏下方终端会把完整 <code>g++</code> 命令行打印出来（可用
+	<code>olympia.compiler.showCompileCommand</code> 关掉）。</p>
+	<p class="hint">系统里已经有编译器、不想用内置的？把 <code>olympia.compiler.path</code> 填成你自己的 <code>g++.exe</code> 路径；留空则优先用内置工具链，其次找 <code>PATH</code>。</p>
+</section>
+
+<section id="check" class="alt">
+	<h2>提交前体检</h2>
+	<p class="section-lede">只报会在评测机上编译失败的写法，不当代码风格老师。</p>
+	<p>触发方式：保存时自动扫描（静默，结果进「问题」面板），或按 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Enter</kbd> 主动体检一次。</p>
+	<div class="table-wrap">
+		<table>
+			<thead><tr><th>检查项</th><th>为什么会挂</th><th>对应设置</th></tr></thead>
+			<tbody>
+				<tr>
+					<td><code>#pragma GCC optimize</code>、<code>__attribute__((optimize))</code></td>
+					<td>洛谷改过 GCC，这类优化属性在评测机上行为和你本地不一样，常见直接 RE 或答案错</td>
+					<td><code>olympia.check.rules.pragmaOptimize</code></td>
+				</tr>
+				<tr>
+					<td><code>asm</code>、<code>and</code>、<code>or</code>、<code>not</code>、<code>xor</code> 当变量名</td>
+					<td>MSVC 允许，GNU C++ 里它们是关键字，换个评测机就编译不过</td>
+					<td><code>olympia.check.rules.reservedWord</code></td>
+				</tr>
+				<tr>
+					<td><code>gets</code>、<code>random_shuffle</code>、<code>register</code></td>
+					<td>C++17 之后标准已经删掉，新评测机直接报错</td>
+					<td><code>olympia.check.rules.removedCpp</code></td>
+				</tr>
+			</tbody>
+		</table>
+	</div>
+	<p class="hint">整体开关是 <code>olympia.check.enabled</code>，保存时扫描是 <code>olympia.check.onSave</code>。体检不会改你的代码，也不会自己弹提示。</p>
+</section>
+
+<section id="samples">
+	<h2>跑样例（本地判 AC / WA）</h2>
+	<p class="section-lede">把题面样例当测试用，不联网、不需要账号。</p>
+	<ol class="steps">
+		<li>先用 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd> 拉题面，或 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd> 打开一份已经缓存的题面。</li>
+		<li>写好代码，按 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>J</kbd>。</li>
+		<li>Olympia 用当前档位编译，把每组样例的输入喂进去，按 token 比对输出，并读题面里写的时限来判断有没有超时。</li>
+	</ol>
+	<p>结果给出 <b>AC</b> / <b>WA</b> / <b>RE</b> / <b>TLE</b>，WA 会把「期望输出」和「你的输出」并排列出来，直接对着看差异。</p>
+	<p class="hint">读不到题面或题面里没有样例时，命令会让你先选一份缓存题面，不会凭空判你错。时限认「时限：1000ms」「时限：1 秒」这两种写法。</p>
+</section>
+
+<section id="stress" class="alt">
+	<h2>对拍</h2>
+	<p class="section-lede">正解和暴力互相验证，不用装 Python，也不用手写 <code>fc</code> 脚本。</p>
+	<p>按 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd>，依次选三个文件：正解、暴力（或慢但一定对的写法）、随机数据生成器。
+	Olympia 把它们都编译好，然后循环：</p>
+	<ul class="check">
+		<li>生成器产一组数据 → 同时喂给两份程序</li>
+		<li>输出按 token 比对；不一致就停下来</li>
+		<li>把出问题的输入和两份输出写进工作区的 <code>stress-fail/</code>，命名形如 <code>round-7.*</code>，点开就能查</li>
+	</ul>
+	<p>轮数由 <code>olympia.stress.rounds</code> 控制（默认 100 轮），单个程序的运行上限是
+	<code>olympia.stress.timeoutMs</code>（默认 2000 ms），超上限按不一致处理。</p>
+	<p class="hint">生成器报错不弹框，那轮直接跳过并继续；想确认的话看 Olympia 输出面板。</p>
+</section>
+
+<section id="contest">
+	<h2>比赛模式</h2>
+	<p class="section-lede">自己给自己一场有时间的比赛。</p>
+	<p>按 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd>，选时长：60 / 90 / 120 / 180 / 240 / 300 / 360 分钟，也可以自己填。
+	开始后状态栏出现倒计时，左侧 Olympia 面板的「当前环境」同步显示剩余时间。</p>
+	<ul class="tight">
+		<li>关掉窗口、重载界面之后倒计时接着走，不会重置</li>
+		<li>点一下倒计时可以提前收摊，会先确认一次</li>
+		<li>再按一次快捷键就是结束比赛模式</li>
+	</ul>
+</section>
+
+<section id="problems" class="alt">
+	<h2>题面、模板与离线</h2>
+	<div class="cols">
+		<div>
+			<h3>拉题面</h3>
+			<ul class="check">
+				<li>洛谷：<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd> 后写 <code>P1001</code>，或粘链接</li>
+				<li>Codeforces：<code>1660C</code> / <code>1660/C</code></li>
+				<li>AtCoder：<code>ABC300_A</code></li>
+				<li><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd> 从剪贴板识别题号，不用重打</li>
+			</ul>
+			<p class="hint">题面存成 Markdown 放在 <code>olympia.problem.problemsDir</code>（默认 <code>.olympia/problems</code>），
+			之后断网也能用 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd> 打开。</p>
+			<p class="hint">Codeforces 的题面网页有 Cloudflare 人机校验，抓不到正文时 Olympia 会留下题目信息和原题链接，并提示你在浏览器里看；
+			标题、标签、难度走官方接口，需要时把 <code>olympia.problem.cfMetadata</code> 打开（要多等几秒）。</p>
+		</div>
+		<div>
+			<h3>模板与补全</h3>
+			<p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> 插入起手代码，分 ACM 与 IOI 两套：
+			快读、<code>freopen</code>、常用头文件这些都在里面。</p>
+			<p>写 C++ 时补全列表里还有一批竞赛常用写法：快速 IO、<code>freopen</code>、
+			<code>lower_bound</code>、小根堆、快速幂、并查集、埃氏筛、Dijkstra、BFS 等 20 条。
+			中英文都能搜到，敲 <code>ios</code>、<code>fast</code>、<code>快速</code> 都会命中同一条。
+			不想要就把 <code>olympia.templates.cppSnippets</code> 关掉。</p>
+			<p>拉完题面自动建 <code>main.cpp</code> 的行为是关着的，想要就打开
+			<code>olympia.problem.templateOnPull</code>。</p>
+			<h3>哪些功能离线可用</h3>
+			<ul class="check">
+				<li>离线：编译、运行、体检、跑样例、对拍、比赛模式、模板、已缓存题面</li>
+				<li>需要联网：拉在线题面、AI 教练</li>
+			</ul>
+		</div>
+	</div>
+</section>
+
+<section id="coach">
+	<h2>AI 教练（可选）</h2>
+	<p class="section-lede">不绑账号、不订阅，也不经过我们的服务器。</p>
+	<div class="cols">
+		<div>
+			<h3>配置</h3>
+			<ol class="steps">
+				<li>左侧 Olympia 面板 → <em>AI 教练与帮助</em> → <em>AI 设置（地址 / 密钥 / 模型）</em></li>
+				<li><code>baseUrl</code> 填 OpenAI 兼容服务的根地址（不含 <code>/chat/completions</code>）</li>
+				<li>Key 在密码框里输入，存进 Windows 凭据管理器，不写进任何配置文件</li>
+				<li>模型列表默认从 <code>{baseUrl}/models</code> 自动拉取（缓存 5 分钟）；拉不到就在
+				<code>olympia.ai.models</code> 里自己填</li>
+			</ol>
+			<p class="hint">不填也能用 Olympia：编译、体检、跑样例、对拍全部不依赖 AI。</p>
+		</div>
+		<div>
+			<h3>使用</h3>
+			<p>聊天面板里输入 <code>@coach</code>，Olympia 会把当前文件的代码一起带上。三个内置指令：</p>
+			<ul class="check">
+				<li><code>/wa</code>：结合题面、样例与你的输出，列出最可能的错因和验证方法</li>
+				<li><code>/hint</code>：只给方向性提示与关键不变量，不输出完整代码</li>
+				<li><code>/check</code>：提交前风险清单——边界、整数溢出、复杂度、读入终止、多组数据</li>
+			</ul>
+			<p>命令面板里的 <em>选择 AI 教练使用的模型</em>、<em>设置 AI 教练的 API Key</em>、
+			<em>显示 AI 教练日志</em> 随时可换可查。</p>
+		</div>
+	</div>
+</section>
+
+<section id="keys" class="alt">
+	<h2>快捷键全表</h2>
+	<p class="section-lede">装完就能按。想改成自己的键位：「文件 → 首选项 → 键盘快捷方式」，搜 <code>olympia</code>。</p>
+	<div class="table-wrap">
+		<table>
+			<thead><tr><th>操作</th><th>键位</th><th>说明</th></tr></thead>
+			<tbody>
+				<tr><td>编译并运行</td><td><kbd>F9</kbd></td><td>按当前档位编译，通过后直接运行</td></tr>
+				<tr><td>只编译</td><td><kbd>Shift</kbd>+<kbd>F9</kbd></td><td>只看有没有编译错误</td></tr>
+				<tr><td>按评测机编译</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F9</kbd></td><td>强制 <code>-O2</code>，复现评测机</td></tr>
+				<tr><td>提交前体检</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Enter</kbd></td><td>扫描会在评测机上编译失败的写法</td></tr>
+				<tr><td>跑样例</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>J</kbd></td><td>本地判定 AC / WA / RE / TLE</td></tr>
+				<tr><td>对拍</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd></td><td>随机数据比对正解与暴力</td></tr>
+				<tr><td>比赛模式</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd></td><td>开始 / 结束倒计时</td></tr>
+				<tr><td>环境自检</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd></td><td>逐项检查编译器、参数、AI 配置</td></tr>
+				<tr><td>切换评测机档位</td><td>点状态栏 <em>洛谷 · C++23</em></td><td>洛谷 / NOI / 自定义</td></tr>
+				<tr><td>拉取题面</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd></td><td>洛谷、Codeforces、AtCoder</td></tr>
+				<tr><td>从剪贴板拉题号</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd></td><td>复制网页链接后直接识别</td></tr>
+				<tr><td>打开已缓存的题面</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd></td><td>离线，按题号选</td></tr>
+				<tr><td>插入赛制模板</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd></td><td>ACM / IOI 起手代码</td></tr>
+			</tbody>
+		</table>
+	</div>
+</section>
+
+<section id="settings">
+	<h2>设置项一览</h2>
+	<p class="section-lede">全部以 <code>olympia.</code> 开头，在设置里搜 <code>olympia</code> 会按「编译器与评测 / 题面与模板 / AI 教练」分组。</p>
+	<div class="table-wrap">
+		<table>
+			<thead><tr><th>设置</th><th>默认值</th><th>作用</th></tr></thead>
+			<tbody>
+				<tr><td><code>olympia.compiler.path</code></td><td><em>空</em></td><td>自己的 <code>g++.exe</code>；留空用内置工具链</td></tr>
+				<tr><td><code>olympia.compiler.profile</code></td><td><code>luogu</code></td><td>编译档位</td></tr>
+				<tr><td><code>olympia.compiler.customFlags</code></td><td><em>空</em></td><td>档位为 <code>custom</code> 时的附加参数</td></tr>
+				<tr><td><code>olympia.compiler.optimization</code></td><td><code>none</code></td><td>本地优化级别</td></tr>
+				<tr><td><code>olympia.compiler.showCompileCommand</code></td><td><code>true</code></td><td>打印完整编译命令</td></tr>
+				<tr><td><code>olympia.debug.showEntryPoints</code></td><td><code>false</code></td><td>恢复 VS Code 自带的「运行与调试」入口</td></tr>
+				<tr><td><code>olympia.check.enabled</code></td><td><code>true</code></td><td>提交前体检总开关</td></tr>
+				<tr><td><code>olympia.check.onSave</code></td><td><code>true</code></td><td>保存时自动体检</td></tr>
+				<tr><td><code>olympia.check.rules.pragmaOptimize</code></td><td><code>true</code></td><td>检查优化属性</td></tr>
+				<tr><td><code>olympia.check.rules.reservedWord</code></td><td><code>true</code></td><td>检查 MSVC/GNU 关键字冲突</td></tr>
+				<tr><td><code>olympia.check.rules.removedCpp</code></td><td><code>true</code></td><td>检查标准里已删除的写法</td></tr>
+				<tr><td><code>olympia.stress.rounds</code></td><td><code>100</code></td><td>对拍轮数</td></tr>
+				<tr><td><code>olympia.stress.timeoutMs</code></td><td><code>2000</code></td><td>对拍单程序运行上限</td></tr>
+				<tr><td><code>olympia.problem.problemsDir</code></td><td><code>.olympia/problems</code></td><td>题面缓存目录</td></tr>
+				<tr><td><code>olympia.problem.templateOnPull</code></td><td><code>false</code></td><td>拉完题面自动建 <code>main.cpp</code></td></tr>
+				<tr><td><code>olympia.problem.requestTimeoutMs</code></td><td><code>15000</code></td><td>拉题面的网络超时</td></tr>
+				<tr><td><code>olympia.problem.cfMetadata</code></td><td><code>false</code></td><td>额外查 Codeforces 标题/标签/难度</td></tr>
+				<tr><td><code>olympia.templates.cppSnippets</code></td><td><code>true</code></td><td>C++ 补全里带竞赛常用写法</td></tr>
+				<tr><td><code>olympia.ai.baseUrl</code></td><td><em>空</em></td><td>OpenAI 兼容服务地址</td></tr>
+				<tr><td><code>olympia.ai.models</code></td><td><em>空</em></td><td>手填模型列表；留空则自动拉取</td></tr>
+			</tbody>
+		</table>
+	</div>
+	<p class="hint">API Key 不在这张表里：它只存在系统密钥库，不出现在 <code>settings.json</code>，也不会被同步走。</p>
+</section>
+
+<section id="trouble" class="alt">
+	<h2>装完之后容易卡的地方</h2>
+	<div class="faq">
+		<details>
+			<summary>双击安装被 SmartScreen 拦住</summary>
+			<p>安装包没有代码签名证书，Windows 会拦一次。点「更多信息 → 仍要执行」即可；
+			不放心就先用 <code>SHA256SUMS.txt</code> 核对下载到的文件。</p>
+		</details>
+		<details>
+			<summary>提示「安装程序需要下一张磁盘」</summary>
+			<p>分卷没下全，或者文件没放在同一个目录。把 <code>OlympiaSetup.exe</code> 和
+			<code>OlympiaSetup-1.bin</code> … <code>OlympiaSetup-4.bin</code> 全放进同一个文件夹，
+			双击 <code>OlympiaSetup.exe</code>；文件名不要改。</p>
+		</details>
+		<details>
+			<summary>F9 报找不到编译器</summary>
+			<p>按 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd> 跑一次环境自检，会逐条告诉你它找了哪些路径。
+			内置工具链在安装目录的 <code>resources\app\toolchain\mingw64\bin\g++.exe</code>
+			（用户版安装器默认在 <code>%LocalAppData%\Programs\Olympia IDE</code>）；
+			想用系统里的编译器，填 <code>olympia.compiler.path</code>。</p>
+		</details>
+		<details>
+			<summary>本地过了，交上去 WA / RE</summary>
+			<p>先换档位：<code>#include &lt;bits/stdc++.h&gt;</code> 在 NOI 档（GCC 9.3.0 / C++14）下可能报错，
+			用 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F9</kbd> 打开 <code>-O2</code> 复现优化后的行为，
+			再用 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd> 对拍找一组反例。</p>
+		</details>
+		<details>
+			<summary>体检报的问题我觉得不影响编译</summary>
+			<p>体检只看会导致编译失败或评测机行为不一致的写法。确实误报时，可以按项关掉
+			<code>olympia.check.rules.*</code>，或整体关掉 <code>olympia.check.onSave</code>。</p>
+		</details>
+		<details>
+			<summary>左侧栏没有「运行和调试」「源代码管理」，我要怎么用</summary>
+			<p>竞赛用不到，出厂把它们从活动栏摘掉了。需要调试器时打开
+			<code>olympia.debug.showEntryPoints</code>，入口就回来了；
+			版本管理可以用命令面板里的 Git 命令。</p>
+		</details>
+		<details>
+			<summary>AI 教练不回话</summary>
+			<p>先跑「环境自检」，它会检查 <code>baseUrl</code> 是否可达、Key 是否已保存；
+			再执行「显示 AI 教练日志」看请求返回了什么。地址填的是根地址，不要带 <code>/chat/completions</code>。</p>
+		</details>
+	</div>
+</section>
+
+<section id="changelog">
+	<h2>更新记录</h2>
+	<p class="section-lede">安装包与功能变更记在这里。</p>
+	<h3>v1.0.0（对应 VS Code 1.140.0）</h3>
+	<ul class="check">
+		<li>常驻入口：左侧 Olympia 面板、状态栏三枚 chip、编辑器标题栏按钮</li>
+		<li>评测机档位：洛谷 / NOI Linux 2.0 / 自定义，可打印完整编译命令</li>
+		<li>提交前体检改为只报编译期问题，保存时静默写入「问题」面板</li>
+		<li>跑样例：按 token 比对、按题面时限判 TLE，WA 给出期望与实际输出</li>
+		<li>对拍、比赛模式、题面拉取（洛谷 / Codeforces / AtCoder）、ACM 与 IOI 模板全部配齐快捷键</li>
+		<li>AI 教练改为自带 Key（BYOK）：不再有任何登录、账号、订阅入口</li>
+		<li>出厂主题 One Dark Pro；活动栏精简；界面与向导文案汉化</li>
+		<li>安装器改为分卷 + 网络引导，用户级安装，不需要管理员权限</li>
+	</ul>
+</section>
+
+<section id="license" class="alt">
+	<h2>开源与隐私</h2>
+	<p>
+		Olympia 的修改部分以 <b>GPL-3.0-or-later</b> 发布，源码在
+		<a href="https://github.com/yuandd0412/olympia-ide">GitHub</a>；
+		它基于 Microsoft Visual Studio Code（MIT License）。
+		内置的 One Dark Pro 配色为 MIT（zhuangtongfa/material-theme），
+		捆绑的工具链来自 MinGW-w64 / MSYS2，各自遵循其原始许可证。
+	</p>
+	<p>
+		Olympia 不发送任何遥测数据（产品内置 <code>enableTelemetry = false</code>）。
+		细节见<a href="../privacy/">隐私声明</a>，使用条件见<a href="../terms/">使用条款</a>。
+	</p>
+</section>
+
+<section class="cta">
+	<h2>把时间留给算法</h2>
+	<p>装完，就打比赛。</p>
+	<a class="btn btn-primary" href="https://gitee.com/yuanddMSK/olympia-ide/releases" data-download="OlympiaSetup-web.exe">下载 Olympia IDE v1.0.0</a>
+</section>
+
+</main>
+
+<footer class="site-foot">
+	<p><b>Olympia IDE</b> 是面向信息学竞赛的 VS Code fork，Windows 10 / 11 x64。</p>
+	<p>
+		<a href="../index.html">首页</a> ·
+		<a href="https://github.com/yuandd0412/olympia-ide">源码</a> ·
+		<a href="https://gitee.com/yuanddMSK/olympia-ide/releases">安装包</a> ·
+		<a href="../privacy/">隐私声明</a> ·
+		<a href="../terms/">使用条款</a>
+	</p>
+	<p class="legal">
+		Olympia 的修改以 GPL-3.0-or-later 发布；基于 Microsoft Visual Studio Code（MIT License）。
+		内置 One Dark Pro 配色（MIT，来自 zhuangtongfa.material-theme），捆绑的工具链为 MinGW-w64 / MSYS2 发行，
+		各自遵循其原始许可证。
+	</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

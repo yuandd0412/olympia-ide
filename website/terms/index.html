@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>使用条款 — Olympia IDE</title>
+<meta name="description" content="Olympia IDE 使用条款：GPL-3.0-or-later 与 MIT 的关系、可自由再分发、按现状提供不作担保、本地判题不等同于评测机结果、题目内容版权归原题站。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath d='M 294.8 111.1 A 150 150 0 1 0 400.9 217.2' fill='none' stroke='%2361afef' stroke-width='56' stroke-linecap='round'/%3E%3Cpath d='M 170 266 L 243 340 L 350 205' fill='none' stroke='%2398c379' stroke-width='56' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<header class="site-head">
+	<a class="brand" href="../index.html">
+		<svg viewBox="0 0 512 512" aria-hidden="true"><path d="M 294.8 111.1 A 150 150 0 1 0 400.9 217.2" fill="none" stroke="currentColor" stroke-width="56" stroke-linecap="round"/><path d="M 170 266 L 243 340 L 350 205" fill="none" stroke="currentColor" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/></svg>
+		<span>Olympia IDE</span>
+	</a>
+	<nav id="site-nav">
+		<a href="#license">许可证</a>
+		<a href="#freedom">你可以做什么</a>
+		<a href="#as-is">按现状提供</a>
+		<a href="#judge">判题的边界</a>
+		<a href="#content">题目与第三方内容</a>
+		<a class="btn btn-small" href="../index.html#download">下载</a>
+	</nav>
+	<button class="nav-toggle" id="nav-toggle" aria-label="打开菜单" aria-expanded="false">
+		<span></span><span></span><span></span>
+	</button>
+</header>
+
+<main id="top">
+
+<section class="hero">
+	<div class="hero-copy">
+		<p class="eyebrow">使用条款 · 更新于 2026-10-12</p>
+		<h1>条款可以很短</h1>
+		<p class="lede">
+			Olympia 是开源软件，免费使用、自由分发。下面几条只是把边界说清楚：
+			哪些部分适用哪种许可证、程序按现状提供、以及本地判题结果代表什么。
+		</p>
+	</div>
+</section>
+
+<section id="license">
+	<h2>许可证</h2>
+	<div class="table-wrap">
+		<table>
+			<thead><tr><th>部分</th><th>许可证</th><th>说明</th></tr></thead>
+			<tbody>
+				<tr><td>Olympia 的修改与新加功能</td><td>GPL-3.0-or-later</td><td>源码在 <a href="https://github.com/yuandd0412/olympia-ide">yuandd0412/olympia-ide</a></td></tr>
+				<tr><td>Microsoft Visual Studio Code 本体</td><td>MIT License</td><td>Olympia 是它的 fork，上游版权声明保留在源文件头部</td></tr>
+				<tr><td>One Dark Pro 配色</td><td>MIT</td><td>来自 zhuangtongfa/material-theme</td></tr>
+				<tr><td>内置 MinGW-w64 / MSYS2 工具链</td><td>GPL / 各自原始许可证</td><td>随安装包分发，许可证文本见源码仓库与 <code>resources\ThirdPartyNotices.txt</code></td></tr>
+				<tr><td>扩展市场</td><td>各扩展自己的许可证</td><td>由 open-vsx.org 提供，不由本项目担保</td></tr>
+			</tbody>
+		</table>
+	</div>
+	<p class="hint">「VS Code」与「Visual Studio Code」是 Microsoft 的商标；本条款不授予任何商标使用权。</p>
+</section>
+
+<section id="freedom" class="alt">
+	<h2>你可以做什么</h2>
+	<ul class="check">
+		<li>免费安装在任意数量的机器上，包括机房和学生家里</li>
+		<li>复制、转发安装包，写进校本教程，或改成自己学校的版本</li>
+		<li>再分发修改版，只要按 GPL-3.0 提供对应源码并保留许可证文本</li>
+		<li>把它用于教学、训练、比赛准备</li>
+	</ul>
+	<p>请不要做的：把它包装成收费软件却不给源码；移除许可证与署名；
+	把它用于替考、代写或任何形式的考试作弊。</p>
+</section>
+
+<section id="as-is">
+	<h2>按现状提供</h2>
+	<p>Olympia 按「现状」提供，不作任何明示或默示的担保。
+	它由一名中学生和他的老师为竞赛训练而做，不是商业产品，没有 SLA、没有客服工单、没有赔偿承诺。
+	如果它损害了你的数据或比赛，我们很抱歉，但不为此承担责任——这也是 GPL 与 MIT 的共同条款。</p>
+	<p class="hint">有问题欢迎提 issue，用中文写就行。这是我们能提供的最主要支持方式。</p>
+</section>
+
+<section id="judge" class="alt">
+	<h2>本地判题的边界</h2>
+	<p>这是最容易误解的一条，所以单独写：</p>
+	<ul class="tight">
+		<li><b>「跑样例」给出 AC，不代表评测机会判 AC。</b>它只用题面里的样例数据和题面写的时限，在你的机器上做一次近似判定。</li>
+		<li><b>「对拍」只能证明你的两份写法互相不一致的地方。</b>两份都错时对拍不会报警。</li>
+		<li>编译档位复现的是评测机<b>公布</b>的开关（GCC 版本口径、<code>-std</code>、<code>-DONLINE_JUDGE</code> 等），
+		不等于评测机沙箱、时间与内存测量方式。</li>
+		<li><b>提交前体检</b>只检查已知会导致编译失败或行为不一致的写法，不检查算法正确性。</li>
+	</ul>
+	<p>最终成绩以比赛或 OJ 的评测结果为准。Olympia 的作用是把「本地和赛场不一样」这类意外提前暴露出来。</p>
+</section>
+
+<section id="content">
+	<h2>题目与第三方内容</h2>
+	<p>「拉取题面」抓取的题目描述、样例数据版权归洛谷、Codeforces、AtCoder 等原题站及其作者。
+	该功能只在你的机器与原站之间发生，缓存文件留在你自己的磁盘上。
+	请勿把抓到的题面用于再分发或商业用途，具体以各原题站的服务条款为准。</p>
+</section>
+
+<section id="changes" class="alt">
+	<h2>条款的更改</h2>
+	<p>本页可能随功能变化更新，改动会同时更新顶部日期。继续使用新版 Olympia 即视为接受更新后的条款；
+	如果你不接受，卸载即可，不需要通知任何人。</p>
+</section>
+
+<section class="cta">
+	<h2>把时间留给算法</h2>
+	<p>装完，就打比赛。</p>
+	<a class="btn btn-primary" href="https://gitee.com/yuanddMSK/olympia-ide/releases" data-download="OlympiaSetup-web.exe">下载 Olympia IDE v1.0.0</a>
+</section>
+
+</main>
+
+<footer class="site-foot">
+	<p><b>Olympia IDE</b> 是面向信息学竞赛的 VS Code fork，Windows 10 / 11 x64。</p>
+	<p>
+		<a href="../index.html">首页</a> ·
+		<a href="../docs/">使用手册</a> ·
+		<a href="https://github.com/yuandd0412/olympia-ide">源码</a> ·
+		<a href="../privacy/">隐私声明</a>
+	</p>
+	<p class="legal">
+		Olympia 的修改以 GPL-3.0-or-later 发布；基于 Microsoft Visual Studio Code（MIT License）。
+		内置 One Dark Pro 配色（MIT，来自 zhuangtongfa.material-theme），捆绑的工具链为 MinGW-w64 / MSYS2 发行，
+		各自遵循其原始许可证。
+	</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

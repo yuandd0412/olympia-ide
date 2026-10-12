@@ -94,7 +94,14 @@ is the shared HTTP helper (browser-like headers, `Accept-Encoding: identity` so 
 wall-clock deadline in addition to socket idleness, optional cookie);
 [`src/html2md.ts`](../../oss/extensions/olympia-contest/src/html2md.ts) converts the page to Markdown;
 [`src/templates.ts`](../../oss/extensions/olympia-contest/src/templates.ts) holds the C++ contest
-templates inserted by `olympia.template.insert`.
+templates inserted by `olympia.template.insert`, and
+[`src/snippets.ts`](../../oss/extensions/olympia-contest/src/snippets.ts) registers the contest
+completion list — 20 entries of the shape a student types every day (快速 IO, `freopen`,
+`lower_bound`, 小根堆, 快速幂, 并查集, 埃氏筛, Dijkstra, BFS). `CONTEST_SNIPPETS` is pure data; the
+provider only maps it to `CompletionItem`s whose `filterText` holds the English id, the Chinese label,
+the detail and the alias list, so `ios`, `fast` and `快速` all hit the same row. Bodies are
+VS Code snippet syntax, and they are written as ordinary strings — inside a template literal the
+`${1:x}` placeholder is a JS expression and silently ships a broken body.
 
 | Command | Title | Keybinding (`when`) | Also in menus |
 | --- | --- | --- | --- |
@@ -106,7 +113,8 @@ templates inserted by `olympia.template.insert`.
 Settings: `olympia.problem.problemsDir` (default `.olympia/problems`, where pulled statements are
 cached), `olympia.problem.templateOnPull` (default `false`), `olympia.problem.requestTimeoutMs`
 (default `15000`), `olympia.problem.cfMetadata` (default `false`; when on, also pulls Codeforces
-metadata).
+metadata), `olympia.templates.cppSnippets` (default `true`; when off the C++ completion list is
+empty and only word-based suggestions remain).
 
 ## `olympia-coach` — the `@coach` chat participant
 
@@ -207,11 +215,26 @@ be plain "Olympia" any more. `getCommonlyUsedData(groups)` *does* see extension 
 (`:1626`), so `olympia.compiler.profile` now occupies the "常用" row that used to name
 `GitHub.copilot-chat.manageExtension` — an extension this product does not ship.
 
+**The 帮助 menu and the issue reporter speak for Olympia now.** `MenuId.MenubarHelpMenu` used to carry
+「使用英文报告问题」, 「编辑器操场」, 「打开进程资源管理器」 and 「询问 @vscode」. The fork relabels the first to
+「报告问题」 and rewrites both reporters' guidance line: the issue tracker is our own repo
+(`product.reportIssueUrl`), so sending a Chinese middle-schooler to the Microsoft wiki and telling them
+to write English was simply wrong — the classic reporter even had a permanent
+「请使用英文进行填写」 banner, because it showed whenever `document.documentElement.lang !== 'en'`.
+The playground and process-explorer rows are gone from the menu (the commands stay reachable from the
+palette), and `询问 @vscode` was deleted outright: its precondition depends on `chatSetupHidden`, which
+`byokOnly` forces on, so it could only ever render greyed out.
+`product.json` now sets `documentationUrl`, `keyboardShortcutsUrlWin`, `releaseNotesUrl` and
+`enableTelemetry: false` (the last one explicitly — `telemetryUtils.ts:101` disables telemetry whenever
+the flag is falsy, and it was falsy only by omission), and the `defaultChatAgent` links that pointed at
+`/docs/ai`, `/terms`, `/privacy`, `/download` — none of which existed — now point at real pages under
+`website/`. `scripts/oneoff/check-website.mjs` fails if any product link stops resolving.
+
 ## How to verify without a device
 
-Four harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
+Five harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
 with `vscode` stubbed through a `Module._load` hook, so they test the shipped code path rather than a
-re-implementation; the fifth, `check-command-wiring.mjs`, reads the manifests and sources instead. Compile first (`npm run gulp -- compile-extension:olympia-onboarding`), then run each
+re-implementation; the sixth, `check-command-wiring.mjs`, reads the manifests and sources instead. Compile first (`npm run gulp -- compile-extension:olympia-onboarding`), then run each
 with `node scripts/oneoff/<name>.mjs` from the repository root:
 
 | Harness | What it pins down |
@@ -220,9 +243,10 @@ with `node scripts/oneoff/<name>.mjs` from the repository root:
 | `test-judge-samples.mjs` | `parseSamples` against Markdown shaped exactly like `renderStatement` output, including the `ms` / `s` / `毫秒` / `秒` time-limit units and the 500 ms–10 s clamp |
 | `test-judge-pipeline.mjs` | the whole 跑样例 command against the **bundled g++**: AC on a correct file, WA with expected-vs-got printed, a compile failure reported as a failure instead of a pass, and a quick pick when no statement matches by name |
 | `test-stress-pipeline.mjs` | the whole 对拍 command: 25 agreeing rounds report 通过, an intentionally wrong solution stops the run and leaves `stress-fail/round-N.*` behind, and a silent generator errors out instead of "passing" zero rounds |
+| `test-cpp-snippets.mjs` | the 20-row C++ completion table: registration and `dispose`, every `detail`/hint line carries Chinese, aliases actually resolve (敲 `fast`/`sync`/`pow`/`union` 命中对应条目), placeholders close, the switch silences the list — and each body, with its placeholders filled, passes `g++ -std=c++17 -fsyntax-only` inside a generated translation unit |
 | `check-command-wiring.mjs` | every command the UI points at (palette entry, `editor/title`, keybinding, walkthrough button, start entry) actually has a `registerCommand` behind it, and vice versa — the "button that does nothing" class. Bitten-ness is verified, not assumed: typo'ing one id in `olympia-onboarding/package.json` makes it report three problems and exit 1 |
 
-The bundled compiler is what makes the last two real rather than mocked: both resolve
+The bundled compiler is what makes the pipeline harnesses real rather than mocked: they resolve
 `VSCode-win32-x64/resources/app/toolchain/mingw64/bin/g++.exe` through the normal
 `olympia.compiler.path` config path, so a broken toolchain fails the harness instead of hiding.
 

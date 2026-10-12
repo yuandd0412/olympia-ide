@@ -167,7 +167,7 @@ it attaches the active document capped at 12k characters. Diagnostics land in th
 `Olympia AI Coach` log output channel (the id `product.json` refers to as
 `chatExtensionOutputId`) plus `olympia.coach.debug.extensionState`.
 
-## The one workbench-side Olympia contribution
+## The workbench-side Olympia contributions
 
 `byokOnly` removes the hosted-assistant *flows*, but two chrome items are gated by other checks and
 survive it: the chat status-bar entry (`chat.statusBarEntry`) and the accounts management button, whose
@@ -180,6 +180,22 @@ turns it back on stays turned on. The file is the place to add further product-l
 `product.defaultSettings` does not exist in this codebase, so defaults have to be changed either here or
 at the registration site (as `chat.titleBar.openInAgentsWindow.enabled` now does, defaulting to
 `!byokOnly`).
+
+**Settings are grouped in core, not in the extension manifests' `configuration.title`.**
+`resolveSettingsTree` is handed `coreSettingsGroups` only
+([`settingsEditor2.ts:1512`](../../oss/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts)),
+so a category added to `tocData` in `settingsLayout.ts` can never show a setting an extension
+contributed — the `olympia` category that used to sit there was inert decoration (removed; the comment
+left in its place says where the real hook is). Extension settings become tree entries in
+`createTocTreeForExtensionSettings` (`settingsTree.ts:480`), which keys one section per extension id and
+labels it with the extension's display name — so Olympia's three built-ins showed up as three unrelated
+sections, each needing its own expand. The fork now folds every `olympia.*` extension id into a single
+`Olympia` root, and the three `configuration.title`s became the sub-headings 编译器与评测 / 题面与模板 /
+AI 教练. Note the interaction that makes the sub-headings matter: a child whose label equals the root's
+label is flattened into the root's ungrouped settings (`settingsTree.ts:539`), which is why no title may
+be plain "Olympia" any more. `getCommonlyUsedData(groups)` *does* see extension settings
+(`:1626`), so `olympia.compiler.profile` now occupies the "常用" row that used to name
+`GitHub.copilot-chat.manageExtension` — an extension this product does not ship.
 
 ## How to verify without a device
 

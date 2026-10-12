@@ -200,6 +200,44 @@ The bundled compiler is what makes the last two real rather than mocked: both re
 `VSCode-win32-x64/resources/app/toolchain/mingw64/bin/g++.exe` through the normal
 `olympia.compiler.path` config path, so a broken toolchain fails the harness instead of hiding.
 
+## Copilot wording still in the tree (inventory, not yet device-checked)
+
+`byokOnly` closes the hosted-assistant *flows*, but it does not rewrite wording. Two labels were fixed
+directly because they sit in surfaces the coach actually uses:
+
+- [`buildModelPickerDestinations`](../../oss/src/vs/workbench/contrib/chat/browser/widget/input/modelPicker/modelPickerTabs.ts)
+  fell back to the literal `GitHub Copilot` whenever no vendor is marked default. `isDefault` is
+  hardcoded upstream to `vendor === 'copilot'`
+  ([`languageModels.ts:1218`](../../oss/src/vs/workbench/contrib/chat/common/languageModels.ts)), so with
+  only our `olympia` vendor registered there *is* no default vendor and the fallback was the string on
+  screen. It now falls back to `product.nameShort` when `byokOnly`.
+- the permission picker's default-level subtext said 「Copilot 使用你配置的设置」
+  ([`permissionPickerActionItem.ts:140`](../../oss/src/vs/workbench/contrib/chat/browser/widget/input/permissionPickerActionItem.ts))
+  → Olympia.
+
+Still standing, in rough order of how likely a student is to hit them. Each line is *located*, not
+*proved reachable* — proving most of them needs the app open with a configured key, so they are left as a
+checklist instead of being rewritten on a guess:
+
+| Where | Wording | Why it may still show |
+| --- | --- | --- |
+| [`modelPickerItemSections.ts:71-80`](../../oss/src/vs/workbench/contrib/chat/browser/widget/input/modelPicker/modelPickerItemSections.ts) | `Sign in to use Copilot` (three strings, **not even translated**) | shown when `modelPickerRequiresSetup()` is true, i.e. entitlement `Available`, or `Unknown` **and** not anonymous **and** no BYOK models. With an unconfigured coach the third clause holds, so this hinges on what `anonymous` resolves to under `byokOnly` — check with no key set |
+| [`chatErrorMessages.ts:157-235`](../../oss/src/vs/workbench/contrib/chat/common/chatErrorMessages.ts) | 十几条「升级到 Copilot Pro / 联系组织的 Copilot 管理员」配额文案 | quota + rate-limit branches; a 429 from a BYOK gateway can route into the rate-limit message, which promises a Copilot plan |
+| [`chatPermissionWarnings.ts:100`](../../oss/src/vs/workbench/contrib/chat/common/chatPermissionWarnings.ts) | English `Copilot will still ask when the model requires approval…` | assisted-permission warning, shown from the permission picker |
+| [`promptTypes.ts:182,184`](../../oss/src/vs/workbench/contrib/chat/common/promptSyntax/promptTypes.ts) | 「工作区(仅由 Copilot 智能体使用)」/「全局(仅由 Copilot 智能体使用)」 | customizations / prompt-file management UI |
+| [`languageModelStats.ts:49`](../../oss/src/vs/workbench/contrib/chat/common/languageModelStats.ts) | label `Copilot` | the model-usage breakdown entry |
+| [`gettingStartedContent.ts:228`](../../oss/src/vs/workbench/contrib/welcomeGettingStarted/common/gettingStartedContent.ts) | 「免费使用 Copilot 的 AI 功能」 walkthrough step | gated by the getting-started `when` clauses; must be confirmed hidden on a fresh profile |
+| [`agentSessionsWelcome.ts:746`](../../oss/src/vs/workbench/contrib/welcomeAgentSessions/browser/agentSessionsWelcome.ts) | 「免费试用 GitHub Copilot，无需登录!」 | the agent-sessions welcome page; the banner in that view *is* gated by `sentiment.hidden` (confirmed), this heading is in the same view but was not traced to its own gate |
+| [`onboardingVariationA.ts:460,495,530`](../../oss/src/vs/workbench/contrib/welcomeOnboarding/browser/onboardingVariationA.ts) | 登录以使用 GitHub Copilot / Copilot 免责声明 | **ruled out**: with `byokOnly` the sign-in step is filtered out of `steps` (`:121`) and rendering switches on step *identity*, not index (`:407-410`), so `_renderSignInStep` is never called |
+
+Unrelated but same cleanup: the Settings editor logs a ~200-key
+`Settings not included in settingsLayout.ts` warning
+([`settingsEditor2.ts:1522`](../../oss/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts))
+the first time the Settings UI opens. `leftoverSettings` means "not in the table of contents", and the
+chat keys are overwhelmingly `tags: ['experimental']`, which `canShowAdvancedSettings()`
+(`:421-426`) already excludes by default — so this is upstream log noise, not a leaked Copilot settings
+page. Nothing to fix unless the device check shows those keys searchable.
+
 ## Not built
 
 - The coach has no scoring/verdict integration with an **online** judge: 跑样例 produces a local AC/WA,

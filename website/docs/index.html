@@ -67,7 +67,7 @@
 			<ul class="check">
 				<li><em>当前环境</em>：编译器版本、编译档位、体检结果、比赛剩余时间</li>
 				<li><em>编译与运行</em>：编译并运行、只编译、按评测机编译、提交前体检、对拍、比赛模式</li>
-				<li><em>题目与模板</em>：拉取题面、从剪贴板拉题号、打开题面库、插入赛制模板</li>
+				<li><em>题目与模板</em>：拉取题面、从剪贴板拉题号、打开题面库、给这道题加一组自定义样例、插入赛制模板、编辑我的模板</li>
 				<li><em>AI 教练与帮助</em>：AI 设置、全部设置、环境自检、打开官网</li>
 			</ul>
 		</article>
@@ -241,12 +241,17 @@
 			<h3>模板与补全</h3>
 			<p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> 插入起手代码，分 ACM 与 IOI 两套：
 			快读、<code>freopen</code>、常用头文件这些都在里面。</p>
+			<p><strong>用不惯内置模板就写自己的那一份</strong>：面板 <em>题目与模板</em> →
+			<em>编辑我的模板</em>，它打开的是工程里的 <code>.olympia/template.cpp</code>（第一次点会拿 ACM
+			模板给你打底）。改完保存就算数：之后插模板时「我的模板」排在第一个，按回车就是用你自己那份，
+			拉题面自动建的 <code>.cpp</code> 也从它打底。模板跟着文件夹走，拷到机房还是你那几行。
+			文件空着不算模板，不会往你代码里插一页空白。</p>
 			<p>写 C++ 时补全列表里还有一批竞赛常用写法：快速 IO、<code>freopen</code>、
 			<code>lower_bound</code>、小根堆、快速幂、并查集、埃氏筛、Dijkstra、BFS 等 20 条。
 			中英文都能搜到，敲 <code>ios</code>、<code>fast</code>、<code>快速</code> 都会命中同一条。
 			不想要就把 <code>olympia.templates.cppSnippets</code> 关掉。</p>
-			<p>拉完题面自动建 <code>main.cpp</code> 的行为是关着的，想要就打开
-			<code>olympia.problem.templateOnPull</code>。</p>
+			<p>拉完题面在题面旁边自动建一个同名 <code>.cpp</code> 的行为是关着的，想要就打开
+			<code>olympia.problem.templateOnPull</code>；已经有 <code>.cpp</code> 的题不会被覆盖。</p>
 			<h3>哪些功能离线可用</h3>
 			<ul class="check">
 				<li>离线：编译、运行、体检、跑样例、对拍、比赛模式、模板、已缓存题面</li>
@@ -338,7 +343,7 @@
 				<tr><td><code>olympia.stress.timeoutMs</code></td><td><code>2000</code></td><td>对拍单程序运行上限</td></tr>
 				<tr><td><code>olympia.judge.memoryLimitMb</code></td><td><code>0</code></td><td>跑样例判 MLE 的内存上限，<code>0</code> 表示按题面里写的算</td></tr>
 				<tr><td><code>olympia.problem.problemsDir</code></td><td><code>.olympia/problems</code></td><td>题面缓存目录</td></tr>
-				<tr><td><code>olympia.problem.templateOnPull</code></td><td><code>false</code></td><td>拉完题面自动建 <code>main.cpp</code></td></tr>
+				<tr><td><code>olympia.problem.templateOnPull</code></td><td><code>false</code></td><td>拉完题面在题面旁建同名 <code>.cpp</code>，有「我的模板」先用它打底</td></tr>
 				<tr><td><code>olympia.problem.requestTimeoutMs</code></td><td><code>15000</code></td><td>拉题面的网络超时</td></tr>
 				<tr><td><code>olympia.problem.cfMetadata</code></td><td><code>false</code></td><td>额外查 Codeforces 标题/标签/难度</td></tr>
 				<tr><td><code>olympia.templates.cppSnippets</code></td><td><code>true</code></td><td>C++ 补全里带竞赛常用写法</td></tr>
@@ -420,6 +425,9 @@
 		换台机器（机房那台挂在 <kbd>E</kbd> 盘）也不用重新选</li>
 		<li>解题记录与连续打卡：跑样例判成 AC 自动记一条（题号、耗时、峰值内存），存在工程的 <code>.olympia/solves.json</code>，
 		面板上常驻一行「N 题 · 连续 D 天 · 今日 x/3」；这是老版本就有的东西，换机器也不用重新攒</li>
+		<li>自定义代码模板：面板「编辑我的模板」打开工程里的 <code>.olympia/template.cpp</code>，改完保存就是下一次
+		<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> 插入的那一份，拉题面自动建的 <code>.cpp</code> 也从它打底。
+		同样是老版本有、这一版之前只有内置模板的地方</li>
 		<li>Olympia 设置：编译档位、跑样例内存、对拍轮数、题面位置等全部开关收进一屏，说明写在每一项下面，<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>,</kbd> 打开</li>
 		<li>面板里每一行的名字和命令面板里的标题现在是同一句，不会再出现「面板写打开题面库、搜索时叫已缓存的题面」这种对不上的情况</li>
 		<li>欢迎页摘掉与产品无关的入口：克隆 Git 仓库、打开远程仓库、连接到…、打开隧道、运行与调试、Git 那四步、

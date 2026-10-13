@@ -115,7 +115,8 @@ the first one shows the live compiler / profile / 体检 / 题面库 counts as c
 — the one place this extension lists that directory, shared with 跑样例 so the two cannot disagree —
 and it follows the watcher: with nothing cached it reads 还没拉过题面 and points at 拉取题面 instead of
 opening an empty list. 题目与模板 gained the 打开题面库 row (`Ctrl+Alt+O`), so the bank is reachable
-without the palette. The tree redraws on
+without the palette, and the 编辑我的模板 row, so wanting your own template does not require knowing that
+`Ctrl+Alt+T`'s picker hides a 新建 entry at the bottom. The tree redraws on
 active-editor, configuration and diagnostic changes; the countdown repaints through a narrower path that
 does not re-probe the toolchain. Four `editor/title` navigation buttons (编译并运行 / 编译 / 按评测机编译 /
 体检) appear only for `resourceLangId == cpp || c`, and three status-bar chips (compiler profile,
@@ -237,11 +238,28 @@ platform's Chinese name, and `summaryOf` still maps the older `来源：luogu` f
 whose heading is not a problem id keeps its whole heading as the title and takes the filename as the
 id; a file that cannot be read at all still gets listed instead of taking the list down with it.
 
+**我的模板** is the old app's user-editable default template, and it is a *file* rather than a setting:
+`TEMPLATE_FOLDER` / `TEMPLATE_FILE` in `templates.ts` put it at `<workspace>/.olympia/template.cpp`, which a
+student opens in the language they are already typing, edits with real syntax highlighting, and carries to
+the lab machine along with the folder — a `settings.json` string full of `\n` is none of those.
+`olympia.template.editMy` (a permanent 面板 row under 题目与模板; it deliberately has no keybinding of its
+own, `Ctrl+Alt+T` reaches it through the picker) seeds it from `templateFor('acm')` when missing and opens
+it, so nobody starts from a blank file. When 我的模板 has content, `insertTemplate` lists it *first* —
+pressing enter is "use mine" — and `templateOnPull` seeds the new `<题号>.cpp` from it instead of the
+built-in ACM text.
+
+Two guards exist because both failure modes would look like the feature being broken rather than a bug:
+`readMyTemplate` trims before deciding, so a file the student created and has not filled in yet is not a
+template (the picker then offers 新建/编辑 rather than listing an empty 我的模板, and a forced empty pick
+warns 我的模板是空的 instead of inserting blank lines); and 拉题面 never overwrites an existing `.cpp`, so
+re-pulling a statement cannot delete a solution that is half written.
+
 | Command | Title | Keybinding (`when`) | Also in menus |
 | --- | --- | --- | --- |
 | `olympia.problem.pull` | 拉取题面... | `Ctrl+Alt+P` | explorer context |
 | `olympia.problem.pullFromClipboard` | 从剪贴板拉取题号 | `Ctrl+Alt+V` (`editorTextFocus`) | command palette |
 | `olympia.template.insert` | 插入赛制模板... | `Ctrl+Alt+T` (`editorTextFocus`) | editor tab context (`resourceLangId == cpp`) |
+| `olympia.template.editMy` | 编辑我的模板 | — (via `Ctrl+Alt+T`) | Olympia 面板 → 题目与模板 |
 | `olympia.problem.openStatement` | 打开题面库 | `Ctrl+Alt+O` (`editorTextFocus`) | command palette |
 | `olympia.problem.appendSample` | 给这道题加一组自定义样例 | — | also called by 对拍 with `{hint, input, output}` |
 
@@ -262,7 +280,10 @@ against anything, so 跑样例 skips it, says which numbers were skipped, and co
 array index, because the list is no longer dense once something is skipped.
 
 Settings: `olympia.problem.problemsDir` (default `.olympia/problems`, where pulled statements are
-cached), `olympia.problem.templateOnPull` (default `false`), `olympia.problem.requestTimeoutMs`
+cached), `olympia.problem.templateOnPull` (default `false`; when on, 拉题面 also creates `<题号>.cpp` next
+to the statement, seeded from 我的模板 and never overwriting a file that already exists — the manifest's
+own sentence says this, so the settings page cannot promise 一个写死的 `main.cpp`),
+`olympia.problem.requestTimeoutMs`
 (default `15000`), `olympia.problem.cfMetadata` (default `false`; when on, also pulls Codeforces
 metadata), `olympia.templates.cppSnippets` (default `true`; when off the C++ completion list is
 empty and only word-based suggestions remain).
@@ -403,7 +424,7 @@ re-derive it:
 | **训练中心统计**：连续打卡、今日目标、总题数、30 天趋势柱状图 | `TrainingPage.tsx:26,39,53` | the data (solve log) now exists; the page does not, and in the old app the page was never mounted in `App.tsx` either — so this is a *new* surface, not a parity item |
 | **收藏题目**：给题打星、按星筛选 | `lib.rs:54`, `models.rs:27` | not ported; also dormant in the old app (no UI wired the toggle) |
 | **交互控制台运行**：编译后开一个新控制台窗口带 `& pause`，能现场喂 stdin（Dev-C++ 那种） | `runner.rs:212`, `models.rs:69` | not ported — the fork runs through a captured task, so stdin-interactive programs have no terminal to talk to. Command was dormant in the old app |
-| **自定义代码模板**：用户自己写一段模板，新建文件时自动注入 | `models.rs:64` | partial — fixed ACM/IOI templates + snippets exist, no user-editable default |
+| **自定义代码模板**：用户自己写一段模板，新建文件时自动注入 | `models.rs:64` | ported — `.olympia/template.cpp` + `olympia.template.editMy`; 插模板把它排第一，`templateOnPull` 从它打底 (see 我的模板 above) |
 
 Window chrome, the practice-folder root with auto file resolution, `pick_practice_folder` / `open_url`
 / `write_temp_code`, and the old app's chat persistence are **not** parity items: VS Code's own chrome,
@@ -411,7 +432,7 @@ open-folder, save, external links and chat history replace them.
 
 ## How to verify without a device
 
-Ten harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
+Eleven harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
 with `vscode` stubbed through a `Module._load` hook (the memory probe needs no stub — it only talks to
 `child_process` and `tasklist.exe`), so they test the shipped code path rather than a
 re-implementation; two more, `check-command-wiring.mjs` and `check-core-copy.mjs`, read
@@ -430,6 +451,7 @@ check), then run each with `node scripts/oneoff/<name>.mjs` from the repository 
 | `test-cpp-snippets.mjs` | the 20-row C++ completion table: registration and `dispose`, every `detail`/hint line carries Chinese, aliases actually resolve (敲 `fast`/`sync`/`pow`/`union` 命中对应条目), placeholders close, the switch silences the list — and each body, with its placeholders filled, passes `g++ -std=c++17 -fsyntax-only` inside a generated translation unit |
 | `test-contest-gate.mjs` | the 比赛模式 → AI 教练 lock across both extensions: `setContext('olympia.contest.running')` flips exactly on start and stop (not every tick), `olympia.contest.isRunning` answers accordingly, and while it is set `@coach` writes only the refusal and never asks for the model list. The rest drives a fake clock (`Date.now` offset) through the reload paths: a restored contest announces 时间到 once and only once as it crosses zero, one that expired while the window was closed clears `endsAt` instead of restoring, the custom-duration input accepts only integers in range, and dispose-then-activate leaves no phantom contest to lock the coach (this last one is what caught the module state that `release()` now resets) |
 | `test-problem-library.mjs` | the local problem bank end to end: statements written by the real `renderStatement` are read back with title / 来源 / 时限 / 内存 / 样例数 intact (writer and reader share `FIELD`, so this is the drift guard), ordering by pull time, a heading that is not a problem id falling back to the filename, an unreadable file still listed instead of taking the list down, the quick-pick rows showing title + limits + relative path + 「今天」, `Ctrl+Alt+O` opening exactly the picked file and refusing to open an empty list, 补样例 refusing to write over a statement that is open with unsaved edits (and writing once it is saved), and the panel's 题面库 row (份数, and 还没拉过题面 → points at 拉取题面). Breaking the written field label in `out/templates.js` makes two checks fail — the assertions discriminate |
+| `test-my-template.mjs` | 我的模板 against files on disk: the ACM header carries no leftover `$`, a created-but-unfilled `.olympia/template.cpp` is **not** a template (the picker offers 新建, and a forced empty pick warns instead of writing blank lines into the student's code), 我的模板 is listed first only once it has content, `新建我的模板` seeds from `templateFor('acm')` and opens the file **without** touching the current editor, inserting then writes exactly the bytes on disk, and `templateOnPull` seeds `<题号>.cpp` from 我的模板 — from ACM when there is none, and never over a half-written solution. 拉题面 runs with `./net` swapped through the same `Module._load` hook, so a canned Luogu page still goes through the product's real parser. Breaking any one of the three guards (blank-means-template, seed-ignores-mine, drop-the-existsSync) fails exactly the check that covers it |
 | `test-settings-panel.mjs` | the Olympia 设置 page against the manifests on disk: every `olympia.*` property in the three `package.json` files must be a row (row count is compared to the schema count, so adding a setting without the page listing it fails), grouping comes from the key, enum options show `enumDescriptions`, an unknown segment still shows up under 其他, `.path` rows get 浏览… and write what was picked to Global, a 改过的 row is marked 已改 and 恢复默认 deletes the key so the default comes back, a rejected `update` is shown instead of swallowed, the AI rows delegate, reopening reveals the same panel instead of stacking a second one, and a setting key or default containing `<script>` / `<img onerror>` comes out escaped (disabling `escapeHtml`, limiting the scan to one manifest, emptying the AI delegate list and removing the path-picker condition each make exactly the check that covers them fail) |
 | `check-core-copy.mjs` | the sentences and switches we changed in `src/vs`, read back out of `oss/out`: 更新方式 / 发行说明 / 扩展自动检查更新 say what this build actually does, 自然语言搜索 and 实验 are **default `false`** (a service we never configured should not look enabled), and every welcome-page entry we turned off really carries `when: "false"` — 4 remote/Git start entries, 新建工作区 chat, the 调试 和 4 Git steps, and all four Copilot setup steps at once through `createCopilotSetupStep`. It decodes `\uXXXX` before matching, because grepping the built tree for Chinese text reads nothing and reports a clean pass |
 | `check-command-wiring.mjs` | every command the UI points at (palette entry, `editor/title`, keybinding, walkthrough button, start entry) actually has a `registerCommand` behind it, and vice versa — the "button that does nothing" class. It also resolves the ids the **code** clicks (tree rows, status chips, notification buttons) and requires them to be registered by one of the three extensions, which is what makes a typo in a cross-extension row (`olympia.problem.openStatement`) a build failure instead of a dead button. Bitten-ness is verified, not assumed: typo'ing one id in `olympia-onboarding/package.json` makes it report three problems and exit 1, and so does typo'ing the panel's library command. Rule 6 is the label-drift guard: every panel row must carry the same wording as the command's palette title (the trailing `...` aside), which is what keeps 「打开题面库」 from being two different strings in two different places |

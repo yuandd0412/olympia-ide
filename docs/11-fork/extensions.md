@@ -150,6 +150,21 @@ both of its registrations (`MenuId.GlobalActivity` and `MenuId.MenubarPreference
 `ContextKeyExpr.false()`, so the commands stay reachable from the palette for anyone who wants them
 while the menu stops advertising them.
 
+[`src/solveLog.ts`](../../oss/extensions/olympia-onboarding/src/solveLog.ts) is the parity item the fork
+was missing: the Tauri app had `record_solve_entry` / `get_solves` (a row per AC with time and memory,
+feeding 连续打卡 and the daily goal) and nothing in the new product persisted a result at all. Now the
+sample judge writes one when the *overall* verdict is AC — 题号 (the statement's file name), the
+statement's first-heading title, timestamp, the slowest case's `ms`, the run's highest peak — into
+`<workspace>/.olympia/solves.json`, newest first, capped at 200 entries, and the panel's
+当前环境 gains a 解题记录 row (`N 题 · 连续 D 天 · 今日 x/N`) that opens the list as a searchable quick
+pick and jumps to that problem's cached statement. Storage choices that matter here: it lives in the
+project next to the statements (so it travels to the 机房 machine, and `olympia.judge.statements`'
+drive-letter lesson is why the record keys on the problem *name*), it is plain JSON a student can open
+and delete, a file that fails to parse reads as empty rather than taking the tree view down, and
+`onSolveLogChange` fires only after an actual write so the row's number cannot drift from the file.
+Streak is counted in *local days* (`getMonth`/`getDate`), so 今天没打但昨天连着 算 未断, three ACs on
+one day count as one day, and `2025-12-31` / `2026-01-01` are two days — the harness pins both edges.
+
 **Trap when fixing settings copy:** a registered setting's sentence often exists **twice** — once in
 the property and once in its `policy.localization` block (3× for `update.mode`, 2× for
 `extensions.autoUpdate`). Editing only the property leaves the policy copy as the one that ships; the
@@ -159,6 +174,7 @@ Settings: everything under `olympia.*` — `olympia.compiler.*` (`path`, `profil
 `customFlags`, `optimization` default `none`, `showCompileCommand` default `true`),
 `olympia.check.enabled` / `olympia.check.onSave` and the rule toggles that still exist
 (`olympia.check.rules.pragmaOptimize`, `.reservedWord`, `.removedCpp`), `olympia.judge.memoryLimitMb`,
+`olympia.train.*` (`recordSolves` default `true`, `dailyGoal` default `3`),
 `olympia.stress.*`, `olympia.debug.showEntryPoints`, plus the contest extension's `olympia.problem.*`
 and `olympia.templates.cppSnippets` and the coach's `olympia.ai.*`.
 
@@ -364,12 +380,32 @@ the flag is falsy, and it was falsy only by omission), and the `defaultChatAgent
 `/docs/ai`, `/terms`, `/privacy`, `/download` — none of which existed — now point at real pages under
 `website/`. `scripts/oneoff/check-website.mjs` fails if any product link stops resolving.
 
+## What the old Tauri app still has that this fork does not
+
+Inventory taken from the old app's own command list (`frontend/src-tauri/src/lib.rs`
+`generate_handler![…]`, 29 commands) against the three manifests. The 解题记录 half of that gap closed
+with `solveLog.ts`; what is left, most-noticeable first, with the old-app evidence so nobody has to
+re-derive it:
+
+| Old feature (what it did) | Where | Status here |
+| --- | --- | --- |
+| **PDF 题单导入**：选一份比赛 PDF，内嵌渲染、按题切成页码范围，之后在阅读器里逐题跳 | `pdf_extract.rs:115`, `ProblemViewerPanel.tsx:75` | not ported — the fork only pulls statements from web OJs |
+| **集训清单（practice records）**：命名的一份题单 + 时长，开一场时用它做倒计时种子 | `useAppStore.ts:186`, `ProblemViewerPanel.tsx:60` | not ported — `contestMode.ts` is an ad-hoc minute timer with no list behind it |
+| **训练中心统计**：连续打卡、今日目标、总题数、30 天趋势柱状图 | `TrainingPage.tsx:26,39,53` | the data (solve log) now exists; the page does not, and in the old app the page was never mounted in `App.tsx` either — so this is a *new* surface, not a parity item |
+| **收藏题目**：给题打星、按星筛选 | `lib.rs:54`, `models.rs:27` | not ported; also dormant in the old app (no UI wired the toggle) |
+| **交互控制台运行**：编译后开一个新控制台窗口带 `& pause`，能现场喂 stdin（Dev-C++ 那种） | `runner.rs:212`, `models.rs:69` | not ported — the fork runs through a captured task, so stdin-interactive programs have no terminal to talk to. Command was dormant in the old app |
+| **自定义代码模板**：用户自己写一段模板，新建文件时自动注入 | `models.rs:64` | partial — fixed ACM/IOI templates + snippets exist, no user-editable default |
+
+Window chrome, the practice-folder root with auto file resolution, `pick_practice_folder` / `open_url`
+/ `write_temp_code`, and the old app's chat persistence are **not** parity items: VS Code's own chrome,
+open-folder, save, external links and chat history replace them.
+
 ## How to verify without a device
 
-Nine harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
+Ten harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
 with `vscode` stubbed through a `Module._load` hook (the memory probe needs no stub — it only talks to
 `child_process` and `tasklist.exe`), so they test the shipped code path rather than a
-re-implementation; the tenth and eleventh, `check-command-wiring.mjs` and `check-core-copy.mjs`, read
+re-implementation; two more, `check-command-wiring.mjs` and `check-core-copy.mjs`, read
 the manifests and the **built core** (`oss/out`) instead. Compile first
 (`npm run gulp -- compile-extension:olympia-onboarding`, and `npm run compile-client` for the core
 check), then run each with `node scripts/oneoff/<name>.mjs` from the repository root:
@@ -378,7 +414,8 @@ check), then run each with `node scripts/oneoff/<name>.mjs` from the repository 
 | --- | --- |
 | `test-precheck.mjs` | 体检 rules: pragma reporting regardless of the local optimization switch, and nothing reported inside comments or string literals |
 | `test-judge-samples.mjs` | `parseSamples` against Markdown shaped exactly like `renderStatement` output, including the `ms` / `s` / `毫秒` / `秒` time-limit units, the 500 ms–10 s clamp, and the memory-limit spellings (`内存限制：128.00 MB` / `内存：128M` / `内存：1GB`) plus the "no limit written" case; sample numbers are the ones written in the statement, so a hand-written 样例 0 stays 0 instead of being coerced to 1 |
-| `test-judge-pipeline.mjs` | the whole 跑样例 command against the **bundled g++**: AC on a correct file, WA with expected-vs-got printed, a compile failure reported as a failure instead of a pass, a quick pick when no statement matches by name, the pick being **remembered per source file** (a second run asks nothing and says in the log it is reusing the last choice; 换一道题 re-asks and re-members; a deleted statement falls back to the picker instead of being read anyway), a memory hog judged MLE with its peak reported when the statement writes a limit — and never judged MLE when it does not |
+| `test-judge-pipeline.mjs` | the whole 跑样例 command against the **bundled g++**: AC on a correct file, WA with expected-vs-got printed, a compile failure reported as a failure instead of a pass, a quick pick when no statement matches by name, the pick being **remembered per source file** (a second run asks nothing and says in the log it is reusing the last choice; 换一道题 re-asks and re-members; a deleted statement falls back to the picker instead of being read anyway), a memory hog judged MLE with its peak reported when the statement writes a limit — and never judged MLE when it does not; the AC run additionally asserts a 解题记录 row **on disk** in `.olympia/solves.json` |
+| `test-solve-log.mjs` | the 解题记录 data layer against a real file in a temp workspace: an AC writes newest-first with title / 耗时 / 峰值内存, `olympia.train.recordSolves` off stops the write but leaves the existing file untouched, 205 entries are clipped to 200 **from the old end**, a file that is not JSON (or entries missing fields) reads as empty instead of crashing the panel row, streak counts **local days** with the two edges pinned (three ACs today = 1 day; a gap returns 0; today-not-yet but yesterday-still-counts), `2025-12-31` vs `2026-01-01` are two days and still streak 2, `dailyGoal` rejects 0 / negative / non-numeric and floors a decimal, and `onSolveLogChange` fires exactly once per real write (stubbing its `EventEmitter.event` unbound reproduces how the extension actually takes the function reference) |
 | `test-memory-probe.mjs` | the probe itself: the memory column parsed **by position** (labels are localized on zh Windows) with thousands separators, a program whose path contains spaces, a run too fast to sample (no peak, still not a failure), a 120 MB allocation actually seen, the timeout kill, a non-zero exit counted as failure while stdout is still collected, and the fallback to a plain run when the probe reads nothing |
 | `test-stress-pipeline.mjs` | the whole 对拍 command: 25 agreeing rounds report 通过, an intentionally wrong solution stops the run and leaves `stress-fail/round-N.*` behind, running it a second time must add a file rather than overwrite the one the previous run caught, a silent generator errors out instead of "passing" zero rounds — and clicking 补进题面样例 writes that case into the statement, where the product's own `parseSamples` reads it back as a second case without eating the neighbouring section (stubbing `appendSample` to a no-op fails this check) |
 | `test-cpp-snippets.mjs` | the 20-row C++ completion table: registration and `dispose`, every `detail`/hint line carries Chinese, aliases actually resolve (敲 `fast`/`sync`/`pow`/`union` 命中对应条目), placeholders close, the switch silences the list — and each body, with its placeholders filled, passes `g++ -std=c++17 -fsyntax-only` inside a generated translation unit |

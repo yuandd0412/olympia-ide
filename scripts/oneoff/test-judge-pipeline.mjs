@@ -166,6 +166,12 @@ await check('P1001.cpp 判成 AC，两组样例都过', async () => {
 	assert.match(summary, /AC/, `提示里没有 AC：${summary}`);
 	assert.match(summary, /2\/2/, `提示里没有 2/2：${summary}`);
 	assert.match(judgeChannel().lines.join('\n'), /样例 1：AC/, '日志里第一组不是 AC');
+	// 解题记录是这条链的下游：判成 AC 才写，写在工程里，面板那一行才有数字。
+	const solvesFile = path.join(fixture, '.olympia', 'solves.json');
+	const stored = JSON.parse(fs.readFileSync(solvesFile, 'utf8'));
+	assert.equal(stored[0].problem, 'P1001', `AC 之后没记下这道题：${fs.readFileSync(solvesFile, 'utf8')}`);
+	assert.ok(typeof stored[0].at === 'string' && !Number.isNaN(Date.parse(stored[0].at)), '记录时间没法解析');
+	assert.ok(stored[0].ms >= 0, '记录里没有耗时');
 });
 
 await check('P1001_wrong.cpp 判成 WA，并打出期望与得到', async () => {

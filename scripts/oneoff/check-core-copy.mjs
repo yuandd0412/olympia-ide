@@ -92,5 +92,14 @@ report(/MenuId\.GlobalActivity[\s\S]{0,220}ContextKeyExpr\.false\(\)/.test(text(
 report(/MenuId\.MenubarPreferencesMenu[\s\S]{0,220}ContextKeyExpr\.false\(\)/.test(text(TASKS)),
 	'菜单栏的偏好子菜单也不再列「任务」');
 
+/** 远程隧道：这个构建里没有 github 认证提供方，命令点了只能走到死路。 */
+const TUNNEL = 'vs/workbench/contrib/remoteTunnel/electron-browser/remoteTunnel.contribution.js';
+const paletteEntries = (text(TUNNEL).match(/id: MenuId\.CommandPalette/g) ?? []).length;
+const gated = (text(TUNNEL).match(/when: REMOTE_TUNNEL_COMMANDS_AVAILABLE/g) ?? []).length;
+report(paletteEntries > 0 && paletteEntries === gated,
+	`远程隧道的 ${paletteEntries} 条命令面板入口都被那一个常量关掉（${gated}）`);
+report(/REMOTE_TUNNEL_COMMANDS_AVAILABLE = (?:\w+\.)?ContextKeyExpr\.false\(\)/.test(text(TUNNEL)),
+	'远程隧道的开关就是一个恒假表达式');
+
 console.log(failed ? '\nFAILED' : '\nall core-copy checks passed');
 process.exitCode = failed ? 1 : 0;

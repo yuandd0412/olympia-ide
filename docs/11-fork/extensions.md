@@ -150,6 +150,15 @@ both of its registrations (`MenuId.GlobalActivity` and `MenuId.MenubarPreference
 `ContextKeyExpr.false()`, so the commands stay reachable from the palette for anyone who wants them
 while the menu stops advertising them.
 
+The 远程隧道 commands were the last reachable dead end: six of them sat in the command palette
+(打开远程隧道访问…, 关闭…, 显示日志, 配置…, 复制链接, Rename), and starting one needs a `github`
+authentication provider — `VSCode-win32-x64/resources/app/extensions` ships 50 extensions and none of
+them is `github-authentication` or any remote/resolver extension, so the flow can only end in an error
+toast. All six palette registrations now point at one constant, `REMOTE_TUNNEL_COMMANDS_AVAILABLE =
+ContextKeyExpr.false()`, so the entries cannot creep back one at a time, and the commands themselves
+stay registered for anyone who adds a provider later. `check-core-copy.mjs` counts the palette
+registrations and requires every one of them to be gated by that constant.
+
 [`src/solveLog.ts`](../../oss/extensions/olympia-onboarding/src/solveLog.ts) is the parity item the fork
 was missing: the Tauri app had `record_solve_entry` / `get_solves` (a row per AC with time and memory,
 feeding 连续打卡 and the daily goal) and nothing in the new product persisted a result at all. Now the

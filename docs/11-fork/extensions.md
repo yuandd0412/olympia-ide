@@ -282,7 +282,11 @@ The list itself never re-implements the timer: 「开始这一场」 executes `o
 minutes as an argument**, and `contestMode.ts` starts straight away when the number is in range, falling
 back to asking when it is missing or nonsense — so the countdown, the reload restore, the one-shot
 时间到 notice and the AI-coach lock all stay in the one place that already owns them
-(`test-contest-gate.mjs`), and the list only contributes the seed. Per-problem ✓ is the solve log again,
+(`test-contest-gate.mjs`), and the list only contributes the seed. The 欢迎页 walkthrough's 比赛模式 step
+carries a second button (「打开集训清单」) for the same reason the bars do: a student who has never heard
+of the feature cannot guess it from a VS Code-shaped UI, and the link is a
+`[text](command:olympia.practice.open)` markdown button that `check-command-wiring.mjs` resolves like
+any other, so renaming the command cannot leave a dead button on the start page. Per-problem ✓ is the solve log again,
 read through `solvedMarks`, so 「这道我做过」 is answered by data the product already writes rather than a
 second checkbox store. Picking a row opens the cached statement when there is one and pulls it when there
 is not — one click, no "先去看那个命令".

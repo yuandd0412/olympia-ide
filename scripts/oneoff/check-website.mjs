@@ -192,4 +192,60 @@ check('手册里的设置表和三个扩展清单一条不差', () => {
 	assert.deepEqual(madeUp, [], `手册写了产品里没有的设置项：${madeUp.join(', ')}`);
 });
 
+// ---- 页面上的数字与参数承诺：以扩展里的源码为准 ----
+/** 只读源码文本，不读编译产物：改了 .ts 没重新编译，也不该让官网"证明"自己过期了。 */
+const onboardingSrc = path.join(extensionsRoot, 'olympia-onboarding', 'src');
+const contestSrc = path.join(extensionsRoot, 'olympia-contest', 'src');
+const docsHtml = pages.get(path.join(siteRoot, 'docs', 'index.html'));
+
+check('手册列的每档评测机参数，和 ojTargets.ts 里的 label / GCC / -std 一字不差', () => {
+	const src = fs.readFileSync(path.join(onboardingSrc, 'ojTargets.ts'), 'utf8');
+	const targets = [...src.matchAll(/\{\s*id: '(\w+)',\s*label: '([^']+)',\s*gcc: '([^']+)',\s*std: '([^']+)'/g)]
+		.map(m => ({ label: m[2], gcc: m[3], std: m[4] }));
+	assert.ok(targets.length >= 2, `只解析出 ${targets.length} 个档位，OJ_TARGETS 的形状改了吗？`);
+	const missing = targets.filter(t => !docsHtml.includes(`<b>${t.label}</b>：GCC ${t.gcc} 口径，<code>-std=${t.std}</code>`));
+	assert.deepEqual(missing, [], `手册的三档预设和产品对不上：${missing.map(t => t.label).join('、')}`);
+});
+
+check('官网每一处出现的编译参数串，都和 renderFlags 现在算出来的一致', () => {
+	const src = fs.readFileSync(path.join(onboardingSrc, 'ojTargets.ts'), 'utf8');
+	const flags = /const LUOGU_BASE_FLAGS = \[([^\]]+)\]/.exec(src);
+	assert.ok(flags, '读不到 LUOGU_BASE_FLAGS');
+	const first = /\{\s*id: '\w+',\s*label: '[^']+',\s*gcc: '[^']+',\s*std: '([^']+)'/.exec(src);
+	assert.ok(first, '读不到第一个档位');
+	const expected = `-x c++ -std=${first[1]} ${[...flags[1].matchAll(/'([^']+)'/g)].map(m => m[1]).join(' ')}`;
+	// 页面上这串参数写了不止一处（示例输出、tagline），只查一处等于放过另一处过期的。
+	const hits = [...indexHtml.matchAll(/-x c\+\+ -std=[\w=+.-]+(?: -[\w=+.-]+)+/g)].map(m => m[0].split(' -o')[0]);
+	assert.ok(hits.length >= 2, `页面上只解析出 ${hits.length} 串编译参数，示例那处改了吗？`);
+	const wrong = [...new Set(hits)].filter(line => line !== expected);
+	assert.deepEqual(wrong, [], `页面的参数串和产品不一致，产品现在是：${expected}\n        过期的是：${wrong.join('\n        ')}`);
+});
+
+check('官网写的比赛时长就是 contestMode 里那几个选项', () => {
+	const src = fs.readFileSync(path.join(onboardingSrc, 'contestMode.ts'), 'utf8');
+	const durations = /const DURATIONS: readonly number\[\] = \[([\d,\s]+)\]/.exec(src);
+	assert.ok(durations, '读不到 DURATIONS，页面上的时长没人对账');
+	const claimed = /选一段时长（([\d /]+)分钟/.exec(indexHtml);
+	assert.ok(claimed, '官网比赛模式那张卡片没有列出时长选项，检查就空转了');
+	const page = claimed[1].split('/').map(v => v.trim()).filter(Boolean);
+	assert.deepEqual(page, durations[1].split(',').map(v => v.trim()).filter(Boolean), '页面列的时长和产品里的选项不是一份');
+});
+
+check('官网说的补全条数等于 CONTEST_SNIPPETS 的条目数', () => {
+	const src = fs.readFileSync(path.join(contestSrc, 'snippets.ts'), 'utf8');
+	const start = src.indexOf('export const CONTEST_SNIPPETS');
+	assert.ok(start >= 0, '读不到 CONTEST_SNIPPETS');
+	const real = (src.slice(start, src.indexOf('\n];', start)).match(/\n\t\{/g) ?? []).length;
+	assert.ok(real > 0, '一条补全都没解析出来，这条检查就是空的');
+	const wrong = [];
+	for (const [file, html] of pages) {
+		for (const m of html.matchAll(/(\d+) 条[^<]{0,12}的补全/g)) {
+			if (Number(m[1]) !== real) {
+				wrong.push(`${path.relative(siteRoot, file)}：页面说 ${m[1]} 条，产品里是 ${real} 条`);
+			}
+		}
+	}
+	assert.ok(wrong.length === 0, wrong.join('\n        '));
+});
+
 console.log(failed ? `\n${failed} 处官网与产品不一致` : '\nall website checks passed');process.exitCode = failed ? 1 : 0;

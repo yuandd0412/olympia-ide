@@ -225,6 +225,12 @@ await check('结果通知里的「换一道题」会重新问，并把新的选�
 	const log = judgeChannel().lines.join('\n');
 	assert.match(log, /P9999\.md/, `换完题面跑的还是旧的：${log.split('\n')[0]}`);
 	assert.match(JSON.stringify(workspaceStore.get('olympia.judge.statements')), /P9999/, '新选的那道没记住');
+	// 记的是盘符+绝对路径的话，工程换台机器（机房挂在 E:）就全废了：键和值都得是可移植的名字。
+	const remembered = workspaceStore.get('olympia.judge.statements');
+	for (const [key, value] of Object.entries(remembered)) {
+		assert.doesNotMatch(key, /^[a-zA-Z]:/, `记住的键带着盘符：${key}`);
+		assert.doesNotMatch(value, /[a-zA-Z]:[\\/]/, `记住的题面是绝对路径：${value}`);
+	}
 });
 
 await check('记住的题面被删掉了就回到选择列表，不去读一个不存在的文件', async () => {

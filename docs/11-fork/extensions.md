@@ -44,7 +44,10 @@ The three commands after 体检 are the judge-shaped loop the Tauri app had and 
   source file (`olympia.judge.statements` in `workspaceState`), because the real loop is 改代码 →
   `Ctrl+Alt+J` → 改代码 and asking which problem every time makes the feature unusable; the log says the
   choice was reused, a remembered statement that has since been deleted falls back to the picker rather
-  than being read anyway, and the result notification carries 换一道题 as the way out. A same-name
+  than being read anyway, and the result notification carries 换一道题 as the way out. What gets stored is
+  two *names*, never paths — the key is `asRelativePath(source, false)` and the value is the statement's
+  file name — because the same project is opened from a different drive letter in the 机房, and a
+  drive-letter key silently turns every memory into a miss. A same-name
   statement always wins over the remembered one. Comparison ignores whitespace like a real judge. The
   time limit is read from the statement and accepts both units the product produces — `1000 ms` from
   the pull chain and hand-written `1.00s`; an unrecognised unit falls back to 1 s rather than guessing.

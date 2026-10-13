@@ -31,10 +31,19 @@ const requireCoach = createRequire(new URL('coach.js', coachOut));
 const CONTEST_COMMAND = 'olympia.contestMode';
 const IS_RUNNING_COMMAND = 'olympia.contest.isRunning';
 const RUNNING_CONTEXT = 'olympia.contest.running';
+const ENDS_AT_KEY = 'olympia.contest.endsAt';
+
+// 比赛模式的两条时间线只能靠假时钟演：跨零点提醒一次、关窗期间结束的要把状态清掉。
+const realNow = Date.now.bind(Date);
+let clockOffset = 0;
+Date.now = () => realNow() + clockOffset;
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 const contexts = [];
 const registered = new Map();
+const warnings = [];
 let modelListCalls = 0;
+let lastStatusBar;
 
 class Disposable {
 	constructor(fn) { this.fn = fn; }
@@ -47,14 +56,21 @@ const vscodeStub = {
 	ThemeColor: class { constructor(id) { this.id = id; } },
 	StatusBarAlignment: { Left: 1, Right: 2 },
 	window: {
-		createStatusBarItem: () => ({
-			command: undefined, text: '', tooltip: '', backgroundColor: undefined, shown: false,
-			show() { this.shown = true; }, hide() { this.shown = false; }, dispose() { this.shown = false; }
-		}),
+		createStatusBarItem: () => {
+			lastStatusBar = {
+				command: undefined, text: '', tooltip: '', backgroundColor: undefined, shown: false,
+				show() { this.shown = true; }, hide() { this.shown = false; }, dispose() { this.shown = false; }
+			};
+			return lastStatusBar;
+		},
 		showInformationMessage: async () => undefined,
-		showWarningMessage: async () => vscodeStub.__endContest ?? '结束比赛模式',
-		showQuickPick: async () => ({ minutes: 120 }),
-		showInputBox: async () => undefined,
+		// 默认当成「点了结束比赛模式」；__warningAction 显式给 null 时是「没点」，用来单独看提醒。
+		showWarningMessage: async (message) => {
+			warnings.push(message);
+			return vscodeStub.__warningAction === undefined ? '结束比赛模式' : vscodeStub.__warningAction;
+		},
+		showQuickPick: async () => vscodeStub.__pick ?? { minutes: 120 },
+		showInputBox: async () => vscodeStub.__input,
 	},
 	commands: {
 		registerCommand: (id, handler) => {
@@ -92,14 +108,12 @@ Module._load = function (request, parent, isMain) {
 const contest = requireOnboarding('./contestMode.js');
 const coach = requireCoach('./coach.js');
 
-function fakeContext() {
-	const store = new Map();
-	return {
-		subscriptions: [],
-		extensionUri: 'file:///ext',
-		globalState: { get: k => store.get(k), update: async (k, v) => { v === undefined ? store.delete(k) : store.set(k, v); } },
-		workspaceState: { get: k => store.get(k), update: async (k, v) => { v === undefined ? store.delete(k) : store.set(k, v); } }
-	};
+function fakeContext(seed) {
+	const store = new Map(seed);
+	const update = async (key, value) => { value === undefined ? store.delete(key) : store.set(key, value); };
+	const state = { get: key => store.get(key), update };
+	// store 露出来是给断言看的：恢复/清理这条路径全靠 workspaceState 里那个键。
+	return { subscriptions: [], extensionUri: 'file:///ext', globalState: state, workspaceState: state, store };
 }
 
 /** 跑一次 @coach，把写进 stream 的文字收下来。 */
@@ -162,5 +176,64 @@ await check('退出比赛：上下文回到 false，教练恢复', async () => {
 });
 
 disposables.dispose();
+
+// 比赛状态是模块级的，所以「重载窗口」在这里就是「先停用再激活一次」。
+let activation;
+function activate(seed) {
+	activation?.disposable.dispose();
+	const context = fakeContext(seed);
+	activation = { context, disposable: contest.registerContestMode(context) };
+	return context;
+}
+
+await check('重载后接着走的比赛跨过零点会提醒「比赛时间到」，并且只提醒一次', async () => {
+	activate([[ENDS_AT_KEY, Date.now() + 1500]]);
+	warnings.length = 0;
+	vscodeStub.__warningAction = null;          // 没人点那条通知
+	assert.strictEqual(await registered.get(IS_RUNNING_COMMAND)(), true, '恢复出来的比赛该在进行中');
+	clockOffset += 3000;                        // 时间跳到结束之后
+	await sleep(1300);
+	await sleep(1300);                          // 第二个 tick 再确认一次没有重复提醒
+	assert.deepStrictEqual(warnings, ['比赛时间到。'], `两次 tick 里看到的是：${JSON.stringify(warnings)}`);
+	assert.ok(lastStatusBar.text.includes('时间到'), `状态栏还写着：${lastStatusBar.text}`);
+	assert.strictEqual(activation.context.store.get(ENDS_AT_KEY) !== undefined, true, '时间到但没点结束，状态不该被偷偷清掉');
+});
+
+await check('关窗期间比赛已结束：重载后不恢复，并把 endsAt 清掉', async () => {
+	const context = activate([[ENDS_AT_KEY, Date.now() - 1000]]);
+	warnings.length = 0;
+	assert.strictEqual(await registered.get(IS_RUNNING_COMMAND)(), false, '已经结束的比赛不该算在进行中');
+	assert.ok(!context.store.has(ENDS_AT_KEY), `endsAt 没清掉，还留着 ${context.store.get(ENDS_AT_KEY)}`);
+	assert.strictEqual(lastStatusBar.shown, false, '没有进行中的比赛时不该显示计时 chip');
+});
+
+await check('自定义时长：只有区间内的整数分钟才作数', async () => {
+	vscodeStub.__pick = { minutes: 0 };         // 走「自定义…」输入框
+	for (const [raw, starts] of [['999', false], ['0', false], ['1.5', false], ['', false], ['600', true]]) {
+		activate();                             // 每次重新激活，回到「没在比赛」
+		vscodeStub.__input = raw;
+		await registered.get(CONTEST_COMMAND)();
+		assert.strictEqual(
+			await registered.get(IS_RUNNING_COMMAND)(), starts,
+			`输入 ${JSON.stringify(raw)} 之后 running 应该是 ${starts ? 'true' : 'false'}`
+		);
+	}
+	vscodeStub.__pick = undefined;
+	vscodeStub.__input = undefined;
+});
+
+await check('停用再激活不会把比赛状态留下：教练不会因为陈旧的 endsAt 被锁住', async () => {
+	activate();
+	await registered.get(CONTEST_COMMAND)();     // 默认 120 分钟，开一场比赛
+	assert.strictEqual(await registered.get(IS_RUNNING_COMMAND)(), true);
+	activation.disposable.dispose();
+	activate();
+	assert.strictEqual(await registered.get(IS_RUNNING_COMMAND)(), false, '停用后还留着上一场比赛的 endsAt');
+	modelListCalls = 0;
+	const text = await askCoach();
+	assert.ok(!text.includes('比赛模式进行中'), `激活的新窗口被旧比赛锁住了：${text}`);
+});
+
+activation?.disposable.dispose();
 console.log(failed ? `\n${failed} 处比赛模式联动不符合预期` : '\ncontest gate checks passed');
 process.exitCode = failed ? 1 : 0;

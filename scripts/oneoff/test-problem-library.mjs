@@ -24,6 +24,8 @@ const GPP = path.join(repoRoot, 'VSCode-win32-x64/resources/app/toolchain/mingw6
 const messages = [];
 const picks = [];
 const opened = [];
+/** 编辑器里开着的文档：appendSample 用它判断题面有没有没保存的改动。 */
+const textDocuments = [];
 let registered = {};
 let treeProvider;
 
@@ -63,6 +65,7 @@ const vscodeStub = {
 	},
 	workspace: {
 		get workspaceFolders() { return [{ uri: uri(workspaceRoot), name: path.basename(workspaceRoot), index: 0 }]; },
+		textDocuments,
 		getConfiguration: section => ({
 			get: (key, fallback) => {
 				const id = `${section}.${key}`;
@@ -177,6 +180,7 @@ function freshWorkspace() {
 	workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'olympia lib test '));
 	problemsDir = path.join(workspaceRoot, '.olympia', 'problems');
 	fs.mkdirSync(problemsDir, { recursive: true });
+	textDocuments.length = 0;
 	return problemsDir;
 }
 
@@ -375,6 +379,22 @@ await check('只给了一半数据就不写，别留一组判不了的样例在�
 	assert.equal(ok, false, '少了期望输出却继续写了');
 	assert.match(messages.map(m => m[1]).join('\n'), /同时给出/);
 	assert.equal(fs.readFileSync(path.join(problemsDir, 'P1001.md'), 'utf8'), before, '题面被动过了');
+});
+
+await check('题面在编辑器里有没保存的改动时先停手，别把人的改动盖掉', async () => {
+	freshWorkspace();
+	writeStatement('P1001', 'A+B Problem');
+	const file = path.join(problemsDir, 'P1001.md');
+	const before = fs.readFileSync(file, 'utf8');
+	textDocuments.push({ isDirty: true, uri: uri(file) });
+	const ok = await registered['olympia.problem.appendSample']({ hint: 'P1001', input: '1 2', output: '3' });
+	assert.equal(ok, false, '题面还没保存就把样例写进去了');
+	assert.equal(fs.readFileSync(file, 'utf8'), before, '编辑器里没保存的改动被盖掉了');
+	assert.match(messages.map(m => m[1]).join('\n'), /没保存的改动/, '要让学生知道先去保存');
+	// 保存之后（不再 dirty）同一次补样例就该写进去
+	textDocuments.length = 0;
+	assert.equal(await registered['olympia.problem.appendSample']({ hint: 'P1001', input: '1 2', output: '3' }), true, '保存以后还是不肯写');
+	assert.match(fs.readFileSync(file, 'utf8'), /### 样例 3/, '补的样例没进题面');
 });
 
 console.log(failed ? '\nFAILED' : '\nall problem-library assertions passed');

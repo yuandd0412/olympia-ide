@@ -38,6 +38,10 @@ const SOURCES = {
 	small: '#include <bits/stdc++.h>\nusing namespace std;\nint main(){int a,b;cin>>a>>b;cout<<a+b<<endl;}\n',
 	big: '#include <bits/stdc++.h>\nusing namespace std;\nint main(){\n  const size_t n = 120ull * 1024 * 1024;\n  char* p = (char*)malloc(n);\n  for (size_t i = 0; i < n; i += 4096) { p[i] = 1; }\n  this_thread::sleep_for(chrono::milliseconds(2500));\n  cout << "touched " << (n / 1024 / 1024) << " MB" << endl;\n  return 0;\n}\n',
 	sleep: '#include <bits/stdc++.h>\nusing namespace std;\nint main(){this_thread::sleep_for(chrono::seconds(3));cout<<"done"<<endl;}\n',
+	// 内存是过一会儿才吃的：采样必须是「查完一次再约下一次」，中间任何一次读不到都得继续
+	late: '#include <bits/stdc++.h>\nusing namespace std;\nint main(){\n  this_thread::sleep_for(chrono::milliseconds(400));\n  const size_t n = 120ull * 1024 * 1024;\n  char* p = (char*)malloc(n);\n  for (size_t i = 0; i < n; i += 4096) { p[i] = 1; }\n  this_thread::sleep_for(chrono::milliseconds(1500));\n  cout << (n / 1024 / 1024) << endl;\n  return 0;\n}\n',
+	// shell 出去调别的程序：我们杀掉父进程之后 cmd.exe 还攥着 stdout，close 不会来
+	holder: '#include <bits/stdc++.h>\nusing namespace std;\nint main(){system("ping -n 6 127.0.0.1 > nul");cout<<"back"<<endl;return 0;}\n',
 	fail: '#include <bits/stdc++.h>\nusing namespace std;\nint main(){cout<<"boom"<<endl;return 3;}\n'
 };
 
@@ -62,7 +66,7 @@ Module._load = function (request, parent, isMain) {
 	if (request === 'vscode') { return vscodeStub; }
 	return originalLoad.call(this, request, parent, isMain);
 };
-const { runSampled, formatMb, parseMemoryKb } = requireProbe('./memoryProbe.js');
+const { runSampled, formatMb, parseMemoryKb, sampleOnce } = requireProbe('./memoryProbe.js');
 
 let failed = 0;
 async function check(name, fn) {
@@ -119,6 +123,41 @@ await check('探针出问题时退回普通运行，不丢结果', async () => {
 	assert.strictEqual(ran.peakBytes, undefined, '退回应是不带峰值内存的');
 });
 
-rmSync(workDir, { recursive: true, force: true });
+await check('查不到也要回调一次：不回调的话采样链就停在那次，MLE 从此测不到', async () => {
+	// 一个不存在的 PID：tasklist 返回「没有正在运行的任务」，解析出来是 undefined
+	let calls = 0;
+	let seen = 'no callback';
+	let patience;
+	await new Promise(resolve => {
+		// 超时只是「别再等了」，断言留到外面写：在定时器里抛异常会把整个检查台炸掉
+		patience = setTimeout(resolve, 1500);
+		sampleOnce(0x7FFFFFE0, bytes => { calls++; seen = bytes; clearTimeout(patience); resolve(); });
+	});
+	clearTimeout(patience);
+	assert.strictEqual(calls, 1, `回调了 ${calls} 次，应该是恰好一次——读不到也必须回调，不然采样链停在这一次`);
+	assert.strictEqual(seen, undefined, '读不到内存时必须报 undefined，而不是报 0');
+});
+
+await check('内存是过一会儿才吃的，采样也要跟得到（链不能断）', async () => {
+	const ran = await runSampled(exes.late, [], workDir, '', 15000);
+	assert.ok(!ran.failed, `晚分配的程序被判失败：${ran.stderr}`);
+	assert.ok(ran.peakBytes > 100 * MB,
+		`400 ms 后才分配 120 MB，峰值只报 ${ran.peakBytes === undefined ? '（没测到）' : formatMb(ran.peakBytes)}——中间某次读不到就把后面的采样全跳了`);
+});
+
+await check('被测程序留下攥着 stdout 的孙子进程时，超时也要收尾', async () => {
+	const started = Date.now();
+	const ran = await runSampled(exes.holder, [], workDir, '', 400);
+	const waited = Date.now() - started;
+	assert.ok(ran.timedOut, `400 ms 预算下应该算超时，实际 stdout=${ran.stdout}`);
+	assert.ok(waited < 8000, `kill 之后 close 没来，探针一直挂着（等了 ${waited} ms）`);
+});
+
+// holder 那条留下的孙子进程还可能攥着这个目录一会儿：清不掉就留着，别把断言结果盖掉
+try {
+	rmSync(workDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 300 });
+} catch {
+	console.log(`note  临时目录没删掉（还有进程占着）：${workDir}`);
+}
 console.log(failed ? `\n${failed} 处内存采样不符合预期` : '\nmemory probe checks passed');
 process.exitCode = failed ? 1 : 0;

@@ -51,18 +51,28 @@ The three commands after 体检 are the judge-shaped loop the Tauri app had and 
   still prints its peak memory but can never be judged MLE.
 - **对拍** ([`src/stressTest.ts`](../../oss/extensions/olympia-onboarding/src/stressTest.ts)) asks for
   three files (正解 / 暴力 / 生成器, remembered per workspace and floated to the top of the list),
-  compiles all three, then feeds generator output to both solutions round after round. A mismatch stops
+  compiles all three — each compile bounded by `COMPILE_TIMEOUT_MS`, so a hung g++ ends the run instead
+  of hanging it — then feeds generator output to both solutions round after round. A mismatch stops
   the run and writes that one case into `stress-fail/round-N.{in,sol,brute}` so it can be pasted into a
-  test or shown to the coach. The notification also offers 补进题面样例, which calls
+  test or shown to the coach; a name already taken by an earlier run gets `round-N-2.*`, because the
+  counter-example someone found at 1 a.m. is not today's run's scratch space. The notification names the
+  file it wrote and also offers 补进题面样例, which calls
   `olympia.problem.appendSample` over in `olympia-contest` and appends the case to the statement as a
   permanent 样例 — offered only when both programs ran to completion, because a timeout or a crash has no
-  trustworthy "expected output" to write down. Settings: `olympia.stress.rounds` (default 100), `olympia.stress.timeoutMs`
+  trustworthy "expected output" to write down. That cross-extension call is wrapped: when
+  `olympia-contest` is disabled the button says why instead of throwing a rejection at the user.
+  Settings: `olympia.stress.rounds` (default 100), `olympia.stress.timeoutMs`
   (default 2000). The progress notification is cancellable.
 - **比赛模式** ([`src/contestMode.ts`](../../oss/extensions/olympia-onboarding/src/contestMode.ts)) is a
   countdown in the status bar (left, priority 110 so it sits ahead of the compiler chips). Duration comes
-  from a quick pick or a free-form 1–600 minute input; `endsAt` survives reloads in `workspaceState`, the
-  item turns warning-coloured once time is up, and the tools panel shows a remaining-time row while a
-  contest runs.
+  from a quick pick or a free-form integer 1–600 minute input — the input box's hint and the value it
+  finally accepts come from the same `minutesInRange`, so the two can't drift. `endsAt` survives reloads
+  in `workspaceState`: a contest still running when the window reloads resumes and still announces 时间到
+  exactly once when it crosses zero, while one that expired while the app was closed is cleared on the
+  spot rather than being restored and re-judged on every start. Disposing the registration resets the
+  module state, so 禁用再启用 cannot leave a phantom contest that locks `@coach` forever with no chip to
+  click. The item turns warning-coloured once time is up, and the tools panel shows a remaining-time row
+  while a contest runs.
 
 Two walkthroughs are contributed: `olympia.gettingStarted` ("三分钟上手 Olympia IDE", five steps —
 open a folder, pick the judge compile profile, run the environment check, ask the AI coach, learn
@@ -293,18 +303,27 @@ with `node scripts/oneoff/<name>.mjs` from the repository root:
 | Harness | What it pins down |
 | --- | --- |
 | `test-precheck.mjs` | 体检 rules: pragma reporting regardless of the local optimization switch, and nothing reported inside comments or string literals |
-| `test-judge-samples.mjs` | `parseSamples` against Markdown shaped exactly like `renderStatement` output, including the `ms` / `s` / `毫秒` / `秒` time-limit units, the 500 ms–10 s clamp, and the memory-limit spellings (`内存限制：128.00 MB` / `内存：128M` / `内存：1GB`) plus the "no limit written" case |
+| `test-judge-samples.mjs` | `parseSamples` against Markdown shaped exactly like `renderStatement` output, including the `ms` / `s` / `毫秒` / `秒` time-limit units, the 500 ms–10 s clamp, and the memory-limit spellings (`内存限制：128.00 MB` / `内存：128M` / `内存：1GB`) plus the "no limit written" case; sample numbers are the ones written in the statement, so a hand-written 样例 0 stays 0 instead of being coerced to 1 |
 | `test-judge-pipeline.mjs` | the whole 跑样例 command against the **bundled g++**: AC on a correct file, WA with expected-vs-got printed, a compile failure reported as a failure instead of a pass, a quick pick when no statement matches by name, a memory hog judged MLE with its peak reported when the statement writes a limit — and never judged MLE when it does not |
 | `test-memory-probe.mjs` | the probe itself: the memory column parsed **by position** (labels are localized on zh Windows) with thousands separators, a program whose path contains spaces, a run too fast to sample (no peak, still not a failure), a 120 MB allocation actually seen, the timeout kill, a non-zero exit counted as failure while stdout is still collected, and the fallback to a plain run when the probe reads nothing |
-| `test-stress-pipeline.mjs` | the whole 对拍 command: 25 agreeing rounds report 通过, an intentionally wrong solution stops the run and leaves `stress-fail/round-N.*` behind, a silent generator errors out instead of "passing" zero rounds — and clicking 补进题面样例 writes that case into the statement, where the product's own `parseSamples` reads it back as a second case without eating the neighbouring section (stubbing `appendSample` to a no-op fails this check) |
+| `test-stress-pipeline.mjs` | the whole 对拍 command: 25 agreeing rounds report 通过, an intentionally wrong solution stops the run and leaves `stress-fail/round-N.*` behind, running it a second time must add a file rather than overwrite the one the previous run caught, a silent generator errors out instead of "passing" zero rounds — and clicking 补进题面样例 writes that case into the statement, where the product's own `parseSamples` reads it back as a second case without eating the neighbouring section (stubbing `appendSample` to a no-op fails this check) |
 | `test-cpp-snippets.mjs` | the 20-row C++ completion table: registration and `dispose`, every `detail`/hint line carries Chinese, aliases actually resolve (敲 `fast`/`sync`/`pow`/`union` 命中对应条目), placeholders close, the switch silences the list — and each body, with its placeholders filled, passes `g++ -std=c++17 -fsyntax-only` inside a generated translation unit |
-| `test-contest-gate.mjs` | the 比赛模式 → AI 教练 lock across both extensions: `setContext('olympia.contest.running')` flips exactly on start and stop (not every tick), `olympia.contest.isRunning` answers accordingly, and while it is set `@coach` writes only the refusal and never asks for the model list |
-| `test-problem-library.mjs` | the local problem bank end to end: statements written by the real `renderStatement` are read back with title / 来源 / 时限 / 内存 / 样例数 intact (writer and reader share `FIELD`, so this is the drift guard), ordering by pull time, a heading that is not a problem id falling back to the filename, an unreadable file still listed instead of taking the list down, the quick-pick rows showing title + limits + relative path + 「今天」, `Ctrl+Alt+O` opening exactly the picked file and refusing to open an empty list, and the panel's 题面库 row (份数, and 还没拉过题面 → points at 拉取题面). Breaking the written field label in `out/templates.js` makes two checks fail — the assertions discriminate |
+| `test-contest-gate.mjs` | the 比赛模式 → AI 教练 lock across both extensions: `setContext('olympia.contest.running')` flips exactly on start and stop (not every tick), `olympia.contest.isRunning` answers accordingly, and while it is set `@coach` writes only the refusal and never asks for the model list. The rest drives a fake clock (`Date.now` offset) through the reload paths: a restored contest announces 时间到 once and only once as it crosses zero, one that expired while the window was closed clears `endsAt` instead of restoring, the custom-duration input accepts only integers in range, and dispose-then-activate leaves no phantom contest to lock the coach (this last one is what caught the module state that `release()` now resets) |
+| `test-problem-library.mjs` | the local problem bank end to end: statements written by the real `renderStatement` are read back with title / 来源 / 时限 / 内存 / 样例数 intact (writer and reader share `FIELD`, so this is the drift guard), ordering by pull time, a heading that is not a problem id falling back to the filename, an unreadable file still listed instead of taking the list down, the quick-pick rows showing title + limits + relative path + 「今天」, `Ctrl+Alt+O` opening exactly the picked file and refusing to open an empty list, 补样例 refusing to write over a statement that is open with unsaved edits (and writing once it is saved), and the panel's 题面库 row (份数, and 还没拉过题面 → points at 拉取题面). Breaking the written field label in `out/templates.js` makes two checks fail — the assertions discriminate |
 | `check-command-wiring.mjs` | every command the UI points at (palette entry, `editor/title`, keybinding, walkthrough button, start entry) actually has a `registerCommand` behind it, and vice versa — the "button that does nothing" class. It also resolves the ids the **code** clicks (tree rows, status chips, notification buttons) and requires them to be registered by one of the three extensions, which is what makes a typo in a cross-extension row (`olympia.problem.openStatement`) a build failure instead of a dead button. Bitten-ness is verified, not assumed: typo'ing one id in `olympia-onboarding/package.json` makes it report three problems and exit 1, and so does typo'ing the panel's library command |
 
 The bundled compiler is what makes the pipeline harnesses real rather than mocked: they resolve
 `VSCode-win32-x64/resources/app/toolchain/mingw64/bin/g++.exe` through the normal
 `olympia.compiler.path` config path, so a broken toolchain fails the harness instead of hiding.
+
+A stubbed API the production code reads is a silent failure mode, and it bit twice in one batch:
+`appendSample`'s unsaved-edits guard called `workspace.textDocuments.some(…)`, which the stub never
+provided (a `TypeError` that one harness surfaced as a crash and the other swallowed into its own
+「补进题面样例失败」 path), and the 对拍 no-overwrite guard first asked `workspace.fs.stat` — a stub that
+rejects everything, so every filename looked unused and the guard "passed" while still clobbering the
+previous run's evidence. Both now go through the real shape (`workspace.textDocuments` in the stub, node's
+`fs.stat` in the code, which is what `olympia-contest` already uses for statements), and the lesson is the
+same one the writer/reader drift guard teaches: assert the effect on disk, not the notification text.
 
 Why the memory probe drives the child itself instead of asking PowerShell: `Start-Process -PassThru`
 returns an object whose `ExitCode` is frequently empty under PowerShell 5.1, so a crashing program

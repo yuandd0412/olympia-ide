@@ -182,5 +182,10 @@ check('样例带着题面里的编号，跳过没填完的之后不会认错号'
 	assert.equal(parsed.samples.filter(s => s.expected.trim() !== '').length, 2, '没填期望输出的那组要能被识别出来');
 });
 
+check('题面真写了「样例 0」时编号就是 0，不会被顺成 1', () => {
+	const parsed = judge.parseSamples('### 样例 0\n\n**输入**\n\n```\n1\n```\n\n**输出**\n\n```\n2\n```\n');
+	assert.deepEqual(parsed.samples.map(s => s.number), [0], `看到的是 ${JSON.stringify(parsed.samples.map(s => s.number))}`);
+});
+
 console.log(failures ? '\nFAILED' : '\nall judge-sample assertions passed');
 process.exitCode = failures ? 1 : 0;

@@ -84,6 +84,8 @@ const vscodeStub = {
 	EventEmitter: class { constructor() { this.event = () => ({ dispose() { } }); } fire() { } dispose() { } },
 	workspace: {
 		workspaceFolders: [{ uri: uri(fixture), name: path.basename(fixture), index: 0 }],
+		// appendSample 会看编辑器里有没有没保存的改动；这里当作都保存过。
+		textDocuments: [],
 		getConfiguration: () => ({
 			// stressTest 用 getConfiguration('olympia.stress').get('rounds')，
 			// compile 用 getConfiguration().get('olympia.compiler.path')，两种写法都要认。
@@ -213,6 +215,17 @@ await check('正解 vs 故意写错的解：报不一致并留下那组数据', 
 	assert.ok(!parsed.samples[1].expected.includes('别把这段当输出读走'), '下一节的正文漏进了新样例的输出里');
 	assert.match(statement, /别把这段当输出读走/, '说明小节被挤掉了');
 	assert.match(statement, /页脚。/, '页脚被挤掉了');
+
+	// 再跑一场对拍：上一场抓到的反例是学生的成果，不能被这一场覆盖掉
+	const firstIn = files.find(f => /\.in$/.test(f));
+	const firstText = fs.readFileSync(path.join(folder, firstIn), 'utf8');
+	messages.length = 0;
+	await registered['olympia.stressTest']();
+	const evidence = fs.readdirSync(folder).filter(f => /\.in$/.test(f));
+	assert.ok(evidence.length >= 2, `第二场对拍没留下新的数据文件，目录里只有：${evidence.join(', ')}`);
+	assert.equal(fs.readFileSync(path.join(folder, firstIn), 'utf8'), firstText, `${firstIn} 被下一场对拍覆盖了`);
+	assert.doesNotMatch(allMessages(), /stress-fail 文件夹/, '提示要说到具体的文件名，而不是一个文件夹');
+
 	pickFor.brute = 'slow.cpp';
 });
 

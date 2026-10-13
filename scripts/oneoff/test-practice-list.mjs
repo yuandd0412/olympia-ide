@@ -72,6 +72,7 @@ const vscodeStub = {
 			const list = Array.isArray(items) ? items : await items;
 			picks.push(list);
 			const choice = choices.shift();
+			if (choice === null) { return undefined; }   // 学生按 Esc：菜单关了
 			if (choice === undefined) { return list[0]; }
 			return typeof choice === 'function' ? list.find(choice) : list[choice];
 		},
@@ -144,6 +145,10 @@ function reset(overrides = {}) {
 	settings = { ...overrides };
 }
 const said = () => messages.map(m => m[1]).join('\n');
+/** 每个改清单的检查都用这份起点，免得上一条检查留下的状态把下一条带偏。 */
+async function seedFirstDay(problems = ['P1001', 'P1002'], minutes = 60) {
+	await practice.writeLists([minutes === undefined ? { name: '第一天', problems, createdAt: '' } : { name: '第一天', problems, minutes, createdAt: '' }]);
+}
 
 let failed = 0;
 async function check(name, body) {
@@ -190,7 +195,7 @@ await check('时长只认范围内的整数：空着算「不设时限」，4 �
 
 await check('写进去再读回来：名字、题号、时长一个不丢', async () => {
 	const list = { name: 'CSP-J 模拟 3', problems: ['P1001', 'P1002'], minutes: 90, createdAt: new Date().toISOString() };
-	assert.equal(await practice.writeLists([list]), true);
+	assert.equal(await practice.writeLists([list]), undefined, '写成时返回 undefined，返回的不是失败原因');
 	assert.equal(fs.existsSync(listFile()), true, `清单没落在 ${onboardingFiles.PRACTICE_PATH_LABEL}`);
 	const back = await practice.readLists();
 	assert.equal(back.length, 1);
@@ -330,6 +335,17 @@ await check('删掉这份清单：确认才真删，取消就原样留着', asyn
 	assert.match(said(), /图论专题.*删掉/);
 });
 
+await check('清单写 P1002、文件叫 p1002.md：认得是同一道题，不该又去拉一遍', async () => {
+	fs.mkdirSync(path.dirname(statementFile('p1002')), { recursive: true });
+	fs.writeFileSync(statementFile('p1002'), '# p1002 某题\n', 'utf8');
+	reset();
+	choices = [item => item.label === '第一天', item => item.problemId === 'P1002'];
+	await registered['olympia.practice.open']();
+	assert.match(picks[1].find(item => item.problemId === 'P1002').description, /题面在本地/);
+	assert.deepEqual(shown, [statementFile('p1002')], '点开该是那个真存在的文件');
+	assert.equal(executed.length, 0, '认不出大小写就再去拉一次，等于白跑一趟网络');
+});
+
 await check('清单一个都没有：列表里只剩「新建」，不会弹一个空菜单', async () => {
 	fs.rmSync(path.dirname(listFile()), { recursive: true, force: true });
 	reset();
@@ -339,6 +355,190 @@ await check('清单一个都没有：列表里只剩「新建」，不会弹一�
 	assert.equal(picks[0].length, 1);
 	assert.match(picks[0][0].label, /新建/);
 	assert.equal(fs.existsSync(listFile()), false);
+});
+
+await check('菜单里就能改：加题、改时长、移题、删清单，不用退出去重建', async () => {
+	await practice.writeLists([{ name: '第一天', problems: ['P1001', 'P1002'], minutes: 60, createdAt: '' }]);
+	reset();
+	choices = [0, null];
+	await registered['olympia.practice.open']();
+	const menu = picks[1].map(item => item.label);
+	assert.deepEqual(menu.slice(0, 3), ['开始这一场', '加一道题…', '改时长…']);
+	assert.ok(menu.includes('移掉一道题…'), '菜单里没有移题这一项');
+	assert.ok(menu.includes('删掉这份清单'));
+});
+
+await check('加一道题：立刻落盘、回到同一份菜单，重复的题号不加第二次', async () => {
+	await seedFirstDay();
+	reset();
+	choices = [0, item => item.action === 'add', null];
+	inputs = ['P1002 P3367'];
+	await registered['olympia.practice.open']();
+	assert.deepEqual(readDisk().lists[0].problems, ['P1001', 'P1002', 'P3367'], 'P1002 已经在清单里，不该再加一次');
+	assert.match(picks[2].find(item => item.action === 'add').description, /3\/100/, '加完之后题数要马上写在菜单上');
+});
+
+await check('加题那一步按 Esc：回到菜单而不是退出，文件一个字节没动', async () => {
+	await seedFirstDay();
+	const before = fs.readFileSync(listFile(), 'utf8');
+	reset();
+	choices = [0, item => item.action === 'add', null];
+	inputs = [undefined];
+	await registered['olympia.practice.open']();
+	assert.equal(picks.length, 3, '取消加题应该回到这份清单的菜单');
+	assert.equal(fs.readFileSync(listFile(), 'utf8'), before);
+});
+
+await check('一道题都没加进去：说清楚是没认出来还是已经有了', async () => {
+	await seedFirstDay();
+	reset();
+	choices = [0, item => item.action === 'add', item => item.action === 'add', null];
+	inputs = ['  ', 'P1001'];
+	await registered['olympia.practice.open']();
+	assert.match(said(), /没认出/);
+	assert.match(said(), /已经在清单里/);
+});
+
+await check('改时长：写进文件，菜单上那句「N 分钟」跟着改，开场用的就是新值', async () => {
+	await seedFirstDay();
+	reset();
+	choices = [0, item => item.action === 'minutes', item => item.action === 'start'];
+	inputs = ['30'];
+	await registered['olympia.practice.open']();
+	assert.equal(readDisk().lists[0].minutes, 30);
+	assert.match(picks[2].find(item => item.action === 'start').description, /^30 分钟/);
+	assert.deepEqual(executed.at(-1), { id: 'olympia.contestMode', args: [30] });
+});
+
+await check('时长留空：变成不设时限，开场把 undefined 交出去而不是 0 分钟', async () => {
+	await seedFirstDay();
+	reset();
+	choices = [0, item => item.action === 'minutes', item => item.action === 'start'];
+	inputs = [''];
+	await registered['olympia.practice.open']();
+	assert.equal(readDisk().lists[0].minutes, undefined);
+	assert.match(picks[2].find(item => item.action === 'start').description, /现在问时长/);
+	assert.deepEqual(executed.at(-1), { id: 'olympia.contestMode', args: [undefined] });
+});
+
+await check('移掉一道题：只改单子，题面文件留着', async () => {
+	await practice.writeLists([{ name: '第一天', problems: ['P1001', 'P1002'], minutes: 60, createdAt: '' }]);
+	fs.mkdirSync(path.dirname(statementFile('P1002')), { recursive: true });
+	fs.writeFileSync(statementFile('P1002'), '# P1002 A+B Problem\n', 'utf8');
+	reset();
+	choices = [0, item => item.action === 'remove', item => item.label === 'P1002', null];
+	await registered['olympia.practice.open']();
+	assert.deepEqual(readDisk().lists[0].problems, ['P1001']);
+	assert.equal(fs.existsSync(statementFile('P1002')), true, '从清单里移掉不该删题面');
+});
+
+await check('最后一题不许移掉：空清单会被读丢，那等于清单悄悄消失', async () => {
+	await practice.writeLists([{ name: '只剩一道', problems: ['P1001'], createdAt: '' }]);
+	reset();
+	choices = [0, item => item.action === 'remove', null];
+	await registered['olympia.practice.open']();
+	assert.match(said(), /删掉这份清单/);
+	assert.equal((await practice.readLists()).length, 1, '清单不该被移成空');
+});
+
+await check('题号收口：1660/C 与 1660-c 都写成 1660C，AtCoder 的 ABC123_A 不动，题单编号不当题', () => {
+	assert.equal(practice.normalizeProblemId('1660/C'), '1660C');
+	assert.equal(practice.normalizeProblemId('1660-c'), '1660C');
+	assert.equal(practice.normalizeProblemId('1660C'), '1660C');
+	assert.equal(practice.normalizeProblemId('ABC123_A'), 'ABC123_A');
+	assert.equal(practice.normalizeProblemId('P1001'), 'P1001');
+	assert.deepEqual(practice.parseProblemIds('1. P1001 2. P1002。P3367'), ['P1001', 'P1002', 'P3367']);
+});
+
+await check('清单里混进路径样的条目（../template、a/b）：不当题号收，也就不会被当文件名去打开', () => {
+	assert.deepEqual(practice.parseProblemIds('../template  a/b  P1001'), ['P1001']);
+	assert.equal(practice.isSafeProblemId('1660/C'), false);
+	assert.equal(practice.isSafeProblemId('P1001.'), false);
+});
+
+await check('别的版本写的清单不能被顺手删掉：认不出的条目和字段原样写回去', async () => {
+	fs.writeFileSync(listFile(), JSON.stringify({
+		lists: [
+			{ name: '旧版清单', problems: ['P7'], note: '老师批的', schemaVersion: 3 },
+			{ title: '更早的版本导的', entries: ['P5'] },
+			'一句说明',
+		]
+	}), 'utf8');
+	reset();
+	inputs = ['新的', 'P8', '60'];
+	choices = [null];
+	await registered['olympia.practice.new']();
+	const names = readDisk().lists.map(item => item.name ?? item.title ?? String(item));
+	assert.ok(names.includes('旧版清单'), `旧条目没了：${names.join('、')}`);
+	const kept = readDisk().lists.find(item => item.name === '旧版清单');
+	assert.equal(kept.note, '老师批的', '这一版看不懂的字段要留在文件里');
+	assert.equal(kept.schemaVersion, 3);
+	// 结构都不认识的条目走的是 unknown 那条路：它不存在"认得出但用不上"的借口。
+	assert.ok(readDisk().lists.some(item => item.title === '更早的版本导的'), '看不懂结构的条目也要留在文件里');
+	assert.ok(readDisk().lists.includes('一句说明'), '连对象都不是的条目一样要留着');
+});
+
+await check('时长只认十进制整数：0x78、1e2、带小数的都不作数，免得开个 0 分钟的比赛', () => {
+	assert.equal(practice.parseMinutes('0x78'), undefined);
+	assert.equal(practice.parseMinutes('1e2'), undefined);
+	assert.equal(practice.parseMinutes('120.5'), undefined);
+	assert.equal(practice.parseMinutes(' 120 '), 120);
+	assert.equal(practice.parseMinutes('4'), undefined, '低于下限');
+	assert.equal(practice.parseMinutes('601'), undefined, '高于上限');
+	assert.equal(practice.parseMinutes(''), undefined, '留空是「不设时限」，不是 0 分钟');
+});
+
+await check('带 BOM 的文件（Windows 上很常见）也认，不是「清单一条都没有」', async () => {
+	fs.writeFileSync(listFile(), `\uFEFF${JSON.stringify({ lists: [{ name: '带 BOM 的清单', problems: ['P7'], createdAt: '' }] })}`, 'utf8');
+	assert.deepEqual((await practice.readLists()).map(item => item.name), ['带 BOM 的清单']);
+});
+
+await check('整个文件读不懂：明说并且一个字都不改，别让一次点击等于清空清单', async () => {
+	const junk = '{这不是 JSON';
+	fs.writeFileSync(listFile(), junk, 'utf8');
+	reset();
+	inputs = ['想新建', 'P9', ''];
+	await registered['olympia.practice.new']();
+	assert.equal(fs.readFileSync(listFile(), 'utf8'), junk, '读不懂的时候不许重写文件');
+	assert.match(said(), /没有改动它/);
+});
+
+await check('存不下去（被占、只读、盘满）：说要紧话，不把 Node 的英文错误丢给学生', async () => {
+	fs.rmSync(path.dirname(listFile()), { recursive: true, force: true });
+	fs.mkdirSync(path.dirname(listFile()), { recursive: true });
+	fs.mkdirSync(listFile());   // practice.json 是个目录：任何写法都存不下去
+	reset();
+	inputs = ['存不了的', 'P1', ''];
+	await registered['olympia.practice.new']();
+	assert.match(said(), /清单没能保存/);
+	fs.rmSync(listFile(), { recursive: true, force: true });
+});
+
+await check('清单满了就说满了，不能骗学生「题号已经在清单里」', async () => {
+	await practice.writeLists([{
+		name: '满了',
+		problems: Array.from({ length: practice.MAX_PRACTICE_PROBLEMS }, (_v, i) => `P9${i}`),
+		createdAt: ''
+	}]);
+	reset();
+	inputs = ['P7777'];
+	choices = [0, item => item.action === 'add', null];
+	await registered['olympia.practice.open']();
+	assert.match(said(), new RegExp(`已经 ${practice.MAX_PRACTICE_PROBLEMS} 题满了`));
+});
+
+await check('加三道只进去一道：要报「只加进去 1 道」，不能安静地把题号丢掉', async () => {
+	await practice.writeLists([{
+		name: '快满',
+		problems: Array.from({ length: practice.MAX_PRACTICE_PROBLEMS - 1 }, (_v, i) => `P8${i}`),
+		createdAt: ''
+	}]);
+	reset();
+	inputs = ['P7777 P7778 P7779'];
+	choices = [0, item => item.action === 'add', null];
+	await registered['olympia.practice.open']();
+	assert.match(said(), /只加进去 1 道/);
+	assert.equal(readDisk().lists[0].problems.length, practice.MAX_PRACTICE_PROBLEMS);
 });
 
 console.log(failed ? '\nFAILED' : '\nall practice-list assertions passed');

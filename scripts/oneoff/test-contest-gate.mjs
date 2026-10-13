@@ -222,6 +222,41 @@ await check('自定义时长：只有区间内的整数分钟才作数', async (
 	vscodeStub.__input = undefined;
 });
 
+// 集训清单的「开始这一场」是跨扩展调用 olympia.contestMode 并带上分钟数，
+// 上面三条演的是它落进比赛模式后的三种已有状态：时间已过、还在进行、以及人不确认。
+await check('上一场时间已过但没收尾：清单上点「开始这一场」直接开新的一场', async () => {
+	activate([[ENDS_AT_KEY, Date.now() + 1500]]);   // 先恢复出一场还在进行的比赛
+	clockOffset += 3000;                          // 时间跳到结束之后：模块里的 endsAt 还留着
+	assert.strictEqual(await registered.get(IS_RUNNING_COMMAND)(), false, '先确认这一场已经过期');
+	const started = Date.now();
+	await registered.get(CONTEST_COMMAND)(45);
+	assert.strictEqual(await registered.get(IS_RUNNING_COMMAND)(), true, '过期后点「开始这一场」该开新的一场，而不是只把上一场清掉');
+	const endsAt = activation.context.store.get(ENDS_AT_KEY);
+	assert.ok(Math.abs(endsAt - (started + 45 * 60_000)) < 5_000, `新的结束时间算错了：${endsAt}`);
+	vscodeStub.__warningAction = undefined;
+});
+
+await check('比赛进行中带着时长再来一场：确认结束之后就按新的分钟数开', async () => {
+	activate();
+	await registered.get(CONTEST_COMMAND)();      // 默认 120 分钟
+	const first = activation.context.store.get(ENDS_AT_KEY);
+	const started = Date.now();
+	await registered.get(CONTEST_COMMAND)(45);
+	assert.strictEqual(await registered.get(IS_RUNNING_COMMAND)(), true, '停了旧的一场就没开新的一场');
+	const endsAt = activation.context.store.get(ENDS_AT_KEY);
+	assert.ok(Math.abs(endsAt - (started + 45 * 60_000)) < 5_000, `旧的时长还在用：${endsAt} vs ${first}`);
+});
+
+await check('那条「先结束比赛模式」没点：计时原样不动，也不会偷偷开第二场', async () => {
+	activate();
+	await registered.get(CONTEST_COMMAND)();
+	const before = activation.context.store.get(ENDS_AT_KEY);
+	vscodeStub.__warningAction = null;            // 弹窗出现了但没人点
+	await registered.get(CONTEST_COMMAND)(45);
+	assert.strictEqual(activation.context.store.get(ENDS_AT_KEY), before, '没确认结束就不该改动计时');
+	vscodeStub.__warningAction = undefined;
+});
+
 await check('停用再激活不会把比赛状态留下：教练不会因为陈旧的 endsAt 被锁住', async () => {
 	activate();
 	await registered.get(CONTEST_COMMAND)();     // 默认 120 分钟，开一场比赛

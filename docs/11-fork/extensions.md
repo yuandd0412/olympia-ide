@@ -128,7 +128,9 @@ The welcome page was trimmed in core (`gettingStartedContent.ts`) in two passes.
 ask a student to do remote development, Git or Copilot work that the product deliberately removed
 from the activity bar (and that ships no extension for, so two of them lead to a picker with nothing
 in it). Open file / open folder stay. In the 从零开始 category, `debugging`, `scmClone`, `scmSetup`,
-`scm` and `installGit` are off for the same reason, and `createCopilotSetupStep` now returns
+`scm`, `installGit` and `tasks` are off for the same reason (Olympia's own promise is 不用写 tasks.json,
+so a step teaching 运行自动检测到的任务 contradicts the product), the `notebooks` walkthrough category
+is off too — `ipynb` ships, but no OI student opens one — and `createCopilotSetupStep` now returns
 `when: 'false'` — one place, so all four Copilot sign-in/plan steps go with it instead of relying on
 `chatSetupHidden` contexts we cannot observe in a BYOK-only build. Two of the remaining steps shipped
 a false claim: the 观看视频教程 step's copy said "Olympia IDE 核心功能系列短视频教程" while its button
@@ -138,6 +140,20 @@ the in-product 启用信任 button. `src/vs` carries no fork-specific comments, 
 rather than in the diff, and `scripts/oneoff/check-core-copy.mjs` asserts the sentences and the
 `when: 'false'` values in `oss/out` — built JS escapes non-ASCII as `\uXXXX`, so grepping the
 built tree for Chinese text silently reads nothing.
+
+Two more core surfaces said something false about this build. `extensions.autoCheckUpdates` and
+`extensions.autoUpdate` both promised updates "从 Microsoft 联机服务" / "来自微软的在线服务", but the
+gallery configured in `product.json` is open-vsx, and 复制扩展信息 labelled the extension's market URL
+"VS Marketplace 链接" — all three now say 扩展市场. The ⚙ gear menu also listed 任务 under
+`2_configuration`, which the product copy itself tells students they do not need (不用写 tasks.json);
+both of its registrations (`MenuId.GlobalActivity` and `MenuId.MenubarPreferencesMenu`) now carry
+`ContextKeyExpr.false()`, so the commands stay reachable from the palette for anyone who wants them
+while the menu stops advertising them.
+
+**Trap when fixing settings copy:** a registered setting's sentence often exists **twice** — once in
+the property and once in its `policy.localization` block (3× for `update.mode`, 2× for
+`extensions.autoUpdate`). Editing only the property leaves the policy copy as the one that ships; the
+check that greps `oss/out` for the old sentence is what catches it.
 
 Settings: everything under `olympia.*` — `olympia.compiler.*` (`path`, `profile` default `luogu`,
 `customFlags`, `optimization` default `none`, `showCompileCommand` default `true`),

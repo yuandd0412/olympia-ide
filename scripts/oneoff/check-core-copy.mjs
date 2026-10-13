@@ -30,6 +30,10 @@ const copy = [
 	[ASSIGN, 'Olympia 没有配置这项服务，保持关闭可以避免无意义的联网请求。', true],
 	[EXTENSIONS, '更新从扩展市场获取。', true],
 	[EXTENSIONS, '更新将从 Microsoft 联机服务中获取。', false],
+	[EXTENSIONS, '控制扩展的自动更新行为。更新包从扩展市场获取。', true],
+	[EXTENSIONS, '更新包来自微软的在线服务', false],
+	[EXTENSIONS, '扩展市场链接', true],
+	[EXTENSIONS, 'VS Marketplace 链接', false],
 	[WELCOME, 'https://olympia.dpdns.org/docs/', true],
 	[WELCOME, 'vscode-getting-started-video', false],
 	[WELCOME, 'https://code.visualstudio.com/docs/editor/workspace-trust', false]
@@ -44,7 +48,8 @@ const defaults = [
 /** OI 用不上的欢迎页入口：源码管理、调试、远程、Copilot 开的对话。 */
 const welcomeOff = [
 	'topLevelGitClone', 'topLevelGitOpen', 'topLevelRemoteOpen', 'topLevelOpenTunnel',
-	'topLevelNewWorkspaceChat', 'debugging', 'scmClone', 'scmSetup', 'scm', 'installGit'
+	'topLevelNewWorkspaceChat', 'debugging', 'scmClone', 'scmSetup', 'scm', 'installGit',
+	'tasks', 'notebooks'
 ];
 
 let failed = 0;
@@ -79,6 +84,13 @@ report(/function createCopilotSetupStep[\s\S]{0,420}when:\s*"false"/.test(text(W
 	'Copilot 那四步向导在同一个地方关掉');
 report(!text(WELCOME).includes('chatSetupCompleted && !chatSetupDisabled'),
 	'Copilot 的登录态/套餐条件不再决定欢迎页显示什么');
+
+/** 齿轮菜单里的「任务」：产品说的是不用写 tasks.json，菜单就不该再把人往那领。 */
+const TASKS = 'vs/workbench/contrib/tasks/browser/task.contribution.js';
+report(/MenuId\.GlobalActivity[\s\S]{0,220}ContextKeyExpr\.false\(\)/.test(text(TASKS)),
+	'齿轮菜单不再列「任务」');
+report(/MenuId\.MenubarPreferencesMenu[\s\S]{0,220}ContextKeyExpr\.false\(\)/.test(text(TASKS)),
+	'菜单栏的偏好子菜单也不再列「任务」');
 
 console.log(failed ? '\nFAILED' : '\nall core-copy checks passed');
 process.exitCode = failed ? 1 : 0;

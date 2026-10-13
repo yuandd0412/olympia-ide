@@ -40,7 +40,12 @@ The three commands after 体检 are the judge-shaped loop the Tauri app had and 
   reads the cached statement Markdown for the current file (`.olympia/problems/<题号>.md`, same
   directory `olympia-contest` writes, falling back to a quick pick when no file matches by name),
   compiles with the active judge profile, runs every sample through it and prints `AC` / `WA` / `RE` /
-  `TLE` / `MLE` per case into the `Olympia 评测` channel. Comparison ignores whitespace like a real judge. The
+  `TLE` / `MLE` per case into the `Olympia 评测` channel. A hand-picked statement is remembered per
+  source file (`olympia.judge.statements` in `workspaceState`), because the real loop is 改代码 →
+  `Ctrl+Alt+J` → 改代码 and asking which problem every time makes the feature unusable; the log says the
+  choice was reused, a remembered statement that has since been deleted falls back to the picker rather
+  than being read anyway, and the result notification carries 换一道题 as the way out. A same-name
+  statement always wins over the remembered one. Comparison ignores whitespace like a real judge. The
   time limit is read from the statement and accepts both units the product produces — `1000 ms` from
   the pull chain and hand-written `1.00s`; an unrecognised unit falls back to 1 s rather than guessing.
   The memory limit is read the same way (`内存限制：128.00 MB`, `内存：128M`, `内存：1GB`) and comes from
@@ -75,10 +80,17 @@ The three commands after 体检 are the judge-shaped loop the Tauri app had and 
   click. The item turns warning-coloured once time is up, and the tools panel shows a remaining-time row
   while a contest runs.
 
-Two walkthroughs are contributed: `olympia.gettingStarted` ("三分钟上手 Olympia IDE", five steps —
-open a folder, pick the judge compile profile, run the environment check, ask the AI coach, learn
-more) and `olympia.compiler` ("内置编译器与环境自检", one step). The coach step exists so the
-`@coach` participant is discoverable from the first run; it completes on `olympia.coach.selectModel`.
+Two walkthroughs are contributed: `olympia.gettingStarted` ("十分钟上手 Olympia IDE", ten steps —
+open a folder, pick the judge compile profile, `F9` 编译并运行, 拉题面并跑样例（AC / WA / TLE / MLE）,
+对拍, 比赛模式, the environment check, the one-page 设置, ask the AI coach, learn more) and
+`olympia.compiler` ("内置编译器与环境自检", one step). The five middle steps exist because those are the
+features a student cannot guess from a VS Code-shaped UI: before them the walkthrough described an editor
+with a compiler, and 跑样例 / 对拍 / 比赛模式 were reachable only if someone told you they existed. Each
+step's button invokes the same command the panel row and the keybinding do (`check-command-wiring.mjs`
+walks `contributes.walkthroughs` for exactly this), so a renamed command cannot leave a dead button in the
+welcome page; its `completionEvents` are the same command, which is what makes the tick appear when the
+student actually does it. The coach step exists so the `@coach` participant is discoverable from the first
+run; it completes on `olympia.coach.selectModel`.
 
 The compile task provider (`compile.ts:168`, type `olympia-compile`) must stay declared in
 `contributes.taskDefinitions`: while it was missing, the packaged app logged
@@ -106,6 +118,23 @@ does not re-probe the toolchain. Four `editor/title` navigation buttons (编译�
 体检) appear only for `resourceLangId == cpp || c`, and three status-bar chips (compiler profile,
 编译运行 `F9`, 体检) stay visible all the time. `olympia.debug.showEntryPoints` switches the extra debug
 rows in the panel off.
+
+The welcome page was trimmed in core (`gettingStartedContent.ts`) in two passes. Start entries
+`topLevelGitClone` / `topLevelGitOpen` / `topLevelRemoteOpen` / `topLevelOpenTunnel` /
+`topLevelNewWorkspaceChat` → `when: 'false'`: 克隆仓库、打开仓库、连接到…、打开隧道… and 新建工作区
+ask a student to do remote development, Git or Copilot work that the product deliberately removed
+from the activity bar (and that ships no extension for, so two of them lead to a picker with nothing
+in it). Open file / open folder stay. In the 从零开始 category, `debugging`, `scmClone`, `scmSetup`,
+`scm` and `installGit` are off for the same reason, and `createCopilotSetupStep` now returns
+`when: 'false'` — one place, so all four Copilot sign-in/plan steps go with it instead of relying on
+`chatSetupHidden` contexts we cannot observe in a BYOK-only build. Two of the remaining steps shipped
+a false claim: the 观看视频教程 step's copy said "Olympia IDE 核心功能系列短视频教程" while its button
+opened `aka.ms/vscode-getting-started-video`, and 工作区信任 linked `code.visualstudio.com`; the first
+now links `https://olympia.dpdns.org/docs/`, the second explains trust in one sentence and keeps only
+the in-product 启用信任 button. `src/vs` carries no fork-specific comments, so the reason lives here
+rather than in the diff, and `scripts/oneoff/check-core-copy.mjs` asserts the sentences and the
+`when: 'false'` values in `oss/out` — built JS escapes non-ASCII as `\uXXXX`, so grepping the
+built tree for Chinese text silently reads nothing.
 
 Settings: everything under `olympia.*` — `olympia.compiler.*` (`path`, `profile` default `luogu`,
 `customFlags`, `optimization` default `none`, `showCompileCommand` default `true`),
@@ -321,20 +350,23 @@ the flag is falsy, and it was falsy only by omission), and the `defaultChatAgent
 Nine harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
 with `vscode` stubbed through a `Module._load` hook (the memory probe needs no stub — it only talks to
 `child_process` and `tasklist.exe`), so they test the shipped code path rather than a
-re-implementation; the tenth, `check-command-wiring.mjs`, reads the manifests and sources instead. Compile first (`npm run gulp -- compile-extension:olympia-onboarding`), then run each
-with `node scripts/oneoff/<name>.mjs` from the repository root:
+re-implementation; the tenth and eleventh, `check-command-wiring.mjs` and `check-core-copy.mjs`, read
+the manifests and the **built core** (`oss/out`) instead. Compile first
+(`npm run gulp -- compile-extension:olympia-onboarding`, and `npm run compile-client` for the core
+check), then run each with `node scripts/oneoff/<name>.mjs` from the repository root:
 
 | Harness | What it pins down |
 | --- | --- |
 | `test-precheck.mjs` | 体检 rules: pragma reporting regardless of the local optimization switch, and nothing reported inside comments or string literals |
 | `test-judge-samples.mjs` | `parseSamples` against Markdown shaped exactly like `renderStatement` output, including the `ms` / `s` / `毫秒` / `秒` time-limit units, the 500 ms–10 s clamp, and the memory-limit spellings (`内存限制：128.00 MB` / `内存：128M` / `内存：1GB`) plus the "no limit written" case; sample numbers are the ones written in the statement, so a hand-written 样例 0 stays 0 instead of being coerced to 1 |
-| `test-judge-pipeline.mjs` | the whole 跑样例 command against the **bundled g++**: AC on a correct file, WA with expected-vs-got printed, a compile failure reported as a failure instead of a pass, a quick pick when no statement matches by name, a memory hog judged MLE with its peak reported when the statement writes a limit — and never judged MLE when it does not |
+| `test-judge-pipeline.mjs` | the whole 跑样例 command against the **bundled g++**: AC on a correct file, WA with expected-vs-got printed, a compile failure reported as a failure instead of a pass, a quick pick when no statement matches by name, the pick being **remembered per source file** (a second run asks nothing and says in the log it is reusing the last choice; 换一道题 re-asks and re-members; a deleted statement falls back to the picker instead of being read anyway), a memory hog judged MLE with its peak reported when the statement writes a limit — and never judged MLE when it does not |
 | `test-memory-probe.mjs` | the probe itself: the memory column parsed **by position** (labels are localized on zh Windows) with thousands separators, a program whose path contains spaces, a run too fast to sample (no peak, still not a failure), a 120 MB allocation actually seen, the timeout kill, a non-zero exit counted as failure while stdout is still collected, and the fallback to a plain run when the probe reads nothing |
 | `test-stress-pipeline.mjs` | the whole 对拍 command: 25 agreeing rounds report 通过, an intentionally wrong solution stops the run and leaves `stress-fail/round-N.*` behind, running it a second time must add a file rather than overwrite the one the previous run caught, a silent generator errors out instead of "passing" zero rounds — and clicking 补进题面样例 writes that case into the statement, where the product's own `parseSamples` reads it back as a second case without eating the neighbouring section (stubbing `appendSample` to a no-op fails this check) |
 | `test-cpp-snippets.mjs` | the 20-row C++ completion table: registration and `dispose`, every `detail`/hint line carries Chinese, aliases actually resolve (敲 `fast`/`sync`/`pow`/`union` 命中对应条目), placeholders close, the switch silences the list — and each body, with its placeholders filled, passes `g++ -std=c++17 -fsyntax-only` inside a generated translation unit |
 | `test-contest-gate.mjs` | the 比赛模式 → AI 教练 lock across both extensions: `setContext('olympia.contest.running')` flips exactly on start and stop (not every tick), `olympia.contest.isRunning` answers accordingly, and while it is set `@coach` writes only the refusal and never asks for the model list. The rest drives a fake clock (`Date.now` offset) through the reload paths: a restored contest announces 时间到 once and only once as it crosses zero, one that expired while the window was closed clears `endsAt` instead of restoring, the custom-duration input accepts only integers in range, and dispose-then-activate leaves no phantom contest to lock the coach (this last one is what caught the module state that `release()` now resets) |
 | `test-problem-library.mjs` | the local problem bank end to end: statements written by the real `renderStatement` are read back with title / 来源 / 时限 / 内存 / 样例数 intact (writer and reader share `FIELD`, so this is the drift guard), ordering by pull time, a heading that is not a problem id falling back to the filename, an unreadable file still listed instead of taking the list down, the quick-pick rows showing title + limits + relative path + 「今天」, `Ctrl+Alt+O` opening exactly the picked file and refusing to open an empty list, 补样例 refusing to write over a statement that is open with unsaved edits (and writing once it is saved), and the panel's 题面库 row (份数, and 还没拉过题面 → points at 拉取题面). Breaking the written field label in `out/templates.js` makes two checks fail — the assertions discriminate |
 | `test-settings-panel.mjs` | the Olympia 设置 page against the manifests on disk: every `olympia.*` property in the three `package.json` files must be a row (row count is compared to the schema count, so adding a setting without the page listing it fails), grouping comes from the key, enum options show `enumDescriptions`, an unknown segment still shows up under 其他, `.path` rows get 浏览… and write what was picked to Global, a 改过的 row is marked 已改 and 恢复默认 deletes the key so the default comes back, a rejected `update` is shown instead of swallowed, the AI rows delegate, reopening reveals the same panel instead of stacking a second one, and a setting key or default containing `<script>` / `<img onerror>` comes out escaped (disabling `escapeHtml`, limiting the scan to one manifest, emptying the AI delegate list and removing the path-picker condition each make exactly the check that covers them fail) |
+| `check-core-copy.mjs` | the sentences and switches we changed in `src/vs`, read back out of `oss/out`: 更新方式 / 发行说明 / 扩展自动检查更新 say what this build actually does, 自然语言搜索 and 实验 are **default `false`** (a service we never configured should not look enabled), and every welcome-page entry we turned off really carries `when: "false"` — 4 remote/Git start entries, 新建工作区 chat, the 调试 和 4 Git steps, and all four Copilot setup steps at once through `createCopilotSetupStep`. It decodes `\uXXXX` before matching, because grepping the built tree for Chinese text reads nothing and reports a clean pass |
 | `check-command-wiring.mjs` | every command the UI points at (palette entry, `editor/title`, keybinding, walkthrough button, start entry) actually has a `registerCommand` behind it, and vice versa — the "button that does nothing" class. It also resolves the ids the **code** clicks (tree rows, status chips, notification buttons) and requires them to be registered by one of the three extensions, which is what makes a typo in a cross-extension row (`olympia.problem.openStatement`) a build failure instead of a dead button. Bitten-ness is verified, not assumed: typo'ing one id in `olympia-onboarding/package.json` makes it report three problems and exit 1, and so does typo'ing the panel's library command. Rule 6 is the label-drift guard: every panel row must carry the same wording as the command's palette title (the trailing `...` aside), which is what keeps 「打开题面库」 from being two different strings in two different places |
 
 The bundled compiler is what makes the pipeline harnesses real rather than mocked: they resolve
@@ -392,7 +424,7 @@ checklist instead of being rewritten on a guess:
 | [`chatPermissionWarnings.ts:100`](../../oss/src/vs/workbench/contrib/chat/common/chatPermissionWarnings.ts) | English `Copilot will still ask when the model requires approval…` | assisted-permission warning, shown from the permission picker |
 | [`promptTypes.ts:182,184`](../../oss/src/vs/workbench/contrib/chat/common/promptSyntax/promptTypes.ts) | 「工作区(仅由 Copilot 智能体使用)」/「全局(仅由 Copilot 智能体使用)」 | customizations / prompt-file management UI |
 | [`languageModelStats.ts:49`](../../oss/src/vs/workbench/contrib/chat/common/languageModelStats.ts) | label `Copilot` | the model-usage breakdown entry |
-| [`gettingStartedContent.ts:228`](../../oss/src/vs/workbench/contrib/welcomeGettingStarted/common/gettingStartedContent.ts) | 「免费使用 Copilot 的 AI 功能」 walkthrough step | gated by the getting-started `when` clauses; must be confirmed hidden on a fresh profile |
+| [`gettingStartedContent.ts`](../../oss/src/vs/workbench/contrib/welcomeGettingStarted/common/gettingStartedContent.ts) | 「免费使用 Copilot 的 AI 功能」 walkthrough step | **ruled out**: `createCopilotSetupStep` returns `when: 'false'`, so all four steps are off by construction rather than by a `chatSetupHidden` context, and `check-core-copy.mjs` asserts that in `oss/out` |
 | [`agentSessionsWelcome.ts:746`](../../oss/src/vs/workbench/contrib/welcomeAgentSessions/browser/agentSessionsWelcome.ts) | 「免费试用 GitHub Copilot，无需登录!」 | the agent-sessions welcome page; the banner in that view *is* gated by `sentiment.hidden` (confirmed), this heading is in the same view but was not traced to its own gate |
 | [`onboardingVariationA.ts:460,495,530`](../../oss/src/vs/workbench/contrib/welcomeOnboarding/browser/onboardingVariationA.ts) | 登录以使用 GitHub Copilot / Copilot 免责声明 | **ruled out**: with `byokOnly` the sign-in step is filtered out of `steps` (`:121`) and rendering switches on step *identity*, not index (`:407-410`), so `_renderSignInStep` is never called |
 

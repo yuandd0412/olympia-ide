@@ -16,6 +16,18 @@ const GPP = path.join(repoRoot, 'VSCode-win32-x64/resources/app/toolchain/mingw6
 const messages = [];
 const channels = [];
 let registered = {};
+/** 跑样例的选择器行为：弹了几次、最后一次列了什么、按名字选哪一项、通知里点哪个按钮。 */
+let pickCalls = 0;
+let lastPick = [];
+let pickName;
+let messageAction;
+
+/** 真人点一次通知就是一次：按钮动作只能被取走一次，否则「换一道题」会在 await 里无限重入。 */
+function takeMessageAction() {
+	const action = messageAction;
+	messageAction = undefined;
+	return action;
+}
 
 function uri(fsPath) {
 	return { fsPath, scheme: 'file', path: fsPath, toString: () => `file:///${fsPath.replace(/\\/g, '/')}` };
@@ -59,9 +71,15 @@ const vscodeStub = {
 	window: {
 		activeTextEditor: undefined,
 		showWarningMessage: async (...a) => { messages.push(['warning', a[0]]); return undefined; },
-		showInformationMessage: async (...a) => { messages.push(['info', a[0]]); return undefined; },
-		showErrorMessage: async (...a) => { messages.push(['error', a[0]]); return undefined; },
-		showQuickPick: async items => (Array.isArray(items) ? items[0] : undefined),
+		showInformationMessage: async (...a) => { messages.push(['info', a[0], a.slice(1)]); return takeMessageAction(); },
+		showErrorMessage: async (...a) => { messages.push(['error', a[0], a.slice(1)]); return takeMessageAction(); },
+		showQuickPick: async items => {
+			pickCalls++;
+			lastPick = Array.isArray(items) ? items.map(item => item.label) : items;
+			if (!Array.isArray(items)) { return undefined; }
+			const wanted = pickName;
+			return wanted ? items.find(item => String(item.label).includes(wanted)) ?? items[0] : items[0];
+		},
 		showOpenDialog: async () => undefined,
 		showTextDocument: async () => ({}),
 		withProgress: async (_options, task) => task({ report() { } }, { isCancellationRequested: false, onCancellationRequested: () => ({ dispose() { } }) }),
@@ -107,7 +125,15 @@ Module._load = function (request, parent, isMain) {
 };
 
 const judge = await import(pathToFileURL(path.join(extensionOut, 'judgeSamples.js')).href);
-const context = { subscriptions: [], workspaceState: { get: (_k, d) => d, update: async () => { } } };
+// workspaceState 要真的存东西：「记住上次为这份文件选的题面」这条行为只有状态活得下来才测得到。
+const workspaceStore = new Map();
+const context = {
+	subscriptions: [],
+	workspaceState: {
+		get: (key, fallback) => workspaceStore.has(key) ? workspaceStore.get(key) : fallback,
+		update: async (key, value) => { value === undefined ? workspaceStore.delete(key) : workspaceStore.set(key, value); }
+	}
+};
 judge.registerSampleJudge(context);
 assert.ok(registered['olympia.judgeSamples'], 'olympia.judgeSamples 必须被注册');
 
@@ -169,8 +195,65 @@ await check('没有同名题面时从候选里选，而不是直接失败', asyn
 	fs.copyFileSync(path.join(fixture, 'P1001.cpp'), renamed);
 	openFile('solution.cpp');
 	messages.length = 0;
+	const before = pickCalls;
 	await registered['olympia.judgeSamples']();
+	assert.equal(pickCalls, before + 1, '没有同名题面时应该问一次用哪道题');
 	assert.match(messages.map(m => m[1]).join('\n'), /AC/, '选完题面后没有判成 AC');
+});
+
+await check('同一份文件再跑一次不再问：沿用上次选的题面', async () => {
+	openFile('solution.cpp');
+	const before = pickCalls;
+	messages.length = 0;
+	await registered['olympia.judgeSamples']();
+	assert.equal(pickCalls, before, '第二次跑样例又问了一遍用哪道题');
+	const log = judgeChannel().lines.join('\n');
+	assert.match(log, /P1001\.md/, `沿用的不是上次那道题：${log.split('\n')[0]}`);
+	assert.match(log, /上次为 solution\.cpp 选的/, '日志要说清楚：这次没问是因为记住了');
+});
+
+await check('结果通知里的「换一道题」会重新问，并把新的选择记住', async () => {
+	const dir = path.join(fixture, '.olympia', 'problems');
+	fs.copyFileSync(path.join(dir, 'P1001.md'), path.join(dir, 'P9999.md'));
+	openFile('solution.cpp');
+	pickName = 'P9999';
+	messageAction = '换一道题';
+	const before = pickCalls;
+	await registered['olympia.judgeSamples']();
+	pickName = undefined;
+	assert.equal(pickCalls, before + 1, '点了「换一道题」却没有重新问');
+	const log = judgeChannel().lines.join('\n');
+	assert.match(log, /P9999\.md/, `换完题面跑的还是旧的：${log.split('\n')[0]}`);
+	assert.match(JSON.stringify(workspaceStore.get('olympia.judge.statements')), /P9999/, '新选的那道没记住');
+});
+
+await check('记住的题面被删掉了就回到选择列表，不去读一个不存在的文件', async () => {
+	fs.rmSync(path.join(fixture, '.olympia', 'problems', 'P9999.md'), { force: true });
+	openFile('solution.cpp');
+	const before = pickCalls;
+	messages.length = 0;
+	await registered['olympia.judgeSamples']();
+	assert.equal(pickCalls, before + 1, '记着的题面没了却没有重新问');
+	assert.match(messages.map(m => m[1]).join('\n'), /AC/, '重新选完之后没判成 AC');
+});
+
+await check('有同名题面的文件既不多问，也不写「沿用上次的选择」', async () => {
+	const dir = path.join(fixture, '.olympia', 'problems');
+	const sub = path.join(fixture, 'sub.cpp');
+	fs.writeFileSync(sub, '#include <bits/stdc++.h>\nusing namespace std;\nint main(){int a,b;cin>>a>>b;cout<<a-b;return 0;}\n', 'utf8');
+	fs.writeFileSync(path.join(dir, 'sub.md'), [
+		'# sub 减法', '', '> 时限：1000 ms', '', '## 样例数据', '', '### 样例 1', '',
+		'**输入**', '', '```', '3 4', '```', '', '**输出**', '', '```', '-1', '```', ''
+	].join('\n'), 'utf8');
+	openFile('sub.cpp');
+	const before = pickCalls;
+	messages.length = 0;
+	await registered['olympia.judgeSamples']();
+	assert.equal(pickCalls, before, '有同名题面还去问用哪道题');
+	const log = judgeChannel().lines.join('\n');
+	assert.match(log, /题面：.*sub\.md/, `用的不是同名题面：${log.split('\n')[0]}`);
+	assert.ok(!/上次为/.test(log), '同名自动匹配上却写着「沿用上次的选择」，学生会以为测的是别的题');
+	assert.match(messages.map(m => m[1]).join('\n'), /AC/, '拿 sub.md 的期望测减法应该判 AC');
 });
 
 // ---- MLE：只有题面写了内存限制才判，采样只报峰值不猜 ----

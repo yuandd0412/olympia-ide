@@ -45,6 +45,18 @@ function referencedCommands(manifest) {
 			for (const button of step.buttons ?? []) {
 				out.push({ id: button.command, where: `walkthrough ${walk.id}` });
 			}
+			// 步骤里的入口是说明文字里的 [文字](command:xxx)，和欢迎页同一种写法；
+			// 只盯 buttons 的话，向导里打错一个命令名是没人知道的。
+			for (const m of String(step.description ?? '').matchAll(/\(command:([^?)\s]+)/g)) {
+				out.push({ id: m[1], where: `walkthrough ${walk.id} / ${step.id}` });
+			}
+			// 完成条件也是命令名：写错了这一步永远打不上勾。
+			for (const event of step.completionEvents ?? []) {
+				const id = /^onCommand:(.+)$/.exec(String(event))?.[1];
+				if (id) {
+					out.push({ id, where: `walkthrough ${walk.id} / ${step.id} completionEvents` });
+				}
+			}
 		}
 	}
 	for (const entry of c.startEntries ?? []) {
@@ -198,11 +210,13 @@ for (const id of OLYMPIA_EXTENSIONS) {
 	// 1) 界面引用了我们自己的命令，但代码里没注册 → 点了没反应。workbench.* 由核心注册，不归这里管。
 	const ours = ref => ref.id.startsWith('olympia.');
 
-	// 1) 界面引用了我们自己的命令，但代码里没注册 → 点了没反应。
+	// 1) 界面引用了我们自己的命令，但三个扩展里都没人注册 → 点了没反应。
+	//    判定用全体而不是本扩展：向导里的「拉取题面」链接指向 olympia-contest 注册的命令，
+	//    这是产品本来的分工（面板行同理，见规则 5），只查本扩展会把合法引用报成问题。
 	for (const ref of referenced.filter(ours)) {
 		if (ref.submenu || ref.whenClause) { continue; }
-		if (!registered.has(ref.id)) {
-			problems.push(`${id}: ${ref.where} 引用 ${ref.id}，但源码里没有 registerCommand`);
+		if (!registeredAnywhere.has(ref.id)) {
+			problems.push(`${id}: ${ref.where} 引用 ${ref.id}，三个扩展里都没有 registerCommand`);
 		}
 	}
 	// 2) 代码注册了却没在 contributes.commands 里出现 → 命令面板找不到（有意隐藏的要走 commandPalette: false）。

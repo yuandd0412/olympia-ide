@@ -193,6 +193,10 @@ await check('分组和说明都来自清单：标题取第一句，枚举显示�
 	}
 	assert.ok(html.includes('对拍轮数'), '说明文字要从清单的 markdownDescription 来，不能在扩展里再抄一份');
 	assert.ok(html.includes('<option value="luogu">洛谷默认'), '枚举要显示 enumDescriptions 的中文名，不是 luogu');
+	// 标题不能为了整齐把代码名切成半截：这一项的第一句本来就长。
+	const pragmaLabel = /<span class="name">([\s\S]*?)<\/span><code class="key">olympia\.check\.rules\.pragmaOptimize/.exec(html);
+	assert.ok(pragmaLabel, '找不到 pragma 那一项的标题');
+	assert.match(pragmaLabel[1], /__attribute__/, `标题把代码名切断了：${pragmaLabel[1]}`);
 });
 
 await check('清单里新加一项设置，页面自动列出来（包括没人认识的新分组）', async () => {

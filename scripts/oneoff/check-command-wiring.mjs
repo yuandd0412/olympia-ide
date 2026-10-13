@@ -146,6 +146,35 @@ function commandTables(srcDir) {
 	return tableEntries;
 }
 
+/**
+ * 三扩展的命令标题表：面板那一行的文字必须和命令面板里看到的是同一句。
+ * 末尾的省略号是命令面板的惯例（选中即打开选择器），面板行不需要重复，所以比对时去掉。
+ */
+const titlesByCommand = new Map();
+for (const id of OLYMPIA_EXTENSIONS) {
+	const manifest = JSON.parse(fs.readFileSync(path.join(extensionsRoot, id, 'package.json'), 'utf8'));
+	for (const command of manifest.contributes?.commands ?? []) {
+		titlesByCommand.set(command.command, command.title);
+	}
+}
+const paletteTitle = title => title.replace(/(\.\.\.|…)$/, '');
+
+/** 面板里每一行的 label 和它点的命令。 */
+function panelRows(srcDir) {
+	const table = commandTables(srcDir);
+	const rows = [];
+	for (const file of fs.readdirSync(srcDir).filter(f => f.endsWith('.ts'))) {
+		const text = fs.readFileSync(path.join(srcDir, file), 'utf8');
+		for (const m of text.matchAll(/label: '([^']+)', icon: '[^']+', command: CMD\.(\w+)/g)) {
+			const id = table.get(`CMD.${m[2]}`);
+			if (id) {
+				rows.push({ command: id, label: m[1], where: `${file} 的 ${m[2]} 行` });
+			}
+		}
+	}
+	return rows;
+}
+
 const problems = [];
 const summary = [];
 // 只给测试台用的内部命令，故意不进命令面板。
@@ -208,7 +237,18 @@ for (const id of OLYMPIA_EXTENSIONS) {
 			problems.push(`${id}: ${where} 点了 ${cmd}，三个扩展里都没注册`);
 		}
 	}
-	summary.push(`${id}: 声明 ${(manifest.contributes?.commands ?? []).length} 条，注册 ${registered.size} 条，界面引用 ${referenced.length} 处，代码点掉 ${invoked.size} 条`);
+	// 6) 面板行写的名字要和命令面板的标题是同一句。两处各写各的之后，学生在面板里看到的
+	//    「打开题面库」和搜到的「打开题面库（已缓存的题面）」就成了两个功能，找不到第二次。
+	for (const row of panelRows(srcDir)) {
+		const title = titlesByCommand.get(row.command);
+		if (title === undefined) {
+			continue;    // 没在清单里声明的由规则 2 报，这里不重复
+		}
+		if (paletteTitle(title) !== row.label) {
+			problems.push(`${id}: ${row.where} 写的是「${row.label}」，命令面板里却是「${paletteTitle(title)}」（${row.command}）`);
+		}
+	}
+	summary.push(`${id}: 声明 ${(manifest.contributes?.commands ?? []).length} 条，注册 ${registered.size} 条，界面引用 ${referenced.length} 处，代码点掉 ${invoked.size} 条，面板行 ${panelRows(srcDir).length} 行`);
 }
 
 console.log(summary.join('\n'));

@@ -48,7 +48,9 @@ for (const id of ['olympia-onboarding', 'olympia-contest', 'olympia-coach']) {
 		bindings.push({ id, key: kb.key.toLowerCase(), command: kb.command });
 	}
 }
-const normalize = k => k.toLowerCase().split('+').sort().join('+');
+/** 清单里写 `comma`，页面上写 `,`：两边指的是同一个键，比对前先归一。 */
+const KEY_ALIASES = { comma: ',', period: '.', semicolon: ';', quote: "'", backslash: '\\', minus: '-', equal: '=', space: ' ' };
+const normalize = k => k.toLowerCase().split('+').map(part => KEY_ALIASES[part] ?? part).sort().join('+');
 const productKeys = new Map(bindings.map(b => [normalize(b.key), b]));
 
 // ---- 页面上的键位行 ----

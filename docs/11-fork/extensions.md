@@ -21,17 +21,18 @@ check. Commands and keybindings as declared in its `package.json`:
 
 | Command | Title | Keybinding (`when`) |
 | --- | --- | --- |
-| `olympia.compileAndRun` | 编译并运行（本地样例测试） | `F9` (`editorTextFocus`) |
-| `olympia.compile` | 编译当前文件（按评测机参数） | `Shift+F9` (`editorTextFocus`) |
-| `olympia.compileJudgeAccurate` | 按评测机编译（强制 `-O2`） | `Ctrl+Shift+F9` (`editorTextFocus`) |
+| `olympia.compileAndRun` | 编译并运行 | `F9` (`editorTextFocus`) |
+| `olympia.compile` | 编译当前文件 | `Shift+F9` (`editorTextFocus`) |
+| `olympia.compileJudgeAccurate` | 按评测机编译（-O2） | `Ctrl+Shift+F9` (`editorTextFocus`) |
 | `olympia.preSubmitCheck` | 提交前体检 | `Ctrl+Alt+Enter` (`editorTextFocus`) |
 | `olympia.judgeSamples` | 跑样例（本地评测） | `Ctrl+Alt+J` (`editorTextFocus`) |
 | `olympia.stressTest` | 对拍（正解 vs 暴力） | `Ctrl+Alt+S` |
 | `olympia.contestMode` | 比赛模式（倒计时） | `Ctrl+Alt+C` |
-| `olympia.checkEnvironment` | 环境自检：检测内置编译器 | `Ctrl+Alt+D` |
+| `olympia.checkEnvironment` | 环境自检 | `Ctrl+Alt+D` |
 | `olympia.pickCompileProfile` | 选择评测机编译配置 | — |
 | `olympia.tools.refresh` | 刷新 Olympia 工具面板 | — (hidden from the palette) |
-| `olympia.openWebsite` | 打开 Olympia 官网 | — |
+| `olympia.settings` | 全部设置（编译 / 评测 / 对拍 / 题面） | `Ctrl+Alt+,` |
+| `olympia.openWebsite` | 打开官网与文档 | — |
 
 The three commands after 体检 are the judge-shaped loop the Tauri app had and the fork did not:
 
@@ -93,7 +94,7 @@ unresolved promise gets its save killed after 1750 ms by the workbench.
 **Persistent entry points** (the reason the palette is no longer the only way in): an `Olympia`
 activity-bar container contributing one visible tree view, `olympia.tools` ("竞赛工具"), whose four
 sections are 当前环境 / 编译与运行 / 题目与模板 / AI 教练与帮助 — the middle one carries 编译并运行,
-只编译, 按评测机编译（-O2）, 提交前体检, 跑样例, 对拍, 比赛模式, each row showing its keybinding — and
+编译当前文件, 按评测机编译（-O2）, 提交前体检, 跑样例, 对拍, 比赛模式, each row showing its keybinding — and
 the first one shows the live compiler / profile / 体检 / 题面库 counts as clickable state rows. The
 题面库 row reads `.olympia/problems` through [`src/problemFiles.ts`](../../oss/extensions/olympia-onboarding/src/problemFiles.ts)
 — the one place this extension lists that directory, shared with 跑样例 so the two cannot disagree —
@@ -106,10 +107,33 @@ does not re-probe the toolchain. Four `editor/title` navigation buttons (编译�
 编译运行 `F9`, 体检) stay visible all the time. `olympia.debug.showEntryPoints` switches the extra debug
 rows in the panel off.
 
-Settings: `olympia.compiler.*` (`path`, `profile` default `luogu`, `customFlags`, `optimization`
-default `none`, `showCompileCommand` default `true`), `olympia.check.enabled` / `olympia.check.onSave`
-and the rule toggles that still exist — `olympia.check.rules.pragmaOptimize`, `.reservedWord`,
-`.removedCpp` — plus `olympia.stress.*` and `olympia.debug.showEntryPoints`.
+Settings: everything under `olympia.*` — `olympia.compiler.*` (`path`, `profile` default `luogu`,
+`customFlags`, `optimization` default `none`, `showCompileCommand` default `true`),
+`olympia.check.enabled` / `olympia.check.onSave` and the rule toggles that still exist
+(`olympia.check.rules.pragmaOptimize`, `.reservedWord`, `.removedCpp`), `olympia.judge.memoryLimitMb`,
+`olympia.stress.*`, `olympia.debug.showEntryPoints`, plus the contest extension's `olympia.problem.*`
+and `olympia.templates.cppSnippets` and the coach's `olympia.ai.*`.
+
+[`src/settingsPanel.ts`](../../oss/extensions/olympia-onboarding/src/settingsPanel.ts) is the answer to
+「Olympia 设置不好找」. `olympia.settings` (`Ctrl+Alt+,`, and a 全部设置 row in the panel) opens one webview
+listing **every** `olympia.*` property, read out of the three manifests through `vscode.extensions.all`:
+groups come from the key's second segment (`olympia.stress.rounds` → 对拍, with an unknown segment
+landing in 其他 instead of vanishing), the row title is the manifest's first sentence, the hint is the
+rest of it, enums show their `enumDescriptions` (洛谷默认 / NOI 官方 …) rather than the raw id, a value
+that differs from the default gets an 已改 badge and a 恢复默认 button, `.path` settings get 浏览…, and
+the two `olympia.ai.*` rows delegate to `olympia.ai.settings` because the key itself lives in
+SecretStorage. Nothing on the page is a second copy of the settings list, so adding a property to a
+manifest is enough to make it appear — and `test-settings-panel.mjs` asserts the rendered row count
+against the manifests, which is what turns that claim into something a build can check. Writes go to
+`ConfigurationTarget.Global` through the same `workspace.getConfiguration()` the features read from, and
+the page re-sends its values on configuration changes so editing `settings.json` by hand doesn't leave a
+stale form behind.
+
+Labels are single-sourced too: a panel row's text must equal the palette title of the command it invokes
+(rule 6 in `check-command-wiring.mjs`, with the palette's trailing ellipsis ignored), which closed eight
+places where the panel said 打开题面库 while the palette called the same command 打开题面库（已缓存的题面）. The
+contest extension's commands also moved from the `Olympia 竞赛` category to plain `Olympia`, so typing
+`Olympia` in the palette lists all 21 entries in one place instead of splitting them across two prefixes.
 
 ## `olympia-contest` — statement pull and contest templates
 
@@ -143,9 +167,9 @@ id; a file that cannot be read at all still gets listed instead of taking the li
 | Command | Title | Keybinding (`when`) | Also in menus |
 | --- | --- | --- | --- |
 | `olympia.problem.pull` | 拉取题面... | `Ctrl+Alt+P` | explorer context |
-| `olympia.problem.pullFromClipboard` | 从剪贴板题号拉取题面 | `Ctrl+Alt+V` (`editorTextFocus`) | command palette |
+| `olympia.problem.pullFromClipboard` | 从剪贴板拉取题号 | `Ctrl+Alt+V` (`editorTextFocus`) | command palette |
 | `olympia.template.insert` | 插入赛制模板... | `Ctrl+Alt+T` (`editorTextFocus`) | editor tab context (`resourceLangId == cpp`) |
-| `olympia.problem.openStatement` | 打开题面库（已缓存的题面） | `Ctrl+Alt+O` (`editorTextFocus`) | command palette |
+| `olympia.problem.openStatement` | 打开题面库 | `Ctrl+Alt+O` (`editorTextFocus`) | command palette |
 | `olympia.problem.appendSample` | 给这道题加一组自定义样例 | — | also called by 对拍 with `{hint, input, output}` |
 
 [`src/statementSamples.ts`](../../oss/extensions/olympia-contest/src/statementSamples.ts) appends one
@@ -294,10 +318,10 @@ the flag is falsy, and it was falsy only by omission), and the `defaultChatAgent
 
 ## How to verify without a device
 
-Eight harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
+Nine harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
 with `vscode` stubbed through a `Module._load` hook (the memory probe needs no stub — it only talks to
 `child_process` and `tasklist.exe`), so they test the shipped code path rather than a
-re-implementation; the ninth, `check-command-wiring.mjs`, reads the manifests and sources instead. Compile first (`npm run gulp -- compile-extension:olympia-onboarding`), then run each
+re-implementation; the tenth, `check-command-wiring.mjs`, reads the manifests and sources instead. Compile first (`npm run gulp -- compile-extension:olympia-onboarding`), then run each
 with `node scripts/oneoff/<name>.mjs` from the repository root:
 
 | Harness | What it pins down |
@@ -310,7 +334,8 @@ with `node scripts/oneoff/<name>.mjs` from the repository root:
 | `test-cpp-snippets.mjs` | the 20-row C++ completion table: registration and `dispose`, every `detail`/hint line carries Chinese, aliases actually resolve (敲 `fast`/`sync`/`pow`/`union` 命中对应条目), placeholders close, the switch silences the list — and each body, with its placeholders filled, passes `g++ -std=c++17 -fsyntax-only` inside a generated translation unit |
 | `test-contest-gate.mjs` | the 比赛模式 → AI 教练 lock across both extensions: `setContext('olympia.contest.running')` flips exactly on start and stop (not every tick), `olympia.contest.isRunning` answers accordingly, and while it is set `@coach` writes only the refusal and never asks for the model list. The rest drives a fake clock (`Date.now` offset) through the reload paths: a restored contest announces 时间到 once and only once as it crosses zero, one that expired while the window was closed clears `endsAt` instead of restoring, the custom-duration input accepts only integers in range, and dispose-then-activate leaves no phantom contest to lock the coach (this last one is what caught the module state that `release()` now resets) |
 | `test-problem-library.mjs` | the local problem bank end to end: statements written by the real `renderStatement` are read back with title / 来源 / 时限 / 内存 / 样例数 intact (writer and reader share `FIELD`, so this is the drift guard), ordering by pull time, a heading that is not a problem id falling back to the filename, an unreadable file still listed instead of taking the list down, the quick-pick rows showing title + limits + relative path + 「今天」, `Ctrl+Alt+O` opening exactly the picked file and refusing to open an empty list, 补样例 refusing to write over a statement that is open with unsaved edits (and writing once it is saved), and the panel's 题面库 row (份数, and 还没拉过题面 → points at 拉取题面). Breaking the written field label in `out/templates.js` makes two checks fail — the assertions discriminate |
-| `check-command-wiring.mjs` | every command the UI points at (palette entry, `editor/title`, keybinding, walkthrough button, start entry) actually has a `registerCommand` behind it, and vice versa — the "button that does nothing" class. It also resolves the ids the **code** clicks (tree rows, status chips, notification buttons) and requires them to be registered by one of the three extensions, which is what makes a typo in a cross-extension row (`olympia.problem.openStatement`) a build failure instead of a dead button. Bitten-ness is verified, not assumed: typo'ing one id in `olympia-onboarding/package.json` makes it report three problems and exit 1, and so does typo'ing the panel's library command |
+| `test-settings-panel.mjs` | the Olympia 设置 page against the manifests on disk: every `olympia.*` property in the three `package.json` files must be a row (row count is compared to the schema count, so adding a setting without the page listing it fails), grouping comes from the key, enum options show `enumDescriptions`, an unknown segment still shows up under 其他, `.path` rows get 浏览… and write what was picked to Global, a 改过的 row is marked 已改 and 恢复默认 deletes the key so the default comes back, a rejected `update` is shown instead of swallowed, the AI rows delegate, reopening reveals the same panel instead of stacking a second one, and a setting key or default containing `<script>` / `<img onerror>` comes out escaped (disabling `escapeHtml`, limiting the scan to one manifest, emptying the AI delegate list and removing the path-picker condition each make exactly the check that covers them fail) |
+| `check-command-wiring.mjs` | every command the UI points at (palette entry, `editor/title`, keybinding, walkthrough button, start entry) actually has a `registerCommand` behind it, and vice versa — the "button that does nothing" class. It also resolves the ids the **code** clicks (tree rows, status chips, notification buttons) and requires them to be registered by one of the three extensions, which is what makes a typo in a cross-extension row (`olympia.problem.openStatement`) a build failure instead of a dead button. Bitten-ness is verified, not assumed: typo'ing one id in `olympia-onboarding/package.json` makes it report three problems and exit 1, and so does typo'ing the panel's library command. Rule 6 is the label-drift guard: every panel row must carry the same wording as the command's palette title (the trailing `...` aside), which is what keeps 「打开题面库」 from being two different strings in two different places |
 
 The bundled compiler is what makes the pipeline harnesses real rather than mocked: they resolve
 `VSCode-win32-x64/resources/app/toolchain/mingw64/bin/g++.exe` through the normal

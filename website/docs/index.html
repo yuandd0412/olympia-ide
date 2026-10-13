@@ -66,7 +66,7 @@
 				<li><em>当前环境</em>：编译器版本、编译档位、体检结果、比赛剩余时间</li>
 				<li><em>编译与运行</em>：编译并运行、只编译、按评测机编译、提交前体检、对拍、比赛模式</li>
 				<li><em>题目与模板</em>：拉取题面、从剪贴板拉题号、打开题面库、插入赛制模板</li>
-				<li><em>AI 教练与帮助</em>：AI 设置、环境自检、打开官网</li>
+				<li><em>AI 教练与帮助</em>：AI 设置、全部设置、环境自检、打开官网</li>
 			</ul>
 		</article>
 		<article>
@@ -285,13 +285,14 @@
 			<thead><tr><th>操作</th><th>键位</th><th>说明</th></tr></thead>
 			<tbody>
 				<tr><td>编译并运行</td><td><kbd>F9</kbd></td><td>按当前档位编译，通过后直接运行</td></tr>
-				<tr><td>只编译</td><td><kbd>Shift</kbd>+<kbd>F9</kbd></td><td>只看有没有编译错误</td></tr>
+				<tr><td>编译当前文件</td><td><kbd>Shift</kbd>+<kbd>F9</kbd></td><td>只看有没有编译错误</td></tr>
 				<tr><td>按评测机编译</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F9</kbd></td><td>强制 <code>-O2</code>，复现评测机</td></tr>
 				<tr><td>提交前体检</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Enter</kbd></td><td>扫描会在评测机上编译失败的写法</td></tr>
 				<tr><td>跑样例</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>J</kbd></td><td>本地判定 AC / WA / RE / TLE / MLE</td></tr>
 				<tr><td>对拍</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd></td><td>随机数据比对正解与暴力</td></tr>
 				<tr><td>比赛模式</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd></td><td>开始 / 结束倒计时</td></tr>
 				<tr><td>环境自检</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd></td><td>逐项检查编译器、参数、AI 配置</td></tr>
+				<tr><td>Olympia 设置</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>,</kbd></td><td>一屏改完编译档位、对拍轮数、题面位置等全部开关</td></tr>
 				<tr><td>切换评测机档位</td><td>点状态栏 <em>洛谷 · C++23</em></td><td>洛谷 / NOI / 自定义</td></tr>
 				<tr><td>拉取题面</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd></td><td>洛谷、Codeforces、AtCoder</td></tr>
 				<tr><td>从剪贴板拉题号</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd></td><td>复制网页链接后直接识别</td></tr>
@@ -305,6 +306,10 @@
 <section id="settings">
 	<h2>设置项一览</h2>
 	<p class="section-lede">全部以 <code>olympia.</code> 开头，在设置里搜 <code>olympia</code> 会按「编译器与评测 / 题面与模板 / AI 教练」分组。</p>
+	<p>不用翻设置页：按 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>,</kbd>（或点左侧 Olympia 面板的<em>全部设置</em>）打开
+	<b>Olympia 设置</b>，编译档位、跑样例的内存上限、对拍轮数、题面存放位置都在同一屏，每一项的说明就写在它下面，
+	改完立刻写进 <code>settings.json</code>。改过的项会标「已改」，一键退回默认。这一页是照着扩展清单生成的，
+	所以下面这张表里有的，页面上一定也有。</p>
 	<div class="table-wrap">
 		<table>
 			<thead><tr><th>设置</th><th>默认值</th><th>作用</th></tr></thead>
@@ -399,6 +404,8 @@
 		<li>比赛模式：重载后跨过零点照样提醒「比赛时间到」（只提醒一次）；关窗期间已经打完的一局不会再复活；
 		禁用再启用不会留下一场幽灵比赛把 AI 教练锁死</li>
 		<li>对拍抓到的反例不会被下一场覆盖，提示直接说出写成了哪个文件</li>
+		<li>Olympia 设置：编译档位、跑样例内存、对拍轮数、题面位置等全部开关收进一屏，说明写在每一项下面，<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>,</kbd> 打开</li>
+		<li>面板里每一行的名字和命令面板里的标题现在是同一句，不会再出现「面板写打开题面库、搜索时叫已缓存的题面」这种对不上的情况</li>
 		<li>AI 教练改为自带 Key（BYOK）：不再有任何登录、账号、订阅入口</li>
 		<li>出厂主题 One Dark Pro；活动栏精简；界面与向导文案汉化</li>
 		<li>安装器改为分卷 + 网络引导，用户级安装，不需要管理员权限</li>

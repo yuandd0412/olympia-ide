@@ -59,7 +59,7 @@
 				<span class="side-item ok">提交前体检：无问题</span>
 				<span class="side-group">编译与运行</span>
 				<span class="side-item run">编译并运行 &nbsp;<em>F9</em></span>
-				<span class="side-item">只编译 &nbsp;<em>Shift+F9</em></span>
+				<span class="side-item">编译当前文件 &nbsp;<em>Shift+F9</em></span>
 				<span class="side-item">按评测机编译（-O2）</span>
 			</div>
 			<div class="mock-code">
@@ -168,9 +168,9 @@
 			<h3>Olympia 侧栏</h3>
 			<ul class="check">
 				<li>当前环境：编译器、编译配置、体检状态</li>
-				<li>编译与运行：编译并运行、只编译、按评测机编译、提交前体检、对拍、比赛模式</li>
-				<li>题目与模板：拉取题面、从剪贴板拉题号、插入赛制模板</li>
-				<li>AI 教练与帮助：AI 设置、环境自检、打开官网与文档</li>
+				<li>编译与运行：编译并运行、编译当前文件、按评测机编译、提交前体检、跑样例、对拍、比赛模式</li>
+				<li>题目与模板：拉取题面、从剪贴板拉题号、打开题面库、给这道题加一组自定义样例、插入赛制模板</li>
+				<li>AI 教练与帮助：AI 设置、全部设置、环境自检、打开官网与文档</li>
 			</ul>
 		</div>
 		<div>
@@ -192,13 +192,14 @@
 			<thead><tr><th>操作</th><th>键位</th><th>说明</th></tr></thead>
 			<tbody>
 				<tr><td>编译并运行</td><td><kbd>F9</kbd></td><td>按当前评测机档位编译，成功后直接运行</td></tr>
-				<tr><td>只编译</td><td><kbd>Shift</kbd>+<kbd>F9</kbd></td><td>只看有没有编译错误，不运行</td></tr>
+				<tr><td>编译当前文件</td><td><kbd>Shift</kbd>+<kbd>F9</kbd></td><td>只看有没有编译错误，不运行</td></tr>
 				<tr><td>按评测机编译（-O2）</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F9</kbd></td><td>打开优化复现评测机行为</td></tr>
 				<tr><td>提交前体检</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Enter</kbd></td><td>扫描会在评测机上编译失败的写法</td></tr>
 				<tr><td>跑样例</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>J</kbd></td><td>用题面样例本地判定 AC / WA / RE / TLE / MLE</td></tr>
 				<tr><td>对拍</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd></td><td>随机数据比对正解与暴力，不一致留下那组数据</td></tr>
 				<tr><td>比赛模式</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd></td><td>选时长开始倒计时，再点一次结束</td></tr>
 				<tr><td>环境自检</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd></td><td>逐项检查编译器、参数、AI 配置</td></tr>
+				<tr><td>Olympia 设置</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>,</kbd></td><td>一屏改完编译档位、对拍轮数、题面位置等全部开关</td></tr>
 				<tr><td>切换评测机档位</td><td>点状态栏 <em>洛谷 · C++23</em></td><td>洛谷 / NOI / 自定义</td></tr>
 				<tr><td>拉取题面</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd></td><td>洛谷、Codeforces、AtCoder</td></tr>
 				<tr><td>从剪贴板拉题号</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd></td><td>复制网页链接后直接识别</td></tr>

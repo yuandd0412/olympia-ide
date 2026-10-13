@@ -397,5 +397,89 @@ await check('题面在编辑器里有没保存的改动时先停手，别把人�
 	assert.match(fs.readFileSync(file, 'utf8'), /### 样例 3/, '补的样例没进题面');
 });
 
+// 「做过的题」是 olympia-onboarding 写的解题记录，题库这边只读——两边共用一个文件，
+// 字段名对不上就是一道道看不出勾的题，所以这里坚持用**写入方**造数据。
+const solveLog = await import(pathToFileURL(path.join(onboardingOut, 'solveLog.js')).href);
+const marks = await import(pathToFileURL(path.join(contestOut, 'solvedMarks.js')).href);
+
+/** 用产品自己的写入方记 N 次 AC（不是手写 JSON：手写就等于绕过那两个扩展）。 */
+async function acOf(problem, times = 1) {
+	for (let i = 0; i < times; i++) {
+		await solveLog.recordSolve({ problem, title: `${problem} 的标题`, at: new Date().toISOString(), ms: 12 });
+	}
+}
+const solvesFileOf = () => path.join(workspaceRoot, '.olympia', 'solves.json');
+const pickOf = id => picks[0].items.find(item => item.entry.id === id);
+
+await check('做过一次的题在题库里带勾，没做过的不带；标题说清做了几道', async () => {
+	freshWorkspace();
+	writeStatement('P1001', 'A+B Problem');
+	writeStatement('P1002', '第二季');
+	await acOf('P1001');
+	await registered['olympia.problem.openStatement']();
+	const done = pickOf('P1001');
+	assert.match(done.label, /^✓ P1001 /, `做出来的题该带勾：${done.label}`);
+	assert.match(done.description, /已 AC/, `描述要写出做没做过：${done.description}`);
+	assert.equal(done.solvedTimes, 1);
+	const todo = pickOf('P1002');
+	assert.ok(!todo.label.startsWith('✓'), `没做过的题被标成做过了：${todo.label}`);
+	assert.equal(todo.solvedTimes, 0);
+	assert.match(picks[0].options.title, /缓存 2 道，已 AC 1 道/, picks[0].options.title);
+	assert.match(picks[0].options.placeHolder, /敲 AC/, '要告诉学生怎么只看做出来的');
+	// 打勾不能把「选中就是打开那一份」弄坏（第一项按 mtime/题号排，不假设是哪道）
+	assert.deepEqual(shown, [picks[0].items[0].entry.file], '题库打开的不是选中的那一行');
+});
+
+await check('两次 AC 同一道题就写「已 AC 2 次」', async () => {
+	freshWorkspace();
+	writeStatement('P1001', 'A+B Problem');
+	await acOf('P1001', 2);
+	await registered['olympia.problem.openStatement']();
+	assert.match(pickOf('P1001').description, /已 AC 2 次/, pickOf('P1001').description);
+	assert.equal(pickOf('P1001').solvedTimes, 2);
+});
+
+await check('题号大小写不一样也算同一道题', async () => {
+	freshWorkspace();
+	writeStatement('P1001', 'A+B Problem');
+	await acOf('p1001');
+	const found = await marks.solvedMarks();
+	assert.ok(marks.markOf(found, 'P1001'), '记录里写 p1001，题面文件叫 P1001，就该认出来');
+});
+
+await check('没有解题记录时题库照旧：不吹「已 AC 0 道」，也不打勾', async () => {
+	freshWorkspace();
+	writeStatement('P1001', 'A+B Problem');
+	writeStatement('P1002', 'B');
+	await registered['olympia.problem.openStatement']();
+	assert.equal(fs.existsSync(solvesFileOf()), false, '这个检查台不该凭空写出记录文件');
+	assert.match(picks[0].options.title, /缓存了 2 道题/, picks[0].options.title);
+	assert.ok(!picks[0].options.title.includes('已 AC'));
+	assert.ok(!picks[0].items.some(item => item.label.startsWith('✓')));
+});
+
+await check('记录文件坏了不能把题库带崩', async () => {
+	freshWorkspace();
+	writeStatement('P1001', 'A+B Problem');
+	fs.mkdirSync(path.dirname(solvesFileOf()), { recursive: true });
+	fs.writeFileSync(solvesFileOf(), '{ 这不是 JSON', 'utf8');
+	await registered['olympia.problem.openStatement']();
+	assert.equal(picks.length, 1, '记录读不出来，题库干脆不弹了');
+	assert.ok(!pickOf('P1001').label.startsWith('✓'));
+});
+
+await check('写入方数的道数和读取方一致（两个扩展对同一份文件的理解不能分家）', async () => {
+	freshWorkspace();
+	writeStatement('P1001', 'A+B Problem');
+	writeStatement('P1002', 'B');
+	await acOf('P1001', 3);
+	await acOf('P1002');
+	const written = new Set((await solveLog.readSolves()).map(r => r.problem.toLowerCase()));
+	const read = await marks.solvedMarks();
+	assert.equal(read.size, written.size, `题面库认出的题数（${read.size}）和解题记录写的（${written.size}）不一样`);
+	assert.equal(read.get('p1001').times, 3, '次数没跟着记录走');
+	assert.ok(JSON.parse(fs.readFileSync(solvesFileOf(), 'utf8')).length === 4, '写入方自己数的条数也对不上');
+});
+
 console.log(failed ? '\nFAILED' : '\nall problem-library assertions passed');
 process.exitCode = failed ? 1 : 0;

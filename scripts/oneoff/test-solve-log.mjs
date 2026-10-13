@@ -84,7 +84,10 @@ Module._load = originalLoad;
 const context = { subscriptions: [], workspaceState: { get: () => undefined, update: async () => { } } };
 solveLog.registerSolveLog(context);
 
-const solvesFile = path.join(workspace, '.olympia', 'solves.json');
+// 路径从代码那边取，不在检查台里再抄一遍：常量改了而文案没改，面板说的是 a、写的是 b，
+// 而这里每条断言都会因为找不到文件而红——正是想要的效果。
+const [solvesFolder, solvesName] = solveLog.SOLVES_PATH_LABEL.split('/');
+const solvesFile = path.join(workspace, solvesFolder, solvesName);
 
 function record(problem, at, ms = 10, peakBytes = 5 * 1024 * 1024) {
 	return { problem, title: `${problem} A+B Problem`, at, ms, peakBytes };

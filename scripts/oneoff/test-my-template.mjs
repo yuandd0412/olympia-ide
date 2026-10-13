@@ -18,6 +18,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../..');
 const contestOut = path.join(repoRoot, 'oss/extensions/olympia-contest/out');
+const onboardingOut = path.join(repoRoot, 'oss/extensions/olympia-onboarding/out');
+const onboardingSrc = path.join(repoRoot, 'oss/extensions/olympia-onboarding/src');
 
 const messages = [];
 const picks = [];
@@ -130,6 +132,7 @@ Module._load = function (request, parent, isMain) {
 
 const templates = await import(pathToFileURL(path.join(contestOut, 'templates.js')).href);
 const contest = await import(pathToFileURL(path.join(contestOut, 'extension.js')).href);
+const onboardingFiles = await import(pathToFileURL(path.join(onboardingOut, 'problemFiles.js')).href);
 
 const context = () => ({ subscriptions: [], workspaceState: { get: (_k, d) => d, update: async () => { } } });
 contest.activate(context());
@@ -316,6 +319,13 @@ await check('赛制模板那两条路照旧：IOI 插的是函数版，没有 ma
 await check('模板清单里就两个赛制，加赛制只改表不改逻辑', () => {
 	assert.deepEqual(Object.keys(templates.FORMAT_LABEL), ['acm', 'ioi']);
 	assert.deepEqual(Object.keys(templates.PLATFORM_TEXT), ['luogu', 'codeforces', 'atcoder']);
+});
+
+await check('面板说的模板路径就是 contest 真正写的那个文件（两个扩展各说各的算 bug）', () => {
+	// onboarding 不能 import contest 的源码，所以它那份标签只能靠这条断言拴在真实路径上。
+	assert.equal(onboardingFiles.TEMPLATE_PATH_LABEL, `${templates.TEMPLATE_FOLDER}/${templates.TEMPLATE_FILE}`);
+	const view = fs.readFileSync(path.join(onboardingSrc, 'toolsView.ts'), 'utf8');
+	assert.ok(!view.includes(onboardingFiles.TEMPLATE_PATH_LABEL), '面板里又把路径写成了字面量，应该用 TEMPLATE_PATH_LABEL');
 });
 
 console.log(failed ? '\nFAILED' : '\nall my-template assertions passed');

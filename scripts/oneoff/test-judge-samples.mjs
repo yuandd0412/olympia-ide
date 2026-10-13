@@ -1,5 +1,9 @@
-// 样例评测的题面解析测试：直接加载扩展编译产物 out/judgeSamples.js，
-// 用和 renderStatement 完全一致的 Markdown 形状做断言。
+// 样例评测的题面解析测试：直接加载扩展编译产物 out/judgeSamples.js。
+//
+// 原来这里把 Markdown 形状**手抄**了一份，注释写着「与 renderStatement 逐字对齐」——
+// 那句对齐是靠人守的，写题面那一边（olympia-contest/templates.ts）改了字段名，
+// 这边照样绿，而真机上跑样例一条样例都读不到。所以基准那份现在是**产品自己的写入方**生成的，
+// 只有故意试各种写法的用例才继续手写。
 // 运行：node scripts/oneoff/test-judge-samples.mjs
 import Module from 'node:module';
 import assert from 'node:assert';
@@ -8,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const extensionOut = path.resolve(here, '../../oss/extensions/olympia-onboarding/out');
+const contestOut = path.resolve(here, '../../oss/extensions/olympia-contest/out');
 
 // 扩展源码 import 'vscode'，在 node 里只能靠打桩。这里只用到枚举与配置读取，
 // 解析函数本身不碰 vscode，所以桩保持最小。
@@ -45,55 +50,52 @@ function check(name, fn) {
 	}
 }
 
-/** 与 olympia-contest 的 renderStatement 逐字对齐：它写的是「时限：1000 ms」「内存：128 MB」。 */
-const statement = [
-	'# P1001 A+B Problem',
-	'',
-	'> 来源：洛谷 ｜ 难度：入门 ｜ 时限：1000 ms ｜ 内存：128 MB',
-	'> 原文链接：https://www.luogu.com.cn/problem/P1001',
-	'',
-	'## 题目描述',
-	'',
-	'输入两个整数，输出它们的和。',
-	'',
-	'## 样例数据',
-	'',
-	'### 样例 1',
-	'',
-	'**输入**',
-	'',
-	'```',
-	'3 4',
-	'```',
-	'',
-	'**输出**',
-	'',
-	'```',
-	'7',
-	'```',
-	'',
-	'### 样例 2',
-	'',
-	'**输入**',
-	'',
-	'```',
-	'-5 5',
-	'',
-	'```',
-	'',
-	'**输出**',
-	'',
-	'```',
-	'0',
-	'```',
-	'',
-	'**说明**：第二组用来验证负数。',
-	'',
-	'## 说明 / 提示',
-	'',
-	'没有提示。',
-	'',
-].join('\n');
+/** 写入方是 olympia-contest 的 renderStatement：题面就是这么落到磁盘上的。 */
+const templates = await import(pathToFileURL(path.join(contestOut, 'templates.js')).href);
+
+const given = {
+	id: 'P1001',
+	title: 'A+B Problem',
+	url: 'https://www.luogu.com.cn/problem/P1001',
+	platform: 'luogu',
+	statement: '输入两个整数，输出它们的和。',
+	inputFormat: '',
+	outputFormat: '',
+	hint: '没有提示。',
+	tags: ['模拟'],
+	difficulty: '入门',
+	// 故意不用「读不出来时的那个默认值」当数据：写成 1000 ms 的话，
+	// 时限字段改名读不出来也是 1000，检查台会跟着绿。
+	timeLimit: '1234 ms',
+	memoryLimit: '77 MB',
+	samples: [
+		{ input: '3 4', output: '7' },
+		{ input: '-5 5', output: '0', explain: '第二组用来验证负数。' }
+	]
+};
+const statement = templates.renderStatement(given);
+
+check('跑样例读的题面就是写题面那一边写下来的形状（写的人改了字段名，这边要立刻变红）', () => {
+	const parsed = judge.parseSamples(statement);
+	assert.equal(parsed.samples.length, given.samples.length, `题面写了 ${given.samples.length} 组，读出来 ${parsed.samples.length} 组`);
+	given.samples.forEach((sample, index) => {
+		assert.equal(parsed.samples[index].number, index + 1, `第 ${index + 1} 组的编号读错`);
+		assert.equal(parsed.samples[index].input.trim(), sample.input, `第 ${index + 1} 组的输入读不回来`);
+		assert.equal(parsed.samples[index].expected.trim(), sample.output, `第 ${index + 1} 组的输出读不回来`);
+	});
+	assert.equal(parsed.timeLimitMs, 1234, '题面上的「时限：1234 ms」读不出来');
+	assert.equal(parsed.memoryLimitMb, 77, '题面上的「内存：77 MB」读不出来');
+
+	// 面板/对拍补的那一组走的是 renderSampleBlock，读它的还是上面那套正则：
+	// 两处各写一遍形状，迟早对不上。
+	const hintAt = statement.indexOf('## 说明 / 提示');
+	assert.ok(hintAt > 0, '写入方的小节标题变了，这个检查台要跟着改');
+	const appended = statement.slice(0, hintAt) + templates.renderSampleBlock(3, { input: '1 2', output: '3', explain: '自己加的样例' }) + statement.slice(hintAt);
+	const after = judge.parseSamples(appended);
+	assert.deepEqual(after.samples.map(s => s.number), [1, 2, 3], '补进题面的样例读不回来');
+	assert.equal(after.samples[2].input.trim(), '1 2');
+	assert.equal(after.samples[2].expected.trim(), '3');
+});
 
 check('两组样例都被解析出来', () => {
 	const { samples } = judge.parseSamples(statement);
@@ -105,7 +107,7 @@ check('两组样例都被解析出来', () => {
 });
 
 check('拉题面写出的 ms 时限被正确读出来（不再是默认 1s）', () => {
-	assert.equal(judge.parseSamples(statement).timeLimitMs, 1000);
+	assert.equal(judge.parseSamples(statement).timeLimitMs, 1234);
 	assert.equal(judge.parseSamples('> 时限：2000 ms').timeLimitMs, 2000);
 });
 

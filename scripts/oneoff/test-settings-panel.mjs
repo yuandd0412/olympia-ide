@@ -12,16 +12,17 @@ import Module from 'module';
 import assert from 'assert';
 import { readFileSync } from 'fs';
 import { createRequire } from 'module';
-import path from 'path';
+import { fileURLToPath } from 'url';
 
 const outDir = new URL('../../oss/extensions/olympia-onboarding/out/', import.meta.url);
+const extensionsRoot = new URL('../../oss/extensions/', import.meta.url);
 const requireOnboarding = createRequire(new URL('settingsPanel.js', outDir));
 const SETTINGS_COMMAND = 'olympia.settings';
 const REAL_EXTENSIONS = ['olympia-onboarding', 'olympia-contest', 'olympia-coach'];
 
 function manifest(name) {
-	const file = path.join(process.cwd(), 'oss', 'extensions', name, 'package.json');
-	return JSON.parse(readFileSync(file, 'utf8'));
+	// 从脚本自己的位置找清单：在 oss/ 目录下随手跑一次，也不该报一个「找不到 oss/oss/…」的假失败。
+	return JSON.parse(readFileSync(fileURLToPath(new URL(`${name}/package.json`, extensionsRoot)), 'utf8'));
 }
 
 /** 清单里的全部 olympia.* 设置项——页面上的行数要和这个数一致。 */

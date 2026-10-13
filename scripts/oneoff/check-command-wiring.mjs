@@ -265,6 +265,36 @@ for (const id of OLYMPIA_EXTENSIONS) {
 	summary.push(`${id}: 声明 ${(manifest.contributes?.commands ?? []).length} 条，注册 ${registered.size} 条，界面引用 ${referenced.length} 处，代码点掉 ${invoked.size} 条，面板行 ${panelRows(srcDir).length} 行`);
 }
 
+// 7) 消息里写出来的快捷键必须是清单里真配的键。提示语写「按 F5」而清单是 F9，
+//    学生按下去只会改到别的东西上——而这句话是产品说的，不是用户写错的。
+//    三个扩展共用一张表：面板里的提示常说到别的扩展的命令键。
+/** 清单里的键名写法（ctrl+alt+comma）和学生看到的写法（Ctrl+Alt+,）之间只差这一层名字。 */
+const KEY_ALIASES = { comma: ',', period: '.', semicolon: ';', quote: "'", backslash: '\\', minus: '-', equal: '=', bracketleft: '[', bracketright: ']', grave: '`', space: 'Space', enter: 'Enter', escape: 'Escape', tab: 'Tab', backspace: 'Backspace', delete: 'Delete' };
+const declaredKeys = new Set();
+for (const id of OLYMPIA_EXTENSIONS) {
+	const manifest = JSON.parse(fs.readFileSync(path.join(extensionsRoot, id, 'package.json'), 'utf8'));
+	for (const kb of manifest.contributes?.keybindings ?? []) {
+		for (const form of [kb.key, kb.mac, kb.linux, kb.win]) {
+			if (!form) { continue; }
+			declaredKeys.add(String(form).split('+').map(part => KEY_ALIASES[part] ?? (part === 'cmd' ? 'Cmd' : `${part[0].toUpperCase()}${part.slice(1)}`)).join('+'));
+		}
+	}
+}
+const KEY_MENTIONS = /\b(?:Ctrl|Shift|Alt|Cmd)(?:\+(?:Ctrl|Shift|Alt|Cmd|F\d+|[A-Za-z0-9,;.])+)+/g;
+/** VS Code 自带的键：不在我们的清单里，但说错了同样是误导，所以写明白而不是不查。 */
+const STANDARD_EDITOR_KEYS = new Set(['Ctrl+S', 'Ctrl+Shift+P', 'Ctrl+P', 'Ctrl+Shift+E']);
+for (const id of OLYMPIA_EXTENSIONS) {
+	const srcDir = path.join(extensionsRoot, id, 'src');
+	if (!fs.existsSync(srcDir)) { continue; }
+	for (const name of fs.readdirSync(srcDir).filter(f => f.endsWith('.ts'))) {
+		for (const match of fs.readFileSync(path.join(srcDir, name), 'utf8').matchAll(KEY_MENTIONS)) {
+			if (!declaredKeys.has(match[0]) && !STANDARD_EDITOR_KEYS.has(match[0])) {
+				problems.push(`${id}: ${name} 里写着「${match[0]}」，三个清单的 keybindings 都没有这个键`);
+			}
+		}
+	}
+}
+
 console.log(summary.join('\n'));
 if (problems.length) {
 	console.log(`\n发现 ${problems.length} 处接线问题：`);

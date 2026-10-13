@@ -487,10 +487,15 @@ open-folder, save, external links and chat history replace them.
 Eleven harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
 with `vscode` stubbed through a `Module._load` hook (the memory probe needs no stub — it only talks to
 `child_process` and `tasklist.exe`), so they test the shipped code path rather than a
-re-implementation; two more, `check-command-wiring.mjs` and `check-core-copy.mjs`, read
-the manifests and the **built core** (`oss/out`) instead. Compile first
+re-implementation; four more read *declarations* instead of behaviour — `check-command-wiring.mjs`
+(manifests ↔ registrations ↔ UI rows), `check-core-copy.mjs` (the **built core**, `oss/out`),
+`check-config-defaults.mjs` (manifest defaults ↔ code fallbacks) and `check-extension-copy.mjs`
+(the 50 shipped manifests, their `package.nls.json`, and the C/C++/Markdown snippets). Compile first
 (`npm run gulp -- compile-extension:olympia-onboarding`, and `npm run compile-client` for the core
-check), then run each with `node scripts/oneoff/<name>.mjs` from the repository root:
+check), then run each with `node scripts/oneoff/<name>.mjs` from the repository root. Every one of them
+resolves its paths from `import.meta.url`, not from the working directory, so a harness run from `oss/`
+checks the same files instead of crashing on a made-up `oss/oss/…` path — `test-settings-panel.mjs` used
+to be the exception, and its failure looked exactly like a broken manifest:
 
 | Harness | What it pins down |
 | --- | --- |
@@ -507,6 +512,8 @@ check), then run each with `node scripts/oneoff/<name>.mjs` from the repository 
 | `test-settings-panel.mjs` | the Olympia 设置 page against the manifests on disk: every `olympia.*` property in the three `package.json` files must be a row (row count is compared to the schema count, so adding a setting without the page listing it fails), grouping comes from the key, enum options show `enumDescriptions`, an unknown segment still shows up under 其他, `.path` rows get 浏览… and write what was picked to Global, a 改过的 row is marked 已改 and 恢复默认 deletes the key so the default comes back, a rejected `update` is shown instead of swallowed, the AI rows delegate, reopening reveals the same panel instead of stacking a second one, and a setting key or default containing `<script>` / `<img onerror>` comes out escaped (disabling `escapeHtml`, limiting the scan to one manifest, emptying the AI delegate list and removing the path-picker condition each make exactly the check that covers them fail) |
 | `check-core-copy.mjs` | the sentences and switches we changed in `src/vs`, read back out of `oss/out`: 更新方式 / 发行说明 / 扩展自动检查更新 say what this build actually does, 自然语言搜索 and 实验 are **default `false`** (a service we never configured should not look enabled), and every welcome-page entry we turned off really carries `when: "false"` — 4 remote/Git start entries, 新建工作区 chat, the 调试 和 4 Git steps, and all four Copilot setup steps at once through `createCopilotSetupStep`. The "one constant gates the whole surface" claims are checked **per entry, by position** (`MenuId.CommandPalette` … `when: THE_CONST` within 520 chars), not by counting: counting passes when a leak and a spare gate cancel out, and that is exactly how the first version of this check missed one of the 15 task entries. It also asserts `HIDDEN_VIEWLETS` carries all four deregistered containers *and* imports each contribution module (a missing import fails silently at runtime — the loop just finds nothing to remove), and that 管理帐户 left the palette. It decodes `\uXXXX` before matching, because grepping the built tree for Chinese text reads nothing and reports a clean pass |
 | `check-command-wiring.mjs` | every command the UI points at (palette entry, `editor/title`, keybinding, walkthrough button, start entry) actually has a `registerCommand` behind it, and vice versa — the "button that does nothing" class. It also resolves the ids the **code** clicks (tree rows, status chips, notification buttons) and requires them to be registered by one of the three extensions, which is what makes a typo in a cross-extension row (`olympia.problem.openStatement`) a build failure instead of a dead button. Bitten-ness is verified, not assumed: typo'ing one id in `olympia-onboarding/package.json` makes it report three problems and exit 1, and so does typo'ing the panel's library command. Rule 6 is the label-drift guard: every panel row must carry the same wording as the command's palette title (the trailing `...` aside), which is what keeps 「打开题面库」 from being two different strings in two different places |
+| `check-config-defaults.mjs` | every `get('key', 兜底)` in the three extensions against the `default` the manifest declares for that key — 18 of them today, resolving per-file `const` names for both the key (`GOAL_SETTING`) and the fallback (`DEFAULT_PROBLEMS_DIR`) because that is how the fallback is actually written. Memento/`SecretStorage` `.get(key)` calls are excluded on purpose (`olympia.contest.endsAt` is state, not a setting), and a fallback that is an expression is printed as `n/a` rather than guessed, so the coverage boundary is visible instead of implied. Making onboarding's problems-dir fallback say `.olympia/cases` turns exactly that line red |
+| `check-extension-copy.mjs` | the English that a student can still reach: it walks the 50 shipped extensions' `package.json` + `package.nls.json` visible keys (`title`/`label`/`description`/`displayName`/`placeholder`…) and the C/C++/Markdown `*.code-snippets`, and reports values with no CJK that read like a **sentence** (three words+). That scoping is the point: `Emmet`, `JSON`, `TypeScript Go` and theme names stay (they are names, not sentences), notebook-renderer / language-model-tool / debug-schema strings are out of a product where notebooks are switched off, and js/ts snippet descriptions are completions for languages this product does not teach — translating those would buy nothing and cost upstream merges. It found 16 reachable English sentences (all in the Markdown completions a student uses while editing a 题面) and now exits clean; putting one back reports exactly that one line |
 
 The bundled compiler is what makes the pipeline harnesses real rather than mocked: they resolve
 `VSCode-win32-x64/resources/app/toolchain/mingw64/bin/g++.exe` through the normal
@@ -520,6 +527,41 @@ rejects everything, so every filename looked unused and the guard "passed" while
 previous run's evidence. Both now go through the real shape (`workspace.textDocuments` in the stub, node's
 `fs.stat` in the code, which is what `olympia-contest` already uses for statements), and the lesson is the
 same one the writer/reader drift guard teaches: assert the effect on disk, not the notification text.
+
+**A hand-copied fixture is a comment, not a check.** `test-judge-samples.mjs` used to open with a
+Markdown statement written out by hand next to a comment claiming it was "逐字对齐 `renderStatement`".
+Nothing enforced that: rename `SAMPLE_HEADING` or `CASE_INPUT` in `olympia-contest/src/templates.ts` and
+the harness keeps passing while 跑样例 finds zero samples on a real statement. Its base fixture is now
+produced by the writer itself (`contest/out/templates.js`), so the two sides can no longer drift apart
+silently — and the fixture had to stop using `1000 ms` / `128 MB`: **a fixture value equal to the
+reader's fallback can never fail**. With `timeLimit: 1000 ms` the first drift test (renaming
+`FIELD.timeLimit`) came back green, because the read simply fell through to the same 1000 the file
+says; `1234 ms` / `77 MB` are neither the default nor a clamped edge, so a lost field is now a red
+line. Renaming `FIELD.memoryLimit` *stays* green — deliberately reported rather than papered over:
+`内存限制：` is matched by a pattern that also matches `占用内存：`, so that particular rename is
+harmless and the harness would be lying if it claimed otherwise. Same batch, same discipline applied
+to the duplication the audit found: `时限`/`内存` in the bank's own rows now come from `FIELD`
+(one extension, real import), `.md` from the exported `STATEMENT_EXTENSION` (with
+`stripStatementExtension` for the three places that were regexing it off — note the *boundary*: inside
+`olympia-contest` that constant lives in `templates.ts` and inside `olympia-onboarding` in
+`problemFiles.ts`, because two extensions cannot import each other's source without a bundler, so what
+holds the two definitions together is `test-problem-library.mjs` reading a file one extension wrote, not
+an `import`), `stress-fail` from
+`EVIDENCE_FOLDER` *inside the message that names it*, and the 解题记录's peak-memory text from
+`memoryProbe.formatMb` so the panel and the record list cannot print different numbers for the same run.
+
+Two things the audit suggested and were **not** done: coach and onboarding repeat cross-extension
+command ids as string literals (`olympia.contest.isRunning`, `olympia.ai.settings`) — those pairs are
+already guarded, because `check-command-wiring.mjs` requires every id a file clicks to be registered by
+one of the three extensions, so a one-sided rename is a build failure, not a silent `catch → false`;
+and keybinding text typed into messages (`Ctrl+Alt+J` in a notification, `Ctrl+S` in 对拍's hint)
+duplicates `KEYS` and the manifests. Instead of moving every sentence behind a table, the durable guard
+won: `check-command-wiring.mjs` rule 7 collects the normalized `contributes.keybindings` of all three
+extensions (`ctrl+alt+comma` → `Ctrl+Alt+,`, mac forms included) and requires every `Ctrl+…`/`Alt+…`
+sequence written anywhere in the sources to be in that set. A standard VS Code key is allowed through an
+explicit named set (`STANDARD_EDITOR_KEYS`: 保存, the palette) rather than by loosening the match, so a
+message that promises a key nobody configured is a build failure. Rewriting one message to
+`Ctrl+Alt+K` reports exactly that line.
 
 Why the memory probe drives the child itself instead of asking PowerShell: `Start-Process -PassThru`
 returns an object whose `ExitCode` is frequently empty under PowerShell 5.1, so a crashing program

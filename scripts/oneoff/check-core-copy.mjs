@@ -85,21 +85,64 @@ report(/function createCopilotSetupStep[\s\S]{0,420}when:\s*"false"/.test(text(W
 report(!text(WELCOME).includes('chatSetupCompleted && !chatSetupDisabled'),
 	'Copilot 的登录态/套餐条件不再决定欢迎页显示什么');
 
-/** 齿轮菜单里的「任务」：产品说的是不用写 tasks.json，菜单就不该再把人往那领。 */
+/**
+ * 任务系统：产品说的是「不用写 tasks.json」，那命令面板里那二十来条「任务: …」
+ * 就不该继续把学生往那儿领。整组入口现在挂在**一个**恒假常量上，
+ * 所以这里查的是「有没有漏网的还挂在上游那个 key 上」。
+ */
 const TASKS = 'vs/workbench/contrib/tasks/browser/task.contribution.js';
-report(/MenuId\.GlobalActivity[\s\S]{0,220}ContextKeyExpr\.false\(\)/.test(text(TASKS)),
+report(/TASKS_UI_AVAILABLE = (?:\w+\.)?ContextKeyExpr\.false\(\)/.test(text(TASKS)),
+	'任务入口整组挂在一个恒假开关上');
+report(!/when: TaskExecutionSupportedContext/.test(text(TASKS)),
+	'没有任何任务入口还留在 TaskExecutionSupportedContext 上');
+const taskPalette = [...text(TASKS).matchAll(/MenuId\.CommandPalette/g)];
+/**
+ * 按位置逐条查，不是数个数：数个数只问「门够不够多」，
+ * 漏掉一条又同时多写一条没用的门，它就照样绿。
+ * 窗口取 520 个字符：编译后那条入口的 `command` 对象里夹着 localize2 的注释数组，门写在更后面。
+ */
+const taskLeaks = taskPalette.filter(m => !/when: TASKS_UI_AVAILABLE/.test(text(TASKS).slice(m.index, m.index + 520))).length;
+report(taskPalette.length > 0 && taskLeaks === 0,
+	`命令面板的 ${taskPalette.length} 条任务入口每条都挂着那一个常量（漏 ${taskLeaks} 条）`);
+report(/MenuId\.GlobalActivity[\s\S]{0,220}when: TASKS_UI_AVAILABLE/.test(text(TASKS)),
 	'齿轮菜单不再列「任务」');
-report(/MenuId\.MenubarPreferencesMenu[\s\S]{0,220}ContextKeyExpr\.false\(\)/.test(text(TASKS)),
+report(/MenuId\.MenubarPreferencesMenu[\s\S]{0,220}when: TASKS_UI_AVAILABLE/.test(text(TASKS)),
 	'菜单栏的偏好子菜单也不再列「任务」');
 
 /** 远程隧道：这个构建里没有 github 认证提供方，命令点了只能走到死路。 */
 const TUNNEL = 'vs/workbench/contrib/remoteTunnel/electron-browser/remoteTunnel.contribution.js';
-const paletteEntries = (text(TUNNEL).match(/id: MenuId\.CommandPalette/g) ?? []).length;
-const gated = (text(TUNNEL).match(/when: REMOTE_TUNNEL_COMMANDS_AVAILABLE/g) ?? []).length;
-report(paletteEntries > 0 && paletteEntries === gated,
-	`远程隧道的 ${paletteEntries} 条命令面板入口都被那一个常量关掉（${gated}）`);
+const paletteEntries = [...text(TUNNEL).matchAll(/MenuId\.CommandPalette/g)];
+const tunnelLeaks = paletteEntries.filter(m => !/when: REMOTE_TUNNEL_COMMANDS_AVAILABLE/.test(text(TUNNEL).slice(m.index, m.index + 520))).length;
+report(paletteEntries.length > 0 && tunnelLeaks === 0,
+	`远程隧道的 ${paletteEntries.length} 条命令面板入口每条都挂着那一个常量（漏 ${tunnelLeaks} 条）`);
 report(/REMOTE_TUNNEL_COMMANDS_AVAILABLE = (?:\w+\.)?ContextKeyExpr\.false\(\)/.test(text(TUNNEL)),
 	'远程隧道的开关就是一个恒假表达式');
+
+/**
+ * 活动栏裁剪：不改上游注册代码，而是在 Olympia 自己的模块里把容器摘掉。
+ * 加一条少一个图标，所以查的是「该摘的都在那张表上」，以及「先 import 那个贡献再摘它」
+ * —— 少一个 import 的话摘除会跑在注册之前，图标照旧亮着，而且没有任何报错。
+ */
+const ACTIVITY = 'vs/workbench/contrib/olympia/browser/olympiaActivityBar.js';
+const activity = text(ACTIVITY);
+const hiddenList = /HIDDEN_VIEWLETS = \[([\s\S]*?)\];/.exec(activity)?.[1] ?? '';
+for (const [needle, label] of [
+	['DEBUG_VIEWLET_ID', '运行与调试'],
+	['SCM_VIEWLET_ID', '源代码管理'],
+	['Testing.ViewletId', '测试'],
+	['Testing.ResultsPanelId', '测试结果']
+]) {
+	report(hiddenList.includes(needle), `${label}在 HIDDEN_VIEWLETS 里`);
+}
+for (const module of ['debug/browser/debug.contribution', 'scm/browser/scm.contribution', 'testing/browser/testing.contribution']) {
+	report(activity.includes(module), `先注册再摘：${module}`);
+}
+
+/** 「管理帐户」：本产品没有托管账号，账户按钮出厂就是关的，命令面板不该再留一条死路。 */
+const MANAGE = 'vs/workbench/contrib/authentication/browser/actions/manageAccountsAction.js';
+const manageAt = text(MANAGE).search(/workbench\.action\.manageAccounts/);
+report(manageAt >= 0 && /f1: false/.test(text(MANAGE).slice(manageAt, manageAt + 320)),
+	'「管理帐户」不再出现在命令面板');
 
 console.log(failed ? '\nFAILED' : '\nall core-copy checks passed');
 process.exitCode = failed ? 1 : 0;

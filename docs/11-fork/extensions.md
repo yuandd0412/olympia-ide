@@ -410,6 +410,43 @@ the flag is falsy, and it was falsy only by omission), and the `defaultChatAgent
 `/docs/ai`, `/terms`, `/privacy`, `/download` — none of which existed — now point at real pages under
 `website/`. `scripts/oneoff/check-website.mjs` fails if any product link stops resolving.
 
+**Removing a whole upstream surface is one constant, not twenty edits.** Three places now carry that
+shape, and each is asserted against the built tree by `check-core-copy.mjs`:
+
+* [`olympiaActivityBar.ts`](../../oss/src/vs/workbench/contrib/olympia/browser/olympiaActivityBar.ts)
+  holds `HIDDEN_VIEWLETS` — 运行与调试, 源代码管理, and now 测试 (`workbench.view.extension.test`) plus
+  测试结果 (`workbench.panel.testResults`). Deregistering the container also removes its
+  `openCommandActionDescriptor`, so 「测试」 disappears from the 打开视图 list and from the title-bar
+  视图 menu instead of opening an empty panel. **The module imports each contribution before it
+  deregisters anything**: registration happens at that module's top level, so a missing import means the
+  loop runs against an empty registry and the icon stays — with no error anywhere. That is why the file
+  imports `debug.contribution`, `scm.contribution` and `testing.contribution` itself rather than relying
+  on `workbench.common.main.ts` ordering.
+* [`task.contribution.ts`](../../oss/src/vs/workbench/contrib/tasks/browser/task.contribution.ts) now
+  gates every task surface on one `TASKS_UI_AVAILABLE = ContextKeyExpr.false()` (23 references: the
+  command-palette entries that used to read `when: TaskExecutionSupportedContext`, the composite
+  `WorkbenchStateContext` one, and the two gear / menubar rows from the previous batch). Restoring
+  upstream behaviour is one line, and the check asserts both halves: the constant is a literal false, and
+  *no* `when: TaskExecutionSupportedContext` survived. The commands themselves stay registered —
+  `TaskCommandsRegistered` is untouched — because other code paths invoke them; only the «go write
+  tasks.json» invitations are gone, which is what a 初中生 needs.
+* `workbench.action.manageAccounts` dropped to `f1: false`
+  ([`manageAccountsAction.ts`](../../oss/src/vs/workbench/contrib/authentication/browser/actions/manageAccountsAction.ts)).
+  With `showAccounts` seeded off, the palette entry opened a provider list that can only ever be empty
+  in a BYOK product; the command still exists so an account surface that *is* opened can still use it.
+
+Two candidates were **left alone on purpose**, because the evidence said they are not reachable rather
+than because nobody looked: the settings-sync viewlet is registered from inside a workbench contribution
+(`userDataSync.ts:1196`, i.e. *after* module import, so a top-level `deregisterViewContainer` could not
+catch it) but its container is `hideIfEmpty` and its views are gated on sync enablement, which cannot
+come true without an authentication provider; and `welcome.showAllWalkthroughs` stays, because grepping
+the 50 shipped manifests for a `walkthroughs` contribution returns exactly one file —
+`olympia-onboarding`'s own ten-step wizard, which is the thing that menu row is for.
+
+None of this is device-verified: 9 Olympia processes belong to the user and are never killed from here,
+so the evidence for these four surfaces is the built-tree assertions plus the registration sites read
+above, not a screenshot.
+
 ## What the old Tauri app still has that this fork does not
 
 Inventory taken from the old app's own command list (`frontend/src-tauri/src/lib.rs`
@@ -453,7 +490,7 @@ check), then run each with `node scripts/oneoff/<name>.mjs` from the repository 
 | `test-problem-library.mjs` | the local problem bank end to end: statements written by the real `renderStatement` are read back with title / 来源 / 时限 / 内存 / 样例数 intact (writer and reader share `FIELD`, so this is the drift guard), ordering by pull time, a heading that is not a problem id falling back to the filename, an unreadable file still listed instead of taking the list down, the quick-pick rows showing title + limits + relative path + 「今天」, `Ctrl+Alt+O` opening exactly the picked file and refusing to open an empty list, 补样例 refusing to write over a statement that is open with unsaved edits (and writing once it is saved), and the panel's 题面库 row (份数, and 还没拉过题面 → points at 拉取题面). Breaking the written field label in `out/templates.js` makes two checks fail — the assertions discriminate |
 | `test-my-template.mjs` | 我的模板 against files on disk: the ACM header carries no leftover `$`, a created-but-unfilled `.olympia/template.cpp` is **not** a template (the picker offers 新建, and a forced empty pick warns instead of writing blank lines into the student's code), 我的模板 is listed first only once it has content, `新建我的模板` seeds from `templateFor('acm')` and opens the file **without** touching the current editor, inserting then writes exactly the bytes on disk, and `templateOnPull` seeds `<题号>.cpp` from 我的模板 — from ACM when there is none, and never over a half-written solution. 拉题面 runs with `./net` swapped through the same `Module._load` hook, so a canned Luogu page still goes through the product's real parser. Breaking any one of the three guards (blank-means-template, seed-ignores-mine, drop-the-existsSync) fails exactly the check that covers it |
 | `test-settings-panel.mjs` | the Olympia 设置 page against the manifests on disk: every `olympia.*` property in the three `package.json` files must be a row (row count is compared to the schema count, so adding a setting without the page listing it fails), grouping comes from the key, enum options show `enumDescriptions`, an unknown segment still shows up under 其他, `.path` rows get 浏览… and write what was picked to Global, a 改过的 row is marked 已改 and 恢复默认 deletes the key so the default comes back, a rejected `update` is shown instead of swallowed, the AI rows delegate, reopening reveals the same panel instead of stacking a second one, and a setting key or default containing `<script>` / `<img onerror>` comes out escaped (disabling `escapeHtml`, limiting the scan to one manifest, emptying the AI delegate list and removing the path-picker condition each make exactly the check that covers them fail) |
-| `check-core-copy.mjs` | the sentences and switches we changed in `src/vs`, read back out of `oss/out`: 更新方式 / 发行说明 / 扩展自动检查更新 say what this build actually does, 自然语言搜索 and 实验 are **default `false`** (a service we never configured should not look enabled), and every welcome-page entry we turned off really carries `when: "false"` — 4 remote/Git start entries, 新建工作区 chat, the 调试 和 4 Git steps, and all four Copilot setup steps at once through `createCopilotSetupStep`. It decodes `\uXXXX` before matching, because grepping the built tree for Chinese text reads nothing and reports a clean pass |
+| `check-core-copy.mjs` | the sentences and switches we changed in `src/vs`, read back out of `oss/out`: 更新方式 / 发行说明 / 扩展自动检查更新 say what this build actually does, 自然语言搜索 and 实验 are **default `false`** (a service we never configured should not look enabled), and every welcome-page entry we turned off really carries `when: "false"` — 4 remote/Git start entries, 新建工作区 chat, the 调试 和 4 Git steps, and all four Copilot setup steps at once through `createCopilotSetupStep`. The "one constant gates the whole surface" claims are checked **per entry, by position** (`MenuId.CommandPalette` … `when: THE_CONST` within 520 chars), not by counting: counting passes when a leak and a spare gate cancel out, and that is exactly how the first version of this check missed one of the 15 task entries. It also asserts `HIDDEN_VIEWLETS` carries all four deregistered containers *and* imports each contribution module (a missing import fails silently at runtime — the loop just finds nothing to remove), and that 管理帐户 left the palette. It decodes `\uXXXX` before matching, because grepping the built tree for Chinese text reads nothing and reports a clean pass |
 | `check-command-wiring.mjs` | every command the UI points at (palette entry, `editor/title`, keybinding, walkthrough button, start entry) actually has a `registerCommand` behind it, and vice versa — the "button that does nothing" class. It also resolves the ids the **code** clicks (tree rows, status chips, notification buttons) and requires them to be registered by one of the three extensions, which is what makes a typo in a cross-extension row (`olympia.problem.openStatement`) a build failure instead of a dead button. Bitten-ness is verified, not assumed: typo'ing one id in `olympia-onboarding/package.json` makes it report three problems and exit 1, and so does typo'ing the panel's library command. Rule 6 is the label-drift guard: every panel row must carry the same wording as the command's palette title (the trailing `...` aside), which is what keeps 「打开题面库」 from being two different strings in two different places |
 
 The bundled compiler is what makes the pipeline harnesses real rather than mocked: they resolve

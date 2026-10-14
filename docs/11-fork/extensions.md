@@ -558,6 +558,47 @@ None of this is device-verified: 9 Olympia processes belong to the user and are 
 so the evidence for these four surfaces is the built-tree assertions plus the registration sites read
 above, not a screenshot.
 
+## Which built-in extensions ship: one product table, two readers
+
+`product.json`'s `olympiaExcludedBuiltInExtensions` is the only place the built-in trim list is
+written. Two consumers read it, and neither may keep a private copy:
+[`oss/build/lib/extensions.ts`](../../oss/build/lib/extensions.ts) filters the packaging stream by
+the *folder names* under `oss/extensions/`, and
+[`oss/src/vs/platform/extensionManagement/common/extensionsScannerService.ts`](../../oss/src/vs/platform/extensionManagement/common/extensionsScannerService.ts)
+skips *directory names* while walking the built-in extensions folder — in dev mode that scanner is
+the only thing that keeps a trimmed extension from loading, which is why the list can not live only
+in the build script.
+
+It used to live in both, hand-copied, and that is exactly how it rotted: both copies listed `prompt`
+while the folder is `prompt-basics`, so a "trimmed" extension shipped in every build until
+2026-10-14, and five more entries (`ms-vscode.js-debug`, `ms-vscode.js-debug-companion`,
+`ms-vscode.vscode-js-profile-table`, `ms-vscode.node-debug`, `ms-vscode.node-debug2`) named nothing
+at all because `builtInExtensions` is empty in this product and no marketplace extension is ever
+downloaded. The same drift also made `isCopilotExcludedFromProduct()` in `gulpfile.vscode.ts` a
+tautology — it asked `builtInExtensions`, which is `[]`, so it answered "excluded" no matter what the
+trim list said; it now asks the table.
+
+`node scripts/oneoff/check-built-in-trim.mjs` is the gate: every entry must resolve to a real folder
+(or a `builtInExtensions` download), the table must stay lower-cased and duplicate-free, the product
+promises (no `copilot`, no git family, no browser/notebook/ports/emmet/TS-intelligence chrome) must
+all still be in it, no `olympia-*` id may ever appear, no *kept* extension may declare an
+`extensionDependencies` on a trimmed one (activation fails outright when such a dependency is
+missing), and both readers plus the `IProductService` declaration must still reference the key — so
+re-copying the list back into code turns this checker red rather than silently reintroducing drift.
+It prints the installed tree's leftovers as a note, never as a pass: the packaged product is a
+separate timeline from the source.
+
+Measured 2026-10-14 (source, before repackaging): 59 ids trimmed out of 100 real extension folders,
+41 kept — `configuration-editing cpp css css-language-features diff extension-editing html
+html-language-features javascript json json-language-features make markdown-basics
+markdown-language-features markdown-math mermaid-markdown-features` + the three `olympia-*` +
+`powershell references-view search-result shellscript terminal-suggest` + 12 themes +
+`typescript-basics vb xml yaml`. The pure grammars stay because they contribute no UI, no activation
+and no palette entries; the eight trims added on 2026-10-14 (`emmet`,
+`typescript-language-features`, `ipynb`, `notebook-renderers`, `tunnel-forwarding`,
+`debug-auto-launch`, `debug-server-ready`, `prompt-basics`) all either contribute a sidebar view, a
+command, a setting or an extension host activation that no C++ contest workflow reaches.
+
 ## What the old Tauri app still has that this fork does not
 
 Inventory taken from the old app's own command list (`frontend/src-tauri/src/lib.rs`
@@ -583,10 +624,11 @@ open-folder, save, external links and chat history replace them.
 Twelve harnesses under `scripts/oneoff/` load the **compiled** extension output (`oss/extensions/*/out`)
 with `vscode` stubbed through a `Module._load` hook (the memory probe needs no stub — it only talks to
 `child_process` and `tasklist.exe`), so they test the shipped code path rather than a
-re-implementation; four more read *declarations* instead of behaviour — `check-command-wiring.mjs`
+re-implementation; five more read *declarations* instead of behaviour — `check-command-wiring.mjs`
 (manifests ↔ registrations ↔ UI rows), `check-core-copy.mjs` (the **built core**, `oss/out`),
-`check-config-defaults.mjs` (manifest defaults ↔ code fallbacks) and `check-extension-copy.mjs`
-(the 50 shipped manifests, their `package.nls.json`, and the C/C++/Markdown snippets). Compile first
+`check-config-defaults.mjs` (manifest defaults ↔ code fallbacks), `check-extension-copy.mjs`
+(the 50 shipped manifests, their `package.nls.json`, and the C/C++/Markdown snippets) and
+`check-built-in-trim.mjs` (the built-in extension trim table in `product.json`). Compile first
 (`npm run gulp -- compile-extension:olympia-onboarding`, and `npm run compile-client` for the core
 check), then run each with `node scripts/oneoff/<name>.mjs` from the repository root. Every one of them
 resolves its paths from `import.meta.url`, not from the working directory, so a harness run from `oss/`
@@ -610,6 +652,7 @@ to be the exception, and its failure looked exactly like a broken manifest:
 | `check-core-copy.mjs` | the sentences and switches we changed in `src/vs`, read back out of `oss/out`: 更新方式 / 发行说明 / 扩展自动检查更新 say what this build actually does, 自然语言搜索 and 实验 are **default `false`** (a service we never configured should not look enabled), and every welcome-page entry we turned off really carries `when: "false"` — 4 remote/Git start entries, 新建工作区 chat, the 调试 和 4 Git steps, and all four Copilot setup steps at once through `createCopilotSetupStep`. The "one constant gates the whole surface" claims are checked **per entry, by position** (`MenuId.CommandPalette` … `when: THE_CONST` within 520 chars), not by counting: counting passes when a leak and a spare gate cancel out, and that is exactly how the first version of this check missed one of the 15 task entries. It also asserts `HIDDEN_VIEWLETS` carries all four deregistered containers *and* imports each contribution module (a missing import fails silently at runtime — the loop just finds nothing to remove), and that 管理帐户 left the palette. It decodes `\uXXXX` before matching, because grepping the built tree for Chinese text reads nothing and reports a clean pass |
 | `check-command-wiring.mjs` | every command the UI points at (palette entry, `editor/title`, keybinding, walkthrough button, start entry) actually has a `registerCommand` behind it, and vice versa — the "button that does nothing" class. It also resolves the ids the **code** clicks (tree rows, status chips, notification buttons) and requires them to be registered by one of the three extensions, which is what makes a typo in a cross-extension row (`olympia.problem.openStatement`) a build failure instead of a dead button. Bitten-ness is verified, not assumed: typo'ing one id in `olympia-onboarding/package.json` makes it report three problems and exit 1, and so does typo'ing the panel's library command. Rule 6 is the label-drift guard: every panel row must carry the same wording as the command's palette title (the trailing `...` aside), which is what keeps 「打开题面库」 from being two different strings in two different places |
 | `check-config-defaults.mjs` | every `get('key', 兜底)` in the three extensions against the `default` the manifest declares for that key — 18 of them today. The fallback is usually a **named constant**, so the checker resolves names through three steps: the declaring file's `const`/`export const` table, then the same extension's other files (a fallback imported from `templates.ts` is still a fixed value), then `${FOLDER}/problems`-style template strings expanded from that same table. Making onboarding's `OLYMPIA_FOLDER` say `.olympiax` turns exactly the `problemsDir` line red, and so does renaming contest's `TEMPLATE_FOLDER` — which is the cross-file case, since the `.get()` sits in `extension.ts`. Before the `export` prefix was accepted, every fallback written as an exported constant was invisible to this check (it printed `n/a`); that silently-blind class is what the composed-path refactor exposed. Memento/`SecretStorage` `.get(key)` calls are excluded on purpose (`olympia.contest.endsAt` is state, not a setting), and a fallback that is a real expression is printed as `n/a` rather than guessed, so the coverage boundary is visible instead of implied (one left: `OJ_TARGETS[0].id`) |
+| `check-built-in-trim.mjs` | the built-in extension trim table as *product data*: every id in `product.json:olympiaExcludedBuiltInExtensions` must resolve to a real folder under `oss/extensions/` (or to a `builtInExtensions` download), stay lower-cased and duplicate-free, keep the product promises trimmed (no `copilot`, no git family, no browser/notebook/ports/emmet/TS-intelligence), never contain an `olympia-*` id, and — the one that would break the product rather than the count — no **kept** extension may declare an `extensionDependencies` on a trimmed one, because a missing dependency fails activation, not just a menu entry. It also asserts both readers (`build/lib/extensions.ts`, the runtime scanner) and the `IProductService` declaration still reference the key, so re-copying the list back into code fails here instead of quietly reintroducing the drift that shipped `prompt-basics` while two hand-written lists both said `prompt`. Every rule was broken once on purpose and restored byte-for-byte: adding `"prompt"` back fails only the dead-entry line, dropping `emmet` only the promise line, a `['git']` literal in the build script only the private-copy line, deleting the field declaration only the `IProductService` line, and an `extensionDependencies: ["vscode.emmet"]` in `cpp/package.json` only the dependency line. Leftovers in the *installed* tree are printed as a note, never as a pass |
 | `check-extension-copy.mjs` | the English that a student can still reach: it walks the 50 shipped extensions' `package.json` + `package.nls.json` visible keys (`title`/`label`/`description`/`displayName`/`placeholder`…) and the C/C++/Markdown `*.code-snippets`, and reports values with no CJK that read like a **sentence** (three words+). That scoping is the point: `Emmet`, `JSON`, `TypeScript Go` and theme names stay (they are names, not sentences), notebook-renderer / language-model-tool / debug-schema strings are out of a product where notebooks are switched off, and js/ts snippet descriptions are completions for languages this product does not teach — translating those would buy nothing and cost upstream merges. It found 16 reachable English sentences (all in the Markdown completions a student uses while editing a 题面) and now exits clean; putting one back reports exactly that one line |
 
 The bundled compiler is what makes the pipeline harnesses real rather than mocked: they resolve

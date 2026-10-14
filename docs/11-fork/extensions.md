@@ -330,6 +330,21 @@ student edits, and a hand-typed `原文链接：file:///…` must not become som
 open. A statement with no link (handwritten, half-pulled) says so and points at 拉题面 instead of opening a
 blank tab.
 
+The three platform origins and every non-empty `*Url` in `product.json` are required to appear in
+`product.json`'s `linkProtectionTrustedDomains`; `check-config-defaults.mjs` reads both sides and fails when
+they drift, because 打开原题网页 that stops on 「是否要打开外部网站?」 reads as a broken feature. What is
+verified in code: `trustedDomainsValidator.ts:42` registers a validator on `IOpenerService` for every http(s)
+URI, and `readStaticTrustedDomains` seeds that list from `linkProtectionTrustedDomains`
+(`trustedDomains.ts:186`). The same validator also short-circuits for links opened *from a trusted
+workspace* when `workbench.trustedDomains.promptInTrustedWorkspace` is off (`trustedDomainsValidator.ts:50`),
+so the shipped list is the second layer rather than the only one — and it stays limited to hosts the product
+itself ships links to, not whatever host appears in a statement. The gate compares whole origins on purpose:
+`platform/url/common/trustedDomains.ts:15` documents that **there is no subdomain matching**, so
+`https://codeforces.com` would not cover a `https://www.codeforces.com` link, and the list has to carry the
+exact authority each `*_ORIGIN` builds its statement URL from. Whether an `env.openExternal` call from an
+extension sets `fromWorkspace` was not checked, and neither was the dialog's real behaviour: that needs a
+launched product.
+
 | Command | Title | Keybinding (`when`) | Also in menus |
 | --- | --- | --- | --- |
 | `olympia.problem.pull` | 拉取题面... | `Ctrl+Alt+P` | explorer context |

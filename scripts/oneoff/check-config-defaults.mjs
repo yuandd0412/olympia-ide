@@ -156,5 +156,31 @@ report(checked > 0, `比对了 ${checked} 处兜底值`);
 // 覆盖面说清楚：兜底写成表达式的那些这里不猜，别让人以为都查过了。
 for (const note of skipped) { console.log(`n/a   ${note}（表达式，未比对）`); }
 
+// 出厂信任的域名：产品自己递给人的链接（本站文档、三个 OJ 的题面页、报告问题）不该每次点都问一遍
+// 「是否要打开外部网站」。那层确认框是给来路不明的链接准备的，不是给产品里写死的链接准备的，
+// 而对初中生来说「弹一个看不懂的框」就等于软件卡住。
+// 域名不在这里再抄一遍：一边取 sources.ts 的 *_ORIGIN 常量（拉题面之后「打开原题网页」开的就是它们），
+// 一边取 product.json 里每个非空的 *Url。以后加一个平台或换个域名，这条检查会自己跟上。
+const product = JSON.parse(fs.readFileSync(path.join(repoRoot, 'oss', 'product.json'), 'utf8'));
+const trusted = new Set(product.linkProtectionTrustedDomains ?? []);
+report(product.linkProtectionTrustedDomains?.length > 0, 'product.json 里有 linkProtectionTrustedDomains 这一项');
+
+const sourcesText = fs.readFileSync(path.join(extensionsRoot, 'olympia-contest', 'src', 'sources.ts'), 'utf8');
+const origins = [...sourcesText.matchAll(/^const [A-Z]+_ORIGIN = '(https?:\/\/[^']+)'/gm)].map(m => m[1]);
+report(origins.length >= 3, `从 sources.ts 认出 ${origins.length} 个平台域名（不足三个说明常量形状变了，这条检查在空转）`);
+for (const origin of origins) { report(trusted.has(origin), `拉题面会打开 ${origin}，出厂信任域名：${trusted.has(origin) ? '有' : '没有'}`); }
+
+const shippedHosts = new Set();
+(function walk(node, key) {
+	if (typeof node === 'string') {
+		if (key.endsWith('Url') && /^https?:\/\//.test(node)) { shippedHosts.add(new URL(node).origin); }
+		return;
+	}
+	if (Array.isArray(node)) { node.forEach(item => walk(item, key)); return; }
+	if (node && typeof node === 'object') { for (const [k, v] of Object.entries(node)) { walk(v, k); } }
+})(product, '');
+report(shippedHosts.size >= 3, `从 product.json 认出 ${shippedHosts.size} 个自家链接域名`);
+for (const host of shippedHosts) { report(trusted.has(host), `产品自己写着 ${host} 的链接，出厂信任域名：${trusted.has(host) ? '有' : '没有'}`); }
+
 console.log(failed ? '\nFAILED' : '\nall config-default checks passed');
 process.exitCode = failed ? 1 : 0;

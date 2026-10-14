@@ -643,6 +643,71 @@ and no palette entries; the eight trims added on 2026-10-14 (`emmet`,
 `debug-auto-launch`, `debug-server-ready`, `prompt-basics`) all either contribute a sidebar view, a
 command, a setting or an extension host activation that no C++ contest workflow reaches.
 
+## What licence text ships, and where a student can read it
+
+Three texts travel with the product, and the packaging step now fails loudly if any of them is
+missing: `LICENSE.txt` (Microsoft's MIT, named by `product.json.licenseFileName`),
+`NOTICE.olympia.txt` (the Chinese component notice, authored here) and
+`resources/app/ThirdPartyNotices.txt` (upstream's ~166 npm/git components).
+`LICENSES.chromium.html` stays at the product root — it is the only place Electron/Chromium/V8/Node
+are itemised, and `ThirdPartyNotices.txt` does *not* mention them, so the Chinese notice points at the
+HTML for those and at the TXT for the app layer, never the other way round.
+`oss/build/gulpfile.vscode.ts` builds that list from `product.licenseFileName` plus the two named
+files and `fs.existsSync`-checks each non-glob entry before `gulp.src`, because the upstream form was
+`gulp.src([product.licenseFileName, …], { allowEmpty: true })` with `licenseFileName: "LICENSE"` —
+a name no file has in this tree, matched by nothing, swallowed by `allowEmpty`, so no MIT text ever
+reached an install directory.
+
+The installer's licence page is decided by exactly one macro, `RootLicenseFileName` in
+`oss/build/win32/code.iss`, which now prefers `NOTICE.olympia.txt` and only falls back to
+`LICENSE.rtf` / `LICENSE.txt`; the `Setup` section re-uses `{#RootLicenseFileName}` instead of naming
+a file, so the two paths can not drift apart. Worth recording because the premise behind it was wrong
+twice over: `LicenseFile` **is** a valid `[Languages]` parameter — proven by compiling a toy script
+with `ISCC.exe` (an unknown parameter name there fails with `Unrecognized parameter name`, the real
+one compiles) — so the `LocalizedLanguageFile` macro appended to all 13 language lines was never dead
+code; the wizard did show a licence page, it just showed Microsoft's English MIT text as though it
+were the product's own. The other half of the earlier claim ("no licence page at all") came from
+reading only the `Setup` section. `LicenseFile` there is now present anyway, as a belt-and-braces
+second pointer at the same macro.
+
+Inside the product, `olympia.about.openLicences` ([`src/licences.ts`](../../oss/extensions/olympia-onboarding/src/licences.ts),
+last row of the tools view) opens those texts as tabs by resolving `vscode.env.appRoot`, with the
+parent directory as a fallback so it works in dev too. It deliberately does not open a GitHub page:
+the 机房 machines usually have no network, and "read the licence" that requires a download is not a
+licence surface.
+
+`NOTICE.olympia.txt` is written for a 13-year-old reader and is UTF-8 **with BOM** — BOM-less UTF-8
+renders as GBK mojibake on a zh-CN Windows, which is the only encoding mistake that is invisible in
+the editor and glaring in the wizard. Its content is data-checked rather than reread:
+`node scripts/oneoff/check-licence-surface.mjs` compares every number and directory name it claims
+against the tree (41 shipped folders, 39 MIT + 2 `GPL-3.0-or-later` — `olympia-onboarding` and
+`olympia-contest` declare GPL-3.0 themselves, which is why the notice must not say "everything we
+wrote is MIT"; 59 trimmed ids; 13 themes; the 9 real
+`toolchain/mingw64/share/licenses/` directories — `gcc` is *not* one of them, its drivers are covered
+by `gcc-libs`), names each extension folder that ships its own `ThirdPartyNotices.txt`
+(`mermaid-markdown-features` → elkjs under EPL-2.0, `terminal-suggest`, `theme-seti`), and refuses the
+author-facing TODOs that used to live in shipped text.
+`node scripts/oneoff/test-licence-surface.mjs` breaks each of those rules on purpose — rewrites the
+`.iss` line to a hardcoded name, comments it out, drops a licence directory, changes a count, strips
+the BOM, points `licenseFileName` back at `LICENSE` — and requires exactly the intended check to turn
+red and the file to come back byte-identical.
+
+`product.json.licenseName` is the single source for what *our own* parts are licensed under, and the
+checker demands both public statements match it: the first section of `NOTICE.olympia.txt` and the
+footer of `website/index.html`. That rule exists because they disagreed — the notice described the
+self-written parts as MIT while the site had said GPL-3.0-or-later all along and two of the three
+`olympia-*` manifests declare GPL-3.0-or-later, so the shipped text was the wrong one. What is still
+open (author's call, printed as a note and never as a pass): the outer repository's `LICENSE` says
+MIT. `oss/LICENSE.txt` is *not* part of that question — it is upstream VS Code's own MIT text and
+must stay.
+
+Two hygiene facts worth keeping: `build/filters.ts` now lists `NOTICE.olympia.txt` beside
+`LICENSE.{txt,rtf}` / `ThirdPartyNotices.txt` in both `unicodeFilter` and `indentationFilter` (its
+indentation is prose layout, and 90 Chinese lines are not going to be silenced one comment at a
+time), and comments inside `build/**` must stay English — `build/win32/**` is exempt from the unicode
+guard but `build/` itself is not, so the OLYMPIA-TRIM note in `gulpfile.vscode.ts` is written in
+English while the file it ships into the wizard is Chinese.
+
 ## What the old Tauri app still has that this fork does not
 
 Inventory taken from the old app's own command list (`frontend/src-tauri/src/lib.rs`

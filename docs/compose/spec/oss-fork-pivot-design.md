@@ -540,6 +540,7 @@ fork 到 OSS 线时必须换 `context.secrets`，且**读 key 时绝不进任何
 | 2026-10-09 | 修缺陷 | **D8 补漏**：上游在 `agentHostMain.ts` / `agentHostServerMain.ts` **无条件**注册 `CopilotAgent`，每次启动仍会拉起 `copilot-runtime.exe`（与「完全拆除 Copilot」矛盾，且日志泄露 `GITHUB_COPILOT_*`）。已加 `VSCODE_AGENT_HOST_COPILOT_AGENT_ENABLED` 门控，**默认 OFF** |
 | 2026-10-09 | 真机验证 | 减法/加法首次经真实启动确认：`vscode.git` **零加载**、`olympia.contest` 已激活、全树**零 Copilot 引用**、零 `copilot-runtime` 进程、零真实错误 |
 | 2026-10-14 | 做减法 | 裁剪表收进 `product.json:olympiaExcludedBuiltInExtensions` 一处，打包流与运行时扫描器都读它（**两处手抄就是这张表腐烂的原因**）。反证出两个真缺陷：两份名单都写着 `prompt`，而真实目录是 `prompt-basics` → **Prompt 语法扩展一直在出厂**；`ms-vscode.js-debug` 等 5 项指不到任何实物（本产品 `builtInExtensions` 为空、从不下载）。顺带 `gulpfile.vscode.ts` 的 `isCopilotExcludedFromProduct()` 原来问的是恒为空的下载清单，属于永真判断，改问这张表。新增 8 项裁剪（emmet / typescript-language-features / ipynb / notebook-renderers / tunnel-forwarding / debug-auto-launch / debug-server-ready / prompt-basics）：59 裁 / 41 留，由 `scripts/oneoff/check-built-in-trim.mjs` 守住死项、重复、承诺项、保留扩展对被裁扩展的依赖、以及"表被抄回代码"。装机目录里这 8 项目前仍在，等下一次 oss-package 出厂 |
+| 2026-10-14 | 做加法 | **跑样例补上逐用例对照**（老版本 Tauri 有、fork 一直没有的那块）：`compareCase` 由同一个函数同时给出判定与诊断，WA 直接说「第几行第几个数不同」「只输出了前 N 行」「多了 N 行」「每行都有只是顺序不同」「程序没有任何输出」，而不是像原来那样把两个字符串压成一行再各砍 200 字符；`olympia.judge.compareOutput`（`Ctrl+Alt+K`、通知按钮、面板行三个入口）经内存 content provider 喂 `vscode.diff` 开并排对照，不往学生工程里写临时文件。官网 docs 里那句「WA 会把期望输出和你的输出并排列出来」从此才真是产品能力（此前描述的是旧版）。4 条新检查 + 7 次反证；反证过程中抓出自己写重复的 `failedCases.push`（同一组样例进列表两次，会让「只有一组失败也不先问」退化成每次都问）|
 
 ### 剩余英文处置（2026-10-09 定案）
 

@@ -155,7 +155,11 @@
 		<li>写好代码，按 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>J</kbd>。</li>
 		<li>Olympia 用当前档位编译，把每组样例的输入喂进去，按 token 比对输出，并按题面里写的时限和内存限制判断有没有超时、超内存。</li>
 	</ol>
-	<p>结果给出 <b>AC</b> / <b>WA</b> / <b>RE</b> / <b>TLE</b> / <b>MLE</b>，WA 会把「期望输出」和「你的输出」并排列出来，直接对着看差异。
+	<p>结果给出 <b>AC</b> / <b>WA</b> / <b>RE</b> / <b>TLE</b> / <b>MLE</b>。判成 WA 时日志会先说清错在哪：
+	<b>第几行、第几个数或第几个词不同</b>（期望多少、得到多少），或者「只输出了前 N 行」「多了 N 行」
+	「每行都有、只是顺序不同」「程序没有任何输出」——写完一句诊断，再按 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>K</kbd>
+	（或点通知里的 <em>对比期望输出</em>）用编辑器的并排差异视图把<b>期望输出</b>和<b>你的输出</b>整份摆出来对着看，
+	不用自己抄题面、也不会往工程里写临时文件。
 	每组还会打印耗时和<b>峰值内存</b>，超内存时按「峰值 &gt; 上限」判 MLE。</p>
 	<p class="hint">读不到题面或题面里没有样例时，命令会让你先选一份缓存题面，不会凭空判你错。时限认「时限：1000ms」「时限：1 秒」这两种写法，
 	内存认「内存限制：128.00 MB」「内存：128M」「内存：1GB」这类写法。</p>
@@ -322,6 +326,7 @@
 				<tr><td>按评测机编译</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F9</kbd></td><td>强制 <code>-O2</code>，复现评测机</td></tr>
 				<tr><td>提交前体检</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Enter</kbd></td><td>扫描会在评测机上编译失败的写法</td></tr>
 				<tr><td>跑样例</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>J</kbd></td><td>本地判定 AC / WA / RE / TLE / MLE</td></tr>
+				<tr><td>对比期望输出</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>K</kbd></td><td>把最近一次 WA 的那一组并排打开：左边期望、右边你的输出</td></tr>
 				<tr><td>对拍</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd></td><td>随机数据比对正解与暴力</td></tr>
 				<tr><td>比赛模式</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd></td><td>开始 / 结束倒计时</td></tr>
 				<tr><td>环境自检</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd></td><td>逐项检查编译器、参数、AI 配置</td></tr>

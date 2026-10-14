@@ -16,6 +16,10 @@ const GPP = path.join(repoRoot, 'VSCode-win32-x64/resources/app/toolchain/mingw6
 const messages = [];
 const channels = [];
 let registered = {};
+/** scheme → content provider：diff 编辑器要读的文本从这里取。 */
+const providers = {};
+/** 非本扩展注册的命令（比如 vscode.diff）按顺序记在这里。 */
+const executed = [];
 /** 跑样例的选择器行为：弹了几次、最后一次列了什么、按名字选哪一项、通知里点哪个按钮。 */
 let pickCalls = 0;
 let lastPick = [];
@@ -43,6 +47,7 @@ const vscodeStub = {
 	ProgressLocation: { Notification: 15 },
 	Uri: {
 		file: p => uri(p),
+		from: ({ scheme, path: p }) => ({ scheme, path: p, fsPath: p, toString: () => `${scheme}:${p}` }),
 		joinPath: (base, ...parts) => uri(path.join(base.fsPath, ...parts))
 	},
 	Disposable: { from: (...items) => ({ dispose() { for (const i of items) { i?.dispose?.(); } } }) },
@@ -66,7 +71,12 @@ const vscodeStub = {
 			}
 		},
 		onDidChangeConfiguration: () => ({ dispose() { } }),
-		onDidSaveTextDocument: () => ({ dispose() { } })
+		onDidSaveTextDocument: () => ({ dispose() { } }),
+		/** 「对比期望输出」靠这个把内存里的两份文本端给 diff 编辑器。 */
+		registerTextDocumentContentProvider: (scheme, provider) => {
+			providers[scheme] = provider;
+			return { dispose() { delete providers[scheme]; } };
+		}
 	},
 	window: {
 		activeTextEditor: undefined,
@@ -104,7 +114,10 @@ const vscodeStub = {
 	},
 	commands: {
 		registerCommand: (id, handler) => { registered[id] = handler; return { dispose() { } }; },
-		executeCommand: async (id, ...args) => registered[id]?.(...args),
+		executeCommand: async (id, ...args) => {
+			executed.push({ id, args });
+			return registered[id]?.(...args);
+		},
 		getDiagnostics: () => []
 	},
 	languages: {
@@ -361,6 +374,80 @@ await check('没填完的自定义样例：跳过并说明，不报成 WA', asyn
 	assert.match(log, /没填期望输出/, `日志要说清楚为什么少了一组：${log}`);
 	assert.match(log, /样例 2/, '跳过的那组要按题面里的编号说，别让人以为是判了样例 1');
 	assert.ok(!/WA/.test(log), `没填完的样例被判成了 WA：${log}`);
+});
+
+await check('WA 的诊断要说清错在第几行第几个数', async () => {
+	openFile('P1001_wrong.cpp');
+	messages.length = 0;
+	await registered['olympia.judgeSamples']();
+	const log = judgeChannel().lines.join('\n');
+	assert.match(log, /第 1 行第 1 个数不同：期望 7，得到 -1/, `诊断没定位到具体的数：${log}`);
+	assert.match(log, /Ctrl\+Alt\+K/, '日志要说出对比的快捷键，通知按钮关掉之后人就找不到了');
+});
+
+await check('点「对比期望输出」真的用 diff 编辑器打开两份内存文本', async () => {
+	openFile('P1001_wrong.cpp');
+	messages.length = 0;
+	executed.length = 0;
+	messageAction = '对比期望输出';
+	await registered['olympia.judgeSamples']();
+	const diff = executed.filter(e => e.id === 'vscode.diff');
+	assert.equal(diff.length, 1, `应该正好开一次 diff，实际执行了 ${JSON.stringify(executed.map(e => e.id))}`);
+	// 列表里同一组样例出现两次，说明 WA 记录被写了两遍（反证时真撞到过一次）：
+	// 那样「只有一组失败也不先问」会退化成每次都问，学生多点一次没用的选择。
+	assert.ok(new Set(lastPick.map(label => String(label))).size === lastPick.length,
+		`对比列表里有重复的样例：${JSON.stringify(lastPick)}`);
+	const [left, right, title] = diff[0].args;
+	assert.equal(left.scheme, 'olympiaSample', `左侧不是我们供的文档：${JSON.stringify(left)}`);
+	assert.equal(right.scheme, 'olympiaSample', `右侧不是我们供的文档：${JSON.stringify(right)}`);
+	assert.match(String(title), /样例 \d+/, `diff 的标题要带上是哪一组样例：${title}`);
+	// 关键：文本没往工作区写文件，是 content provider 供出去的。
+	const provider = providers['olympiaSample'];
+	assert.ok(provider, '没有注册 content provider，diff 里只会是两个空文档');
+	const wantText = provider.provideTextDocumentContent(left);
+	const gotText = provider.provideTextDocumentContent(right);
+	assert.match(wantText, /7/, `左侧供的不是期望输出：${JSON.stringify(wantText)}`);
+	assert.match(gotText, /-1/, `右侧供的不是实际输出：${JSON.stringify(gotText)}`);
+	assert.ok(!fs.existsSync(path.join(fixture, '.olympia', 'sample-1-expected.txt')), '对比不该往工程里写临时文件');
+});
+
+await check('全过的run没有 diff 可开，命令只说一句', async () => {
+	openFile('P1001.cpp');
+	messages.length = 0;
+	executed.length = 0;
+	await registered['olympia.judgeSamples']();
+	const actionList = messages.map(m => m[2]).find(Boolean);
+	assert.ok(!JSON.stringify(actionList).includes('对比期望输出'), `全过还给出对比按钮：${JSON.stringify(actionList)}`);
+	await registered['olympia.judge.compareOutput']();
+	assert.equal(executed.filter(e => e.id === 'vscode.diff').length, 0, '没有 WA 也去开 diff');
+	assert.match(messages.map(m => m[1]).join('\n'), /没有 WA 的组|先跑一次/, `点了要有一句解释：${JSON.stringify(messages)}`);
+});
+
+/**
+ * compareCase 是逐用例对照的全部判断，纯函数直接列表测：
+ * 每种学生真会犯的错都要给出不同的话，否则通知里那句诊断和没有一样。
+ */
+await check('compareCase 的诊断表覆盖学生常犯的几种错', () => {
+	const table = [
+		{ want: '7\n', got: '', hint: '没有任何输出' },
+		{ want: '1\n2\n3\n', got: '1\n2\n', hint: '只输出了前 2 行' },
+		{ want: '1\n2\n', got: '1\n2\n请输入：\n', hint: '多了 1 行' },
+		{ want: '1\n2\n', got: '2\n1\n', hint: '只是顺序不同' },
+		{ want: '3 4\n', got: '3 5\n', hint: '第 1 行第 2 个数不同' },
+		{ want: 'a b\n', got: 'a c\n', hint: '第 1 行第 2 个词不同' },
+		{ want: '1 2\n', got: '1 2 3\n', hint: '词数不同' },
+		{ want: '7\n', got: '  7  \n', hint: '其实一样' }
+	];
+	for (const row of table) {
+		const diff = judge.compareCase(row.want, row.got);
+		assert.ok(diff.hint.includes(row.hint), `期望「${row.want}」/得到「${row.got}」要说「${row.hint}」，实际是「${diff.hint}」`);
+	}
+	// 尾随换行不能算成「多一行」，否则每组样例都假报差异。
+	const onlyNewline = judge.compareCase('7\n', '7');
+	assert.equal(onlyNewline.gotLines, 1, `末尾换行被算成了一行：${JSON.stringify(onlyNewline)}`);
+	assert.ok(onlyNewline.sameTokens, '只差一个换行却判成不同');
+	// CRLF 与 LF 同价：Windows 上学生复制的期望输出常带 \r\n。
+	assert.ok(judge.compareCase('1\r\n2\r\n', '1\n2\n').sameTokens, '换行符差异被判成内容不同');
 });
 
 console.log(failed ? '\nFAILED' : '\nall judge-pipeline assertions passed');

@@ -26,6 +26,7 @@ check. Commands and keybindings as declared in its `package.json`:
 | `olympia.compileJudgeAccurate` | 按评测机编译（-O2） | `Ctrl+Shift+F9` (`editorTextFocus`) |
 | `olympia.preSubmitCheck` | 提交前体检 | `Ctrl+Alt+Enter` (`editorTextFocus`) |
 | `olympia.judgeSamples` | 跑样例（本地评测） | `Ctrl+Alt+J` (`editorTextFocus`) |
+| `olympia.judge.compareOutput` | 对比期望输出 | `Ctrl+Alt+K` |
 | `olympia.stressTest` | 对拍（正解 vs 暴力） | `Ctrl+Alt+S` |
 | `olympia.contestMode` | 比赛模式（倒计时） | `Ctrl+Alt+C` |
 | `olympia.checkEnvironment` | 环境自检 | `Ctrl+Alt+D` |
@@ -48,7 +49,19 @@ The three commands after 体检 are the judge-shaped loop the Tauri app had and 
   two *names*, never paths — the key is `asRelativePath(source, false)` and the value is the statement's
   file name — because the same project is opened from a different drive letter in the 机房, and a
   drive-letter key silently turns every memory into a miss. A same-name
-  statement always wins over the remembered one. Comparison ignores whitespace like a real judge. The
+  statement always wins over the remembered one. Comparison ignores whitespace like a real judge, and the
+  same function that decides AC also writes the diagnosis (`compareCase`): a WA case now prints *where*
+  it went wrong — 第 N 行第 M 个数不同 / 第 N 行第 M 个词不同 / 词数不同 / 只输出了前 N 行 / 多了 N 行 /
+  每行都有只是顺序不同 / 程序没有任何输出 — because 「期望：7 得到：-1」 (the old behaviour: both strings
+  whitespace-flattened and cut at 200 characters) told a student nothing about a 20-line output. The
+  verdict and the diagnosis read **one** comparison on purpose; computing AC in one place and the diff in
+  another is how 「通知说 AC、对照里全是差异」 would appear. Whole-side-by-side comparison is
+  `olympia.judge.compareOutput` (`Ctrl+Alt+K`, also the 对比期望输出 notification button and a panel row):
+  it feeds the two texts to `vscode.diff` through an in-memory `TextDocumentContentProvider` under the
+  `olympiaSample` scheme, so nothing is written into the student's project (the 机房 folder is often not
+  writable and a stray `expected.txt` is noise), and several failing cases come out as a picker in judge
+  order. Cases are recorded per run and cleared at the start of the next one, so the command can never
+  hand back a diff from a different problem. The
   time limit is read from the statement and accepts both units the product produces — `1000 ms` from
   the pull chain and hand-written `1.00s`; an unrecognised unit falls back to 1 s rather than guessing.
   The memory limit is read the same way (`内存限制：128.00 MB`, `内存：128M`, `内存：1GB`) and comes from
@@ -670,7 +683,7 @@ to be the exception, and its failure looked exactly like a broken manifest:
 | --- | --- |
 | `test-precheck.mjs` | 体检 rules: pragma reporting regardless of the local optimization switch, and nothing reported inside comments or string literals |
 | `test-judge-samples.mjs` | `parseSamples` against Markdown shaped exactly like `renderStatement` output, including the `ms` / `s` / `毫秒` / `秒` time-limit units, the 500 ms–10 s clamp, and the memory-limit spellings (`内存限制：128.00 MB` / `内存：128M` / `内存：1GB`) plus the "no limit written" case; sample numbers are the ones written in the statement, so a hand-written 样例 0 stays 0 instead of being coerced to 1 |
-| `test-judge-pipeline.mjs` | the whole 跑样例 command against the **bundled g++**: AC on a correct file, WA with expected-vs-got printed, a compile failure reported as a failure instead of a pass, a quick pick when no statement matches by name, the pick being **remembered per source file** (a second run asks nothing and says in the log it is reusing the last choice; 换一道题 re-asks and re-members; a deleted statement falls back to the picker instead of being read anyway), a memory hog judged MLE with its peak reported when the statement writes a limit — and never judged MLE when it does not; the AC run additionally asserts a 解题记录 row **on disk** in `.olympia/solves.json` |
+| `test-judge-pipeline.mjs` | the whole 跑样例 command against the **bundled g++**: AC on a correct file, WA with expected-vs-got printed, a compile failure reported as a failure instead of a pass, a quick pick when no statement matches by name, the pick being **remembered per source file** (a second run asks nothing and says in the log it is reusing the last choice; 换一道题 re-asks and re-members; a deleted statement falls back to the picker instead of being read anyway), a memory hog judged MLE with its peak reported when the statement writes a limit — and never judged MLE when it does not; the AC run additionally asserts a 解题记录 row **on disk** in `.olympia/solves.json`; the WA runs assert the diagnosis (第 1 行第 1 个数不同, and the `Ctrl+Alt+K` hint in the log), that 对比期望输出 opens exactly one `vscode.diff` with two `olympiaSample` documents whose text comes from the content provider (left = 期望, right = 得到), that the picker never lists the same case twice, that an all-AC run offers no 对比 button and calling the command then says so instead of opening a diff, and a table over `compareCase` for 没有输出 / 少了尾巴 / 多了尾巴 / 顺序不同 / 数不同 / 词不同 / 词数不同 / 只差空白 plus 尾部换行 与 CRLF 不算差异. Breaking the WA recording, duplicating it, emptying the right-hand document, genericising the diagnosis or dropping the tail-newline handling each turn only the covering checks red |
 | `test-solve-log.mjs` | the 解题记录 data layer against a real file in a temp workspace — and the path it asserts on is taken from the code's own `SOLVES_PATH_LABEL` instead of a copy, so a label that drifts from what `recordSolve` writes fails seven checks rather than none: an AC writes newest-first with title / 耗时 / 峰值内存, `olympia.train.recordSolves` off stops the write but leaves the existing file untouched, 205 entries are clipped to 200 **from the old end**, a file that is not JSON (or entries missing fields) reads as empty instead of crashing the panel row, streak counts **local days** with the two edges pinned (three ACs today = 1 day; a gap returns 0; today-not-yet but yesterday-still-counts), `2025-12-31` vs `2026-01-01` are two days and still streak 2, `dailyGoal` rejects 0 / negative / non-numeric and floors a decimal, and `onSolveLogChange` fires exactly once per real write (stubbing its `EventEmitter.event` unbound reproduces how the extension actually takes the function reference) |
 | `test-memory-probe.mjs` | the probe itself: the memory column parsed **by position** (labels are localized on zh Windows) with thousands separators, a program whose path contains spaces, a run too fast to sample (no peak, still not a failure), a 120 MB allocation actually seen, the timeout kill, a non-zero exit counted as failure while stdout is still collected, and the fallback to a plain run when the probe reads nothing |
 | `test-stress-pipeline.mjs` | the whole 对拍 command: 25 agreeing rounds report 通过, an intentionally wrong solution stops the run and leaves `stress-fail/round-N.*` behind, running it a second time must add a file rather than overwrite the one the previous run caught, a silent generator errors out instead of "passing" zero rounds — and clicking 补进题面样例 writes that case into the statement, where the product's own `parseSamples` reads it back as a second case without eating the neighbouring section (stubbing `appendSample` to a no-op fails this check) |

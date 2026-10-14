@@ -124,6 +124,7 @@
 			<h3>拉题面</h3>
 			<p>洛谷、Codeforces、AtCoder 题号或链接直接拉进编辑器，也可以从剪贴板识别。
 			题面、样例、代码在同一个窗口里，不用来回切浏览器。</p>
+			<p class="tagline">写完按 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>U</kbd> 回到这道题的原网页交题，链接不用从题面里复制。</p>
 		</article>
 		<article>
 			<h3>跑样例</h3>
@@ -171,7 +172,7 @@
 			<ul class="check">
 				<li>当前环境：编译器、编译配置、体检状态、题面库份数、解题记录（N 题 · 连续 D 天 · 今日 x/N）</li>
 				<li>编译与运行：编译并运行、编译当前文件、按评测机编译、提交前体检、跑样例、对拍、比赛模式</li>
-				<li>题目与模板：拉取题面、从剪贴板拉题号、打开题面库、集训清单、给这道题加一组自定义样例、插入赛制模板、编辑我的模板</li>
+				<li>题目与模板：拉取题面、从剪贴板拉题号、打开题面库、打开原题网页、集训清单、给这道题加一组自定义样例、插入赛制模板、编辑我的模板</li>
 				<li>AI 教练与帮助：AI 设置、全部设置、环境自检、打开官网与文档</li>
 			</ul>
 		</div>
@@ -206,6 +207,7 @@
 				<tr><td>拉取题面</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd></td><td>洛谷、Codeforces、AtCoder</td></tr>
 				<tr><td>从剪贴板拉题号</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd></td><td>复制网页链接后直接识别</td></tr>
 				<tr><td>打开题面库</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd></td><td>在 <code>.olympia/problems</code> 里按题号或标题搜，不用联网</td></tr>
+				<tr><td>打开原题网页</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>U</kbd></td><td>按当前文件认出这道题，去它的原题页交题</td></tr>
 				<tr><td>集训清单</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>L</kbd></td><td>一份命名题单 + 时长，选它就开一场</td></tr>
 				<tr><td>插入赛制模板</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd></td><td>ACM / IOI 起手代码</td></tr>
 			</tbody>
@@ -296,11 +298,6 @@
 			出厂主题和默认设置都在产品里，安装完就是竞赛环境，不需要再去扩展市场装东西。</p>
 		</details>
 		<details>
-			<summary>为什么安装包这么大？</summary>
-			<p>里面是整个 Electron 运行时 + 内置 MinGW（455 MB 解包后）。体积换的是「拿到机器上就能编译」，
-			机房机器不需要再装任何东西。单文件 100 MB 以内对这个产品不可能做到，所以走分卷 + 网络引导。</p>
-		</details>
-		<details>
 			<summary>装完提示「已阻止未识别的应用」/ SmartScreen？</summary>
 			<p>因为安装包还没有代码签名证书。选「仍要运行」即可；安装器本身是 Inno Setup 生成的标准程序，
 			也可以先用 <code>SHA256SUMS.txt</code> 核对校验值。</p>
@@ -312,7 +309,9 @@
 		</details>
 		<details>
 			<summary>支持 macOS / Linux 吗？</summary>
-			<p>只出 Windows x64。竞赛机房的现实就是 Windows，其他平台不做。</p>
+			<p>v1.0 只出 Windows x64 —— 竞赛机房的现实就是 Windows，所以先把这一个平台做透。
+			macOS 和 Linux 不是不做，是在路线图上，只是还没排到。具体什么时候能出，现在还给不出日期，
+			但不会一直只有 Windows。</p>
 		</details>
 	</div>
 </section>

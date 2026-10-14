@@ -133,12 +133,15 @@ const vscodeStub = {
 		registerCompletionItemProvider: () => ({ dispose() { } }),
 		createDiagnosticCollection: () => ({ set() { }, delete() { }, clear() { }, dispose() { } })
 	},
-	env: { openExternal: async () => true, clipboard: { readText: async () => '' } },
+	env: { openExternal: async u => { externals.push(u?.fsPath ?? String(u)); return externalOk === undefined ? true : externalOk; }, clipboard: { readText: async () => '' } },
 	extensions: { all: [], getExtension: () => undefined }
 };
 
 let pickIndex;
 const shown = [];
+/** 交给系统浏览器的链接：打开原题网页那条命令的唯一可见结果。 */
+const externals = [];
+let externalOk;
 
 const originalLoad = Module._load;
 Module._load = function (request, parent, isMain) {
@@ -212,6 +215,7 @@ function touch(file, daysAgo) {
 
 contest.activate(context());
 assert.ok(registered['olympia.problem.openStatement'], '题面库命令必须由 olympia-contest 注册');
+assert.ok(registered['olympia.problem.openSource'], '打开原题网页命令必须由 olympia-contest 注册');
 toolsView.registerToolsView(context());
 assert.ok(treeProvider, 'Olympia 面板必须把 tree provider 交出来');
 
@@ -479,6 +483,92 @@ await check('写入方数的道数和读取方一致（两个扩展对同一份�
 	assert.equal(read.size, written.size, `题面库认出的题数（${read.size}）和解题记录写的（${written.size}）不一样`);
 	assert.equal(read.get('p1001').times, 3, '次数没跟着记录走');
 	assert.ok(JSON.parse(fs.readFileSync(solvesFileOf(), 'utf8')).length === 4, '写入方自己数的条数也对不上');
+});
+
+await check('打开原题网页：当前是 P1001.cpp，就把题面里那条链接交给浏览器', async () => {
+	freshWorkspace();
+	const first = writeStatement('P1001', 'A+B Problem');
+	writeStatement('P2001', '另一道');
+	touch(first, 1);          // 让 P2001 成为最近拉的那道：认错题就会打开另一道，断言才不会空转
+	const solution = path.join(workspaceRoot, 'P1001.cpp');
+	fs.writeFileSync(solution, '#include <bits/stdc++.h>\n', 'utf8');
+	vscodeStub.window.activeTextEditor = { document: { uri: uri(solution), fileName: solution } };
+	externals.length = 0;
+	picks.length = 0;
+	await registered['olympia.problem.openSource']();
+	assert.deepEqual(externals, ['https://www.luogu.com.cn/problem/P1001'], `看到的是：${externals.join(', ')}`);
+	assert.equal(picks.length, 0, '当前文件已经认出题号，不该再多问一次选哪道');
+	// 题面文件自己开着时也要能用：认的是文件名，不是当前那个文件的内容。
+	vscodeStub.window.activeTextEditor = { document: { uri: uri(first), fileName: first } };
+	externals.length = 0;
+	await registered['olympia.problem.openSource']();
+	assert.deepEqual(externals, ['https://www.luogu.com.cn/problem/P1001'], '题面文件自己打不开原页就等于这条命令少一半场合');
+	vscodeStub.window.activeTextEditor = undefined;
+});
+
+await check('没打开文件时去题面库里挑一道，而不是抱怨一句就收场', async () => {
+	freshWorkspace();
+	writeStatement('P1001', 'A+B Problem');
+	writeStatement('P2001', '剪贴板那道');
+	externals.length = 0;
+	picks.length = 0;
+	pickIndex = () => 1;
+	await registered['olympia.problem.openSource']();
+	assert.equal(picks.length, 1, '没打开文件时没给出题库清单');
+	assert.deepEqual(picks[0].items.map(item => item.entry.id).sort(), ['P1001', 'P2001'], '清单里就是缓存的那两道');
+	// 开的是选中的那一道，不是列表第一项：按 pick 的结果断言，不猜题库的排序。
+	assert.deepEqual(externals, [picks[0].items[1].entry.url], `选中的那道没打开：${externals.join(', ')}`);
+	pickIndex = undefined;
+});
+
+await check('手写的题面没有链接：说明白，别开一个空白页', async () => {
+	freshWorkspace();
+	const file = path.join(problemsDir, '我的题面.md');
+	fs.writeFileSync(file, '# 我的题面\n\n输入两个整数。\n', 'utf8');
+	const solution = path.join(workspaceRoot, '我的题面.cpp');
+	fs.writeFileSync(solution, 'int main(){}\n', 'utf8');
+	vscodeStub.window.activeTextEditor = { document: { uri: uri(solution), fileName: solution } };
+	const before = messages.length;
+	externals.length = 0;
+	await registered['olympia.problem.openSource']();
+	assert.equal(externals.length, 0, '没有链接还是叫了浏览器');
+	assert.match(messages.slice(before).map(m => m[1]).join('\n'), /没有可用的原文链接/);
+	vscodeStub.window.activeTextEditor = undefined;
+});
+
+await check('题面被人手改成 file:/// 之类的地址：不交给系统', async () => {
+	freshWorkspace();
+	const file = path.join(problemsDir, 'P1001.md');
+	fs.writeFileSync(file, '# P1001 A+B Problem\n\n> 原文链接：file:///C:/Windows/win.ini\n', 'utf8');
+	const solution = path.join(workspaceRoot, 'P1001.cpp');
+	fs.writeFileSync(solution, 'int main(){}\n', 'utf8');
+	vscodeStub.window.activeTextEditor = { document: { uri: uri(solution), fileName: solution } };
+	externals.length = 0;
+	await registered['olympia.problem.openSource']();
+	assert.equal(externals.length, 0, `题面是能改的文本，非 http 的地址不该被打开：${externals.join(', ')}`);
+	vscodeStub.window.activeTextEditor = undefined;
+});
+
+await check('浏览器没接手这个链接时说一句，不让学生对着没反应的界面猜', async () => {
+	freshWorkspace();
+	writeStatement('P1001', 'A+B Problem');
+	const solution = path.join(workspaceRoot, 'P1001.cpp');
+	fs.writeFileSync(solution, 'int main(){}\n', 'utf8');
+	vscodeStub.window.activeTextEditor = { document: { uri: uri(solution), fileName: solution } };
+	externalOk = false;
+	const before = messages.length;
+	await registered['olympia.problem.openSource']();
+	assert.match(messages.slice(before).map(m => m[1]).join('\n'), /系统没有接手这个链接/);
+	externalOk = undefined;
+	vscodeStub.window.activeTextEditor = undefined;
+});
+
+await check('面板的「题目与模板」里有打开原题网页这一行，且写着 Ctrl+Alt+U', () => {
+	const actions = treeProvider.getChildren(sectionOf('problems'));
+	const row = actions.find(a => a.command === 'olympia.problem.openSource');
+	assert.ok(row, '面板里没有打开原题网页的入口');
+	assert.equal(row.label, '打开原题网页', '面板写的名字要和命令面板的标题是同一句');
+	assert.equal(row.key, 'Ctrl+Alt+U', '界面写了按钮却不写键位，学生就只能猜');
 });
 
 console.log(failed ? '\nFAILED' : '\nall problem-library assertions passed');

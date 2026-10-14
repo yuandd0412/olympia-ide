@@ -67,7 +67,7 @@
 			<ul class="check">
 				<li><em>当前环境</em>：编译器版本、编译档位、体检结果、比赛剩余时间</li>
 				<li><em>编译与运行</em>：编译并运行、只编译、按评测机编译、提交前体检、对拍、比赛模式</li>
-				<li><em>题目与模板</em>：拉取题面、从剪贴板拉题号、打开题面库、集训清单、给这道题加一组自定义样例、插入赛制模板、编辑我的模板</li>
+				<li><em>题目与模板</em>：拉取题面、从剪贴板拉题号、打开题面库、打开原题网页、集训清单、给这道题加一组自定义样例、插入赛制模板、编辑我的模板</li>
 				<li><em>AI 教练与帮助</em>：AI 设置、全部设置、环境自检、打开官网</li>
 			</ul>
 		</article>
@@ -218,6 +218,8 @@
 				<li>Codeforces：<code>1660C</code> / <code>1660/C</code></li>
 				<li>AtCoder：<code>ABC300_A</code></li>
 				<li><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd> 从剪贴板识别题号，不用重打</li>
+				<li>写完要交题：<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>U</kbd> 直接打开这道题的原网页——Olympia 按当前文件认题号，
+				<code>P1001.cpp</code> 和 <code>P1001.md</code> 都算；手上没有对应的 .cpp 时，它会把缓存的题面列出来让你挑一道</li>
 			</ul>
 			<h3>题面库</h3>
 			<p>按 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd> 打开：列表里是缓存过的每道题，
@@ -328,6 +330,7 @@
 				<tr><td>拉取题面</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd></td><td>洛谷、Codeforces、AtCoder</td></tr>
 				<tr><td>从剪贴板拉题号</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd></td><td>复制网页链接后直接识别</td></tr>
 				<tr><td>打开题面库</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd></td><td>离线，按题号或标题搜</td></tr>
+				<tr><td>打开原题网页</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>U</kbd></td><td>按当前文件认出这道题，去原题页交题、看数据范围</td></tr>
 				<tr><td>集训清单</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>L</kbd></td><td>一份命名题单，选它就能开一场</td></tr>
 				<tr><td>插入赛制模板</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd></td><td>ACM / IOI 起手代码</td></tr>
 			</tbody>
@@ -454,6 +457,8 @@
 		<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>L</kbd> 打开，选它就「开始这一场」——倒计时直接用清单上的分钟数，不再多问一次；
 		逐题点下去打开题面，没拉过的顺手去拉；行上的「已 AC x」和 ✓ 用的就是解题记录，没有第二份状态。
 		改单子在同一份菜单里就够了：加一道题、移掉一道题、改时长、删掉这一份，不用先删再建</li>
+		<li>打开原题网页（<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>U</kbd>）：交题、看数据范围都要回原题页面，而链接本来就写在拉下来的题面里。
+		按当前文件认出这道题就直接开它的网页，认不出就列缓存的题面让你挑；手写的题面没有链接时会把这句话说明白，不会开一张空白页</li>
 		<li>Olympia 设置：编译档位、跑样例内存、对拍轮数、题面位置等全部开关收进一屏，说明写在每一项下面，<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>,</kbd> 打开</li>
 		<li>面板里每一行的名字和命令面板里的标题现在是同一句，不会再出现「面板写打开题面库、搜索时叫已缓存的题面」这种对不上的情况</li>
 		<li>欢迎页摘掉与产品无关的入口：克隆 Git 仓库、打开远程仓库、连接到…、打开隧道、运行与调试、Git 那四步、

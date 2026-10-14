@@ -318,6 +318,18 @@ from `requestedMinutes` and the command falls back to asking; a 清单 whose sto
 expired, but whose 收尾 never ran, starts a new session instead of only clearing the old one, since the
 click meant "another round".
 
+**打开原题网页** (`olympia.problem.openSource`, `Ctrl+Alt+U`) is the old app's submit affordance: the student
+finishes a `.cpp` and has to get back to the OJ page to submit, read the data range, or look at the samples
+again. The URL was already in the product — `renderStatement` writes it into the statement footer — so this
+command adds no new storage and no second copy of that line: `FIELD.sourceLink` is now the one constant both
+the writer and `metaOf` read, and `LibraryEntry` carries the parsed `url`. Resolving *which* problem reuses
+`pickTarget`, i.e. the same file-stem-then-quick-pick path 加一组自定义样例 uses, so `P1001.cpp` and
+`P1001.md` both resolve to 题号 `P1001` and a student with no file open gets the library list rather than a
+complaint. Only `http`/`https` is handed to `vscode.env.openExternal`: a statement is a plain text file the
+student edits, and a hand-typed `原文链接：file:///…` must not become something the product asks the OS to
+open. A statement with no link (handwritten, half-pulled) says so and points at 拉题面 instead of opening a
+blank tab.
+
 | Command | Title | Keybinding (`when`) | Also in menus |
 | --- | --- | --- | --- |
 | `olympia.problem.pull` | 拉取题面... | `Ctrl+Alt+P` | explorer context |
@@ -325,6 +337,7 @@ click meant "another round".
 | `olympia.template.insert` | 插入赛制模板... | `Ctrl+Alt+T` (`editorTextFocus`) | editor tab context (`resourceLangId == cpp`) |
 | `olympia.template.editMy` | 编辑我的模板 | — (via `Ctrl+Alt+T`) | Olympia 面板 → 题目与模板 |
 | `olympia.problem.openStatement` | 打开题面库 | `Ctrl+Alt+O` (`editorTextFocus`) | command palette |
+| `olympia.problem.openSource` | 打开原题网页 | `Ctrl+Alt+U` (`editorTextFocus`) | editor context (`cpp`/`c`/`markdown`), Olympia 面板 → 题目与模板, command palette |
 | `olympia.problem.appendSample` | 给这道题加一组自定义样例 | — | also called by 对拍 with `{hint, input, output}` |
 | `olympia.practice.open` | 集训清单 | `Ctrl+Alt+L` | Olympia 面板 → 题目与模板 |
 | `olympia.practice.new` | 新建集训清单 | — (via `Ctrl+Alt+L`) | command palette |

@@ -248,4 +248,33 @@ check('官网说的补全条数等于 CONTEST_SNIPPETS 的条目数', () => {
 	assert.ok(wrong.length === 0, wrong.join('\n        '));
 });
 
+check('官网不许承诺产品里没有的东西：Git 命令、把调试侧栏放回来', () => {
+	// 这两句先前都写在 FAQ 里，而产品里：git 扩展整族没进包（命令面板搜不到 Git 命令），
+	// olympia.debug.showEntryPoints 只控制菜单项的 when 子句，活动栏容器是无条件注销的。
+	const bar = fs.readFileSync(path.join(repoRoot, 'oss/src/vs/workbench/contrib/olympia/browser/olympiaActivityBar.ts'), 'utf8');
+	assert.ok(bar.includes('deregisterViewContainer'), '读不到注销调用——这条检查就空转了');
+	assert.ok(!bar.includes('showEntryPoints'), '如果哪天侧栏改为按设置恢复，就得回来重写官网这段说明（现在页面写的是"不会回来"）');
+	const offenders = [];
+	for (const [file, html] of pages) {
+		const rel = path.relative(siteRoot, file);
+		if (/版本管理可以用\s*命令面板里的\s*Git 命令|可以用 Git 命令|命令面板里的 Git 命令/.test(html)) { offenders.push(`${rel}：说版本管理能用 Git 命令，但 git 扩展没进包`); }
+		if (/恢复\s*VS Code 自带的|入口就回来了/.test(html)) { offenders.push(`${rel}：说调试入口能整个恢复回来，侧栏其实不会回来`); }
+		for (const m of html.matchAll(/olympia\.debug\.showEntryPoints/g)) {
+			const block = html.slice(Math.max(0, m.index - 400), m.index + 400);
+			if (!/不会回来/.test(block)) { offenders.push(`${rel}：提到这个设置却没说清它只放菜单项`); }
+			void m;
+		}
+	}
+	assert.ok(offenders.length === 0, offenders.join('\n        '));
+});
+
+check('产品自己的许可证：官网页脚与 product.json 同一条', () => {
+	const lic = JSON.parse(fs.readFileSync(productJson, 'utf8')).licenseName;
+	assert.ok(typeof lic === 'string' && lic.length > 0, 'product.json 没写 licenseName');
+	const missing = [...pages].filter(([, html]) => /基于 Microsoft Visual Studio Code|Visual Studio Code（MIT/.test(html))
+		.filter(([file, html]) => !html.includes(lic))
+		.map(([file]) => path.relative(siteRoot, file));
+	assert.ok(missing.length === 0, `这些页面提到上游 MIT 却没写产品自己的 ${lic}：${missing.join('、')}`);
+});
+
 console.log(failed ? `\n${failed} 处官网与产品不一致` : '\nall website checks passed');process.exitCode = failed ? 1 : 0;

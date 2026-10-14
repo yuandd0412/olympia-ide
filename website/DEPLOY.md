@@ -98,10 +98,13 @@ R2 单对象 5 GiB，可以回到"一个文件"的体验，Gitee 退成镜像：
 `npx wrangler r2 bucket create olympia-downloads` → 控制台 R2 → 桶 → Custom Domains
 绑 `dl.olympia.dpdns.org` → 上传整包 → 换 `index.html` 链接。开 R2 需要账号绑定支付方式。
 
-## 历史：Tauri 版 0.1.0
+## 历史：Tauri 版 0.1.0（官网已不再指向它）
 
-pivot 之前的 Tauri 外壳 + NSIS 安装器约 49 MB，单文件塞得进 Gitee 附件，官网当前
-（`index.html` 的 `#dl-btn`）仍指向它：
-`https://gitee.com/yuanddMSK/olympia-ide/releases/download/v0.1.0/Olympia%20IDE_0.1.0_x64-setup.exe`。
-旧流程依赖 `scripts/strip-toolchain.py` 裁剪工具链来控制体积，fork 版不再使用这套。
-发布 fork 版后请把这条按钮一起换掉。
+pivot 之前的 Tauri 外壳 + NSIS 安装器约 49 MB，单文件塞得进 Gitee 附件，
+`v0.1.0/Olympia%20IDE_0.1.0_x64-setup.exe` 那个 Release 还挂在那里，但**官网三处下载入口
+（`index.html` 的首屏 CTA、下载卡、页脚）现在全部指向 fork 版的 Release 页**，
+不再有指向 0.1.0 的按钮（早先写的 `#dl-btn` 这个 id 在现在的 `index.html` 里已经不存在）。
+旧流程依赖 `scripts/strip-toolchain.py` 裁剪工具链来控制体积，fork 版不再使用这套：
+工具链由 `build/fetch-toolchain.mjs` 从 MSYS2 组装，体积靠 Inno 自己分卷解决（见第 1、2 节）。
+发新版时如果顺手要把 0.1.0 摘掉，就在 Gitee 那个 Release 的说明里写明"旧版，勿下载"，
+不要直接删附件——已经装了 0.1.0 的学生还要靠它对照。

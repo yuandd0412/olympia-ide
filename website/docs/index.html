@@ -359,7 +359,7 @@
 				<tr><td><code>olympia.compiler.customFlags</code></td><td><em>空</em></td><td>档位为 <code>custom</code> 时的附加参数</td></tr>
 				<tr><td><code>olympia.compiler.optimization</code></td><td><code>none</code></td><td>本地优化级别</td></tr>
 				<tr><td><code>olympia.compiler.showCompileCommand</code></td><td><code>true</code></td><td>打印完整编译命令</td></tr>
-				<tr><td><code>olympia.debug.showEntryPoints</code></td><td><code>false</code></td><td>恢复 VS Code 自带的「运行与调试」入口</td></tr>
+				<tr><td><code>olympia.debug.showEntryPoints</code></td><td><code>false</code></td><td>把「运行」菜单里的调试入口项放回来（侧栏图标不会回来，包里也不带调试器）</td></tr>
 				<tr><td><code>olympia.check.enabled</code></td><td><code>true</code></td><td>提交前体检总开关</td></tr>
 				<tr><td><code>olympia.check.onSave</code></td><td><code>true</code></td><td>保存时自动体检</td></tr>
 				<tr><td><code>olympia.check.rules.pragmaOptimize</code></td><td><code>true</code></td><td>检查优化属性</td></tr>
@@ -417,10 +417,14 @@
 		</details>
 		<details>
 			<summary>左侧栏没有「运行和调试」「源代码管理」，我要怎么用</summary>
-			<p>竞赛用不到，出厂把它们从活动栏摘掉了。需要调试器时打开
-			<code>olympia.debug.showEntryPoints</code>，入口就回来了；
-			版本管理可以用命令面板里的 Git 命令。<em>测试</em> 与 <em>测试结果</em> 两个视图同样摘掉了 ——
+			<p>竞赛用不到，出厂把它们从活动栏摘掉了。<em>测试</em> 与 <em>测试结果</em> 两个视图同样摘掉了 ——
 			这个产品里没有测试提供程序，点开只是一个空面板，判题走的是「跑样例」和「对拍」那两条路。</p>
+			<p>要说清楚的一点：<code>olympia.debug.showEntryPoints</code> 只把 <em>「运行」菜单里的调试入口项</em>
+			放回来，侧栏那个图标不会回来，安装包里也没有调试器（不随包 js-debug）。真需要单步调试，
+			得自己在扩展市场装一个调试扩展，机房没网就办不到。</p>
+			<p>版本管理同理：<em>git 扩展根本没有进包</em>，所以命令面板里搜不到 Git 命令，
+			「源代码管理」那一栏也就不是被隐藏了，而是确实没有东西可提供。要做版本管理，
+			要么在扩展市场装 git 扩展，要么直接用 <code>git</code> 命令行。</p>
 		</details>
 		<details>
 			<summary>AI 教练不回话</summary>

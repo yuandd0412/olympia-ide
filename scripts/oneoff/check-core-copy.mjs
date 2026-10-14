@@ -180,13 +180,23 @@ report(manageAt >= 0 && /f1: false/.test(text(MANAGE).slice(manageAt, manageAt +
  * 只能盯住个别文件的原因——剩下的两百来条散在 Copilot / chat / 远程这些本产品不跑的面上）。
  * 收掉一批之后把 CEILING 改小，任何新写死的微软链接都会在这里变红。
  */
-const CEILING = 221;
+const CEILING = 191;
 const HOSTS = /https:\/\/(?:aka\.ms|go\.microsoft\.com|code\.visualstudio\.com)/g;
 const SRC_ROOT = path.resolve(here, '../../oss/src/vs');
 const MUST_STAY_CLEAN = [
 	'vs/workbench/contrib/files/browser/files.contribution.ts',
 	'vs/workbench/contrib/files/browser/workspaceWatcher.ts',
-	'vs/workbench/contrib/files/browser/editors/textFileSaveErrorHandler.ts'
+	'vs/workbench/contrib/files/browser/editors/textFileSaveErrorHandler.ts',
+	// 这一批是设置页/弹窗里学生真会读到的描述：链接已经就地去掉，别让它长回来
+	'vs/workbench/contrib/search/browser/search.common.contribution.ts',
+	'vs/editor/browser/widget/codeEditor/codeEditorWidget.ts',
+	'vs/editor/common/config/editorOptions.ts',
+	'vs/platform/request/common/request.ts',
+	'vs/workbench/contrib/terminal/common/terminalConfiguration.ts',
+	'vs/workbench/browser/parts/editor/editorConfiguration.ts',
+	'vs/workbench/services/editor/common/editorResolverService.ts',
+	'vs/workbench/browser/workbench.contribution.ts',
+	'vs/workbench/contrib/snippets/browser/snippets.contribution.ts'
 ];
 
 function walkTs(dir, acc) {

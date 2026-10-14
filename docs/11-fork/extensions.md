@@ -708,6 +708,53 @@ time), and comments inside `build/**` must stay English — `build/win32/**` is 
 guard but `build/` itself is not, so the OLYMPIA-TRIM note in `gulpfile.vscode.ts` is written in
 English while the file it ships into the wizard is Chinese.
 
+## Brand residue a student can still reach
+
+An audit on 2026-10-15 walked the first-run surfaces (not the whole tree) and asked one question per
+hit: can a student actually reach this? 349 lines in `src/vs` contain a Microsoft URL; ~172 of them
+are JSDoc, `monaco.d.ts`, unregistered contributions, or files whose extension is trimmed, and the
+Help menu is already safe because `privacyStatementUrl`, `introductoryVideosUrl`, `tipsAndTricksUrl`,
+`newsletterSignupUrl`, `youTubeUrl`, `requestFeatureUrl` and `npsSurveyUrl` are all absent from
+`product.json`, so `helpActions.ts` skips registering them and `nps.contribution.ts` returns early.
+What was reachable, and what happened to it:
+
+- **Our own strings.** The Olympia settings page footer said 「在 VS Code 设置里搜索 olympia」 and
+  the debug group was labelled 「VS Code 自带入口」 ([`src/settingsPanel.ts`](../../oss/extensions/olympia-onboarding/src/settingsPanel.ts));
+  the `olympia.debug.showEntryPoints` description promised 「VS Code 自带的『运行或调试』按钮」. Both
+  now say 设置页 / 编辑器自带, and the setting description tells the truth about what it restores
+  (menu items only — the activity-bar container is deregistered unconditionally in
+  [`olympiaActivityBar.ts`](../../oss/src/vs/workbench/contrib/olympia/browser/olympiaActivityBar.ts),
+  and no js-debug ships).
+- **Theme picker.** `theme-defaults` labelled two themes 「深色(Visual Studio)」/「浅色(Visual Studio)」
+  and described itself as the default Visual Studio themes; they are 深色（经典）/ 浅色（经典） now,
+  because that list is one welcome-page step away from a first-run student.
+- **Workspace trust.** Four dialog messages linked `aka.ms/vscode-workspace-trust` and the
+  restricted-mode banner had a 了解更多 button on the same URL; the links are gone (the sentence
+  points at our own docs page instead) and the banner keeps only 管理.
+- **The interactive editor playground** (`帮助: 交互式编辑器操场`) is a full English upstream page
+  with Microsoft links at the end, reachable from the palette and translated nowhere. Its command
+  registration was dropped from
+  [`walkThrough.contribution.ts`](../../oss/src/vs/workbench/contrib/welcomeWalkthrough/browser/walkThrough.contribution.ts)
+  — the walk-through *editor* and its serializer stay, because other welcome cards use that editor,
+  and nothing else in the tree references `workbench.action.showInteractivePlayground`.
+- **Setting descriptions** still carrying `aka.ms` / `code.visualstudio.com` links (`http.proxy*`,
+  `search.exclude`, `editor.multiCursorModifier`, glob-pattern hints in the editor/file-watcher/
+  snippet registrations, `extensions.allowed`, the terminal shell-integration hint) were swept the
+  same way `files.contribution.ts` was: link markup removed, the term kept as inline code, and any
+  sentence still in English translated while touching it. 25 sites in 10 files:
+  `scripts/oneoff/check-core-copy.mjs` records the residue as 191 (down from 221) and pins 9 of those
+  files at zero. Two deliberate leftovers, neither listed as clean so a future reader can not mistake
+  them for already-trimmed surfaces: `extensionManagement.ts:752` is the `extensions.allowed` *policy*
+  value read only by the ADMX/ADML export, and `userDataSync.ts`'s two aka.ms strings are unreachable
+  because `product.json` has no settings-sync store at all.
+
+`node scripts/oneoff/check-website.mjs` gained the matching two site-side rules: no page may claim
+Git commands are available or that `olympia.debug.showEntryPoints` brings the debug *sidebar* back,
+and every mention of that setting must say 不会回来 within the same block; the checker reads
+`olympiaActivityBar.ts` to make sure the doc claim still matches the code (if the sidebar ever
+becomes setting-driven, that assertion fails first). Both rules were negative-tested by re-inserting
+the old sentences into `website/docs/index.html` and restoring the file byte-exactly.
+
 ## What the old Tauri app still has that this fork does not
 
 Inventory taken from the old app's own command list (`frontend/src-tauri/src/lib.rs`

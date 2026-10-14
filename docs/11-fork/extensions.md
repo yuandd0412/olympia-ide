@@ -473,6 +473,23 @@ turns it back on stays turned on. The file is the place to add further product-l
 at the registration site (as `chat.titleBar.openInAgentsWindow.enabled` now does, defaulting to
 `!byokOnly`).
 
+Two more chrome items were left by `byokOnly` because neither reads the product flag, and both are now
+trimmed at their registration site rather than in `olympiaChrome.ts`, since neither is conditional:
+`chat.agentsControl.enabled` shipped `default: 'compact'`, which replaces the command-center search box with
+an agent-status pill and a unified-chat widget — in a build with no hosted assistant that pill is a dead
+button on the first screen, so the default is now `'hidden'`; and
+`githubLinkPresentation.contribution.ts` is no longer imported from `workbench.common.main.ts`, because it
+registers a 「Sign in to GitHub」 affordance for github.com links whose authority comes from
+`defaultAccount.ts`, which still returns `https://github.com/` under `byokOnly` — clicking it throws
+`No default account provider configured`, and the coach's answers can contain GitHub links. Both are pinned
+in `check-core-copy.mjs`: a `copy` entry asserts `githubLinkPresentation` never appears in the built
+`workbench.common.main.js`, and the pill's default is read from the slice between
+`[ChatConfiguration.AgentStatusEnabled]` and `[ChatConfiguration.UnifiedAgentsBar]` — the built file leaves
+that key unquoted (`default: "hidden"`) where other registration sites quote it, so the first version of the
+assertion, written from the source's shape, reported 「没找到」 on a correct product. What is *not* verified:
+whether the pill actually disappears and whether the sign-in prompt is really gone — that needs the product
+launched, and it is on the 真机核对 list.
+
 **Settings are grouped in core, not in the extension manifests' `configuration.title`.**
 `resolveSettingsTree` is handed `coreSettingsGroups` only
 ([`settingsEditor2.ts:1512`](../../oss/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts)),

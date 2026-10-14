@@ -19,6 +19,8 @@ const PREFS = 'vs/workbench/contrib/preferences/common/preferencesContribution.j
 const ASSIGN = 'vs/workbench/services/assignment/common/assignmentService.js';
 const EXTENSIONS = 'vs/workbench/contrib/extensions/browser/extensions.contribution.js';
 const WELCOME = 'vs/workbench/contrib/welcomeGettingStarted/common/gettingStartedContent.js';
+const CHAT = 'vs/workbench/contrib/chat/browser/chat.shared.contribution.js';
+const COMMON_MAIN = 'vs/workbench/workbench.common.main.js';
 
 /** [文件, 文案, 应该出现吗] */
 const copy = [
@@ -36,7 +38,9 @@ const copy = [
 	[EXTENSIONS, 'VS Marketplace 链接', false],
 	[WELCOME, 'https://olympia.dpdns.org/docs/', true],
 	[WELCOME, 'vscode-getting-started-video', false],
-	[WELCOME, 'https://code.visualstudio.com/docs/editor/workspace-trust', false]
+	[WELCOME, 'https://code.visualstudio.com/docs/editor/workspace-trust', false],
+	// GitHub 链接呈现没注册，就不该在 workbench 入口里被带进来（它注册的「登录 GitHub」在这个构建里只会报错）
+	[COMMON_MAIN, 'githubLinkPresentation', false]
 ];
 
 /** 没有配置这些服务，就不该默认开着让用户以为在用。 */
@@ -70,6 +74,16 @@ for (const [file, needle, want] of copy) {
 for (const [file, pattern, label] of defaults) {
 	report(pattern.test(text(file)), label);
 }
+
+/**
+ * 标题栏命令中心那枚「智能体」pill：这个构建没有托管助手，pill 点了没东西可看。
+ * 按两个注册点之间那一段读它自己的 default（产物是双引号），失败时把看到的值打出来。
+ */
+const agentSlice = (text(CHAT).split('[ChatConfiguration.AgentStatusEnabled]')[1] ?? '').split('[ChatConfiguration.UnifiedAgentsBar]')[0];
+// 这一处产物写的是不带引号的 default:（另一处 settings 注册表里是 "default":），两种形状都要认。
+const agentDefault = /['"]?default['"]?:\s*(['"][^'"]*['"])/.exec(agentSlice)?.[1];
+report(agentDefault === '"hidden"' || agentDefault === "'hidden'",
+	`标题栏「智能体」pill 出厂为 hidden（构建里这一段的 default 是 ${agentDefault ?? '没找到'}）`);
 for (const id of welcomeOff) {
 	// 源码用单引号，产物用双引号，所以按 id 找再读它自己的 when。
 	const at = text(WELCOME).search(new RegExp(`id:\\s*["']${id}["']`));

@@ -748,6 +748,27 @@ What was reachable, and what happened to it:
   value read only by the ADMX/ADML export, and `userDataSync.ts`'s two aka.ms strings are unreachable
   because `product.json` has no settings-sync store at all.
 
+A second pass took the chat/MCP surfaces, where the problem was not a link but the whole sentence:
+the MCP welcome view said 「直接从 VS Code 浏览并安装[模型上下文协议(MCP)服务器](https://code.visualstudio.com/docs/copilot/customization/mcp-servers)」
+(`mcpServersView.ts:277`) — brand plus an untrusted link inside our own view — and two settings in
+`chat.shared.contribution.ts` were still entire English paragraphs naming Microsoft: the dictation
+model (`dictation.model`, plus the on-device enum item's description) and
+`chat.microsoftAuthentication.enabled`, whose English text describes a 「Continue with Microsoft」
+sign-in that this product cannot perform. Those three are Chinese now; the Microsoft-auth one says
+outright that Olympia uses its own base URL and key (BYOK) and that the option should stay off here.
+That same setting nearly got hidden by mistake: I first read it as a dead control (nothing in the
+settings tree references the key) and added `included: false`, but `chatSetupRunner.ts` does read it
+— when deciding which buttons a sign-in dialog offers — so the honest fix is the Chinese sentence
+that says Olympia is BYOK-only and this stays off, not a hidden toggle. Recorded here because the
+wrong version was in this file for about ten minutes.
+The technology names that are actually load-bearing stayed (Microsoft Foundry Local is the runtime
+the on-device dictation model really runs through — renaming it would make the description false).
+Left alone on purpose: the five 「受 Microsoft 信任」 labels in
+`manageTrustedExtensionsForAccountAction.ts` / `manageTrustedMcpServersForAccountAction.ts` /
+`chatLanguageModelActions.ts` and the terminal-voice 「从 "Microsoft" 安装 "Olympia Speech"」 prompt —
+each is behind an account that BYOK-only prevents from existing, so changing them would rename a
+publisher-verification concept without any student reaching it.
+
 `node scripts/oneoff/check-website.mjs` gained the matching two site-side rules: no page may claim
 Git commands are available or that `olympia.debug.showEntryPoints` brings the debug *sidebar* back,
 and every mention of that setting must say 不会回来 within the same block; the checker reads

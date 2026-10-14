@@ -196,7 +196,8 @@ const MUST_STAY_CLEAN = [
 	'vs/workbench/browser/parts/editor/editorConfiguration.ts',
 	'vs/workbench/services/editor/common/editorResolverService.ts',
 	'vs/workbench/browser/workbench.contribution.ts',
-	'vs/workbench/contrib/snippets/browser/snippets.contribution.ts'
+	'vs/workbench/contrib/snippets/browser/snippets.contribution.ts',
+	'vs/workbench/contrib/mcp/browser/mcpServersView.ts'
 ];
 
 function walkTs(dir, acc) {
@@ -220,6 +221,23 @@ for (const rel of MUST_STAY_CLEAN) {
 	const exists = fs.existsSync(abs);
 	const n = exists ? (fs.readFileSync(abs, 'utf8').match(HOSTS) ?? []).length : -1;
 	report(exists && n === 0, `${rel.split('/').pop()} 里一条微软链接都没有${exists ? `（读到 ${n} 条）` : '（文件不存在）'}`);
+}
+// 学生读到的地方不许再长出上游品牌名，也不许把没有任何代码读它的开关留在设置界面里。
+// 逐文件逐正则查；文件读不到就直接报错，绝不写成"没找到就算通过"。
+const EXT_ROOT = path.resolve(SRC_ROOT, '../../extensions');
+const NO_BRAND = [
+	{ label: '交互式编辑器操场的命令注册已去掉', abs: path.resolve(SRC_ROOT, 'workbench/contrib/welcomeWalkthrough/browser/walkThrough.contribution.ts'), re: /registerAction2\(EditorWalkThroughAction\)/, want: false },
+	{ label: 'Microsoft 账户那条设置说明不再是英文的“Continue with Microsoft”', abs: path.resolve(SRC_ROOT, 'workbench/contrib/chat/browser/chat.shared.contribution.ts'), re: /Continue with Microsoft/, want: false },
+	{ label: '同一条说明改口成我们自己的 BYOK 事实', abs: path.resolve(SRC_ROOT, 'workbench/contrib/chat/browser/chat.shared.contribution.ts'), re: /Olympia 走自己的服务地址与密钥（BYOK）/, want: true },
+	{ label: 'MCP 欢迎页不再自称 VS Code', abs: path.resolve(SRC_ROOT, 'workbench/contrib/mcp/browser/mcpServersView.ts'), re: /VS Code/, want: false },
+	{ label: '主题列表里不再有 Visual Studio 字样', abs: path.join(EXT_ROOT, 'theme-defaults/package.nls.json'), re: /Visual Studio/, want: false },
+	{ label: '我们自己的设置页不再把用户称作 VS Code 用户', abs: path.join(EXT_ROOT, 'olympia-onboarding/src/settingsPanel.ts'), re: /VS Code/, want: false },
+	{ label: '设置项说明里不再出现 VS Code', abs: path.join(EXT_ROOT, 'olympia-onboarding/package.json'), re: /VS Code/, want: false }
+];
+for (const { label, abs, re, want } of NO_BRAND) {
+	if (!fs.existsSync(abs)) { report(false, `${label}：读不到文件 ${abs}`); continue; }
+	const hit = re.test(fs.readFileSync(abs, 'utf8'));
+	report(hit === want, `${label}（读到 ${hit ? '有' : '无'}，期望 ${want ? '有' : '无'}）`);
 }
 const heaviest = [...counted].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([f, n]) => `${n} ${f.split('/').slice(-2).join('/')}`);
 console.log(`剩下的集中在：${heaviest.join(' | ')}`);

@@ -31,6 +31,16 @@ const executed = [];
 const shown = [];
 const picks = [];
 const messages = [];
+/**
+ * AI 补空那条命令（`olympia.ai.extract`）由 olympia-coach 注册，两个扩展之间只有命令，
+ * 所以这里自己挂一个假的：叫没叫、叫了几次、交回去什么，全在这几张表上。
+ */
+const extractCalls = [];
+let extractReply;
+let extractThrows = false;
+let activations = 0;
+/** coach 这个扩展装没装：没装的时候拉题面照样得走完，只是没有 AI 那一趟。 */
+let coachHandle;
 /** showInputBox 按队列给值：用完就是「取消」（undefined），这样每一步的取消都能单独测。 */
 let inputs = [];
 /** showQuickPick 按队列给值：数字是下标，函数是 find。 */
@@ -94,12 +104,56 @@ const vscodeStub = {
 	},
 	languages: { registerCompletionItemProvider: () => ({ dispose() { } }) },
 	env: { openExternal: async () => true, clipboard: { readText: async () => '' } },
-	extensions: { all: [], getExtension: () => undefined }
+	extensions: {
+		all: [],
+		getExtension: id => (id === 'olympia.olympia-coach' ? coachHandle : undefined),
+	},
 };
 
 /** 拉题面不能联网：把 './net' 换成假页面，产品自己的解析器读假页面写出真题面。 */
 const fakeNet = {
 	async fetchText(url) {
+		// 一道「除了说明以外全都齐」的洛谷题：题面够长、格式与样例都在。
+		// 空说明不该触发一次 AI 改写，这条正是旧版 enrich.rs 里那条用例。
+		if (/\/problem\/P8888\b/.test(url)) {
+			const ctx = {
+				data: {
+					problem: {
+						pid: 'P8888',
+						name: '完整题面',
+						contenu: {
+							description: '给定两个整数 a 和 b，请你输出它们的和。这道题的题面、输入格式、输出格式和样例都已经从洛谷页面里的结构化数据取全了，只有说明那一栏是空的——而这种题本来就没有说明。',
+							formatI: '一行两个整数，以空格分隔。',
+							formatO: '一行一个整数。',
+							hint: '',
+						},
+						samples: [['3 4', '7']],
+						limits: { time: [1000], memory: [131072] },
+						difficulty: 2
+					}
+				}
+			};
+			return { status: 200, finalUrl: url, body: `<script id="lentille-context" type="application/json">${JSON.stringify(ctx)}</script>` };
+		}
+		// AtCoder：题面、输入格式、输出格式都抓到了，只有样例输出那一格空着——
+		// 就是爬虫碰上线路不对时会漏掉、值得补一次的那种。
+		if (/atcoder\.jp/.test(url)) {
+			return {
+				status: 200, finalUrl: url, body: `<html><head><title>ABC300 A - Duplicate</title></head><body>
+<div class="part"><section><h3>Problem Statement</h3><p>You are given a sequence of N integers A1, A2, AN. Find the value that appears more than once in the sequence, and print it in the order the values appear from first to last.</p></section></div>
+<div class="part"><section><h3>Input</h3><pre>N
+A1 A2 AN</pre></section></div>
+<div class="part"><section><h3>Output</h3><pre>Print the answer in one line.</pre></section></div>
+<div class="part"><section><h3>Sample Input 1</h3><pre>4
+3 1 4 1</pre></section></div>
+<div class="part"><section><h3>Sample Output 1</h3><pre></pre></section></div>
+</body></html>`
+			};
+		}
+		// Codeforces：题面网页挡着人机校验，只有元信息，正文压根没抓回来。
+		if (/codeforces\.com/.test(url)) {
+			return { status: 503, finalUrl: url, body: '<html><head><title>Just a moment...</title></head><body><div class="cf-browser-verification">请稍候</div></body></html>' };
+		}
 		const pid = /\/problem\/(P\d+)/.exec(url)?.[1] ?? 'P1001';
 		const ctx = {
 			data: {
@@ -127,6 +181,7 @@ Module._load = function (request, parent, isMain) {
 const templates = await import(pathToFileURL(path.join(contestOut, 'templates.js')).href);
 const contest = await import(pathToFileURL(path.join(contestOut, 'extension.js')).href);
 const practice = await import(pathToFileURL(path.join(contestOut, 'practiceList.js')).href);
+const enrich = await import(pathToFileURL(path.join(contestOut, 'enrich.js')).href);
 const onboardingFiles = await import(pathToFileURL(path.join(onboardingOut, 'problemFiles.js')).href);
 const solveLog = await import(pathToFileURL(path.join(onboardingOut, 'solveLog.js')).href);
 Module._load = originalLoad;
@@ -142,6 +197,11 @@ function reset(overrides = {}) {
 	picks.length = 0;
 	messages.length = 0;
 	warnReply = undefined;
+	extractCalls.length = 0;
+	extractReply = undefined;
+	extractThrows = false;
+	activations = 0;
+	coachHandle = undefined;
 	settings = { ...overrides };
 }
 const said = () => messages.map(m => m[1]).join('\n');
@@ -163,6 +223,14 @@ async function check(name, body) {
 
 const context = () => ({ subscriptions: [], workspaceState: { get: (_k, d) => d, update: async () => { } } });
 contest.activate(context());
+
+/** 假的 `olympia.ai.extract`：只记被叫了几次、交回什么，别真去联网。 */
+const extractHandler = async request => {
+	extractCalls.push(request);
+	if (extractThrows) { throw new Error('模型离线：连不上'); }
+	return extractReply;
+};
+registered[enrich.EXTRACT_COMMAND] = extractHandler;
 
 await check('两个扩展说的是同一个文件：面板标签 = contest 真的写的那个路径', () => {
 	assert.equal(onboardingFiles.PRACTICE_PATH_LABEL, `${templates.TEMPLATE_FOLDER}/${practice.PRACTICE_FILE}`);
@@ -539,6 +607,177 @@ await check('加三道只进去一道：要报「只加进去 1 道」，不能�
 	await registered['olympia.practice.open']();
 	assert.match(said(), /只加进去 1 道/);
 	assert.equal(readDisk().lists[0].problems.length, practice.MAX_PRACTICE_PROBLEMS);
+});
+
+// ==================== AI 补空（旧版 enrich.rs 的那条路）====================
+// 抓取之后觉得题面残缺，就叫一次用户自己配的模型补空字段。这里要钉住的是三条：
+//   * 只往空着的字段里填，抓回来有内容的地方一个字不动；
+//   * 完整的洛谷题（只剩一个空提示）连一次都不该叫；
+//   * 模型离线/回散文/命令没人接，都只是「没有 AI 这一趟」，题面照样写得出、不报错。
+// needsEnrichment / mergeExtracted 不碰 vscode，所以可以直接驱动；另外几条走真的拉题面那条路。
+
+/** 一道字段齐全的题面：需要哪种残缺就改哪一个键。 */
+const problem = (overrides = {}) => ({
+	platform: 'atcoder', id: 'ABC300_A', title: 'Duplicate', url: 'https://atcoder.jp/contests/ABC300/tasks/ABC300_A',
+	statement: 'x'.repeat(200), inputFormat: '抓到过的输入格式', outputFormat: '抓到过的输出格式',
+	samples: [{ input: '3 1 4 1', output: '1' }], hint: '抓到过的提示', tags: [], ...overrides,
+});
+const readStatement = id => fs.readFileSync(statementFile(id), 'utf8');
+/** 假 AtCoder 页面里 Sample Input 1 就是两行：读回来也该是两行。 */
+const SAMPLE_INPUT = '4\n3 1 4 1';
+const coachInstalled = () => { coachHandle = { activate: async () => { activations++; } }; };
+/** 模型那次交回的东西：空着的地方都给了，抓到的那一份它也想顺带改一改——那一处不许顶掉。 */
+const aiFields = () => ({
+	ok: true,
+	model: 'ds-chosen',
+	fields: {
+		statement: 'AI 重写的题面：读入一个数组，输出第一个重复的数。',
+		hint: 'AI 补的提示：同一个数可能出现多次，取最早出现两次的那个。',
+		samples: [{ input: '9 9 9', output: '1' }],
+	},
+});
+
+await check('needsEnrichment 认得出该不该问：齐的不问、缺的问、只有元信息和没正文的都不问', () => {
+	assert.equal(enrich.needsEnrichment(problem()), false, '字段齐全还去问模型，等于让 AI 改写一份好题面');
+	assert.equal(enrich.needsEnrichment(problem({ hint: '' })), true, '非洛谷缺提示该补一次');
+	assert.equal(enrich.needsEnrichment(problem({ platform: 'luogu', hint: '' })), false, '完整的洛谷题只剩一个空提示：一次都不该叫');
+	assert.equal(enrich.needsEnrichment(problem({ platform: '洛谷', hint: '' })), false, '老存档里写的中文平台名同样算洛谷');
+	assert.equal(enrich.needsEnrichment(problem({ platform: 'luogu', samples: [] })), true, '洛谷缺样例照样是抓漏了，该问');
+	assert.equal(enrich.needsEnrichment(problem({ metadataOnly: true, hint: '', samples: [] })), false, '只有元信息：没有正文可抽，缺什么都不该问');
+	assert.equal(enrich.needsEnrichment(problem({ statement: '   ', hint: '', samples: [] })), false, '正文都没抓到：无从抽起，别去问');
+	assert.equal(enrich.needsEnrichment(problem({ samples: [] })), true);
+	assert.equal(enrich.needsEnrichment(problem({ samples: [{ input: '3 1 4 1', output: '' }] })), true, '样例只有一半也是残缺');
+	assert.equal(enrich.needsEnrichment(problem({ outputFormat: '' })), true);
+	assert.equal(enrich.needsEnrichment(problem({ statement: '只有两句话', hint: '有提示' })), true, '短得像是抓漏了的正文该问');
+});
+
+await check('mergeExtracted 只往空着的字段里填：抓回来有内容的地方一个字不动', () => {
+	const p = problem({ inputFormat: '', hint: '', samples: [{ input: '3 1 4 1', output: '' }] });
+	const filled = enrich.mergeExtracted(p, {
+		statement: 'AI 重写的题面', inputFormat: '一行 N 个整数。', outputFormat: 'AI 的输出格式', hint: 'AI 的提示',
+		samples: [{ input: '9 9 9', output: '1' }],
+	});
+	assert.deepEqual(filled, ['输入格式', '提示', '样例'], `该说补了这三块：${filled.join('、')}`);
+	assert.equal(p.inputFormat, '一行 N 个整数。', '空字段没补上');
+	assert.equal(p.outputFormat, '抓到过的输出格式', 'AI 把抓到的输出格式盖掉了');
+	assert.equal(p.statement, 'x'.repeat(200), '完整的题面不该被 AI 那份重写');
+	assert.equal(p.hint, 'AI 的提示');
+	assert.equal(p.samples[0].input, '3 1 4 1', '已经有内容的那半格不能被换掉');
+	assert.equal(p.samples[0].output, '1', '空着的那半格该补上');
+	assert.equal(enrich.mergeExtracted(problem(), {}).length, 0, '什么都没给就不该说补了东西');
+});
+
+await check('样例：整组都空着就整组换掉，已有成型的只补空格，模型多给的那几组不要', () => {
+	const blanked = problem({ samples: [{ input: '', output: '' }] });
+	assert.deepEqual(enrich.mergeExtracted(blanked, { samples: [{ input: '1', output: '2' }, { input: '3', output: '4' }] }), ['样例']);
+	assert.deepEqual(blanked.samples.map(s => [s.input, s.output]), [['1', '2'], ['3', '4']]);
+
+	const shaped = problem({ samples: [{ input: '3 1 4 1', output: '' }] });
+	enrich.mergeExtracted(shaped, { samples: [{ input: '3 1 4 1', output: '1', explain: '第一个重复的数是 1。' }, { input: '9', output: '9' }] });
+	assert.equal(shaped.samples.length, 1, '模型多说的那一组不该塞进已经成型的样例里');
+	assert.equal(shaped.samples[0].output, '1');
+	assert.equal(shaped.samples[0].explain, '第一个重复的数是 1。', '说明空着也可以补');
+
+	const short = problem({ statement: '只有两句' });
+	assert.deepEqual(enrich.mergeExtracted(short, { statement: '长'.repeat(200) }), ['题面'], '明显残缺的正文才让 AI 那份顶上来');
+	assert.equal(short.statement, '长'.repeat(200));
+});
+
+await check('完整的洛谷题 + 空提示：连一次都不叫模型，文件里也不该有 AI 写的东西', async () => {
+	reset();
+	inputs = ['P8888'];
+	coachInstalled();
+	extractReply = aiFields();
+	await registered['olympia.problem.pull']();
+	assert.equal(extractCalls.length, 0, '题面已经抓全了还叫模型，就是让 AI 往完整题面里塞东西');
+	assert.equal(activations, 0, '没打算问模型，就别先把 coach 叫起来');
+	const text = readStatement('P8888');
+	assert.ok(text.includes('给定两个整数 a 和 b'), `抓到的题面没了：${text.slice(0, 60)}`);
+	assert.ok(!text.includes('AI 重写的题面') && !text.includes('AI 补的提示'), 'AI 的内容不该出现在一份完整题面里');
+	assert.ok(!said().includes('AI'), `什么都没补却在通知里提 AI：${said()}`);
+});
+
+await check('残缺的非洛谷题面：先激活 coach，再叫一次命令，请求里带题号和原文', async () => {
+	reset();
+	inputs = ['ABC300_A'];
+	coachInstalled();
+	extractReply = aiFields();
+	await registered['olympia.problem.pull']();
+	assert.equal(activations, 1, '命令是 coach 注册的：冷启动时不先激活就没人接');
+	assert.equal(extractCalls.length, 1, '一道题只该问一次');
+	assert.equal(extractCalls[0].id, 'ABC300_A');
+	assert.equal(extractCalls[0].platform, 'atcoder');
+	assert.ok(extractCalls[0].text.includes('You are given'), '请求里要带上抓到的正文，不然模型抽什么');
+});
+
+await check('AI 补的字段写进文件：抓到的那份照旧，通知里要写明补了哪几块', async () => {
+	reset();
+	inputs = ['ABC300_A'];
+	coachInstalled();
+	extractReply = aiFields();
+	await registered['olympia.problem.pull']();
+	const text = readStatement('ABC300_A');
+	assert.ok(text.includes('You are given a sequence'), '抓到的题面被 AI 那份盖掉了');
+	assert.ok(!text.includes('AI 重写的题面'));
+	assert.ok(!text.includes('9 9 9'), '模型另外编的那组样例不该进来');
+	assert.ok(text.includes('AI 补的提示'), '空着的提示没补上');
+	assert.deepEqual(templates.parseSampleBlocks(text).map(s => [s.input, s.output]), [[SAMPLE_INPUT, '1']], '只补空着的那半格');
+	assert.match(said(), /AI 补全了 提示、样例/, `通知没说要紧的事：${said()}`);
+});
+
+await check('只抓回元信息（人机校验那一页）：没有正文可抽，不去问模型', async () => {
+	reset();
+	inputs = ['1660C'];
+	coachInstalled();
+	extractReply = aiFields();
+	await registered['olympia.problem.pull']();
+	assert.equal(extractCalls.length, 0, '只有元信息时也去问模型，抽出来的只会是编的');
+	assert.equal(activations, 0);
+	assert.match(readStatement('1660C'), /题面需在浏览器中打开/, '这条路本来就该是「附原文链接」');
+	assert.ok(!said().includes('AI'));
+});
+
+await check('命令抛异常：写出去的就是抓到的那一份，导入不报错也不卡住', async () => {
+	reset();
+	inputs = ['ABC300_A'];
+	coachInstalled();
+	extractReply = aiFields();
+	extractThrows = true;
+	await registered['olympia.problem.pull']();
+	assert.equal(extractCalls.length, 1, '这条用例得真的走到那一步');
+	const text = readStatement('ABC300_A');
+	assert.ok(text.includes('You are given a sequence'));
+	assert.ok(!text.includes('AI 补的提示') && !text.includes('AI 重写的题面'), '模型挂了还往里填东西');
+	assert.deepEqual(templates.parseSampleBlocks(text).map(s => [s.input, s.output]), [[SAMPLE_INPUT, '']], '空着的那格保持空着，等下次再补');
+	assert.ok(!messages.some(([kind]) => kind === 'error'), `模型离线不该让拉题面报错：${said()}`);
+	assert.ok(!said().includes('AI'), `没补东西却提了 AI：${said()}`);
+});
+
+await check('coach 没装、命令没人接：也只是安静地没有 AI 这一趟', async () => {
+	delete registered[enrich.EXTRACT_COMMAND];
+	try {
+		reset();
+		inputs = ['ABC300_A'];
+		await registered['olympia.problem.pull']();       // coachHandle 也没装：getExtension 回 undefined
+		assert.equal(extractCalls.length, 0);
+		assert.ok(executed.some(call => call.id === enrich.EXTRACT_COMMAND), '至少真的去叫过一次，才知道没人接');
+		const text = readStatement('ABC300_A');
+		assert.ok(text.includes('You are given a sequence'), '没人接这条命令也该把抓到的题面写出来');
+		assert.ok(!messages.some(([kind]) => kind === 'error'), `命令没人接不该报错：${said()}`);
+	} finally {
+		registered[enrich.EXTRACT_COMMAND] = extractHandler;
+	}
+});
+
+await check('模型回散文/服务没配：{ok:false} 就当没这回事，题面照旧、通知不提 AI', async () => {
+	reset();
+	inputs = ['ABC300_A'];
+	coachInstalled();
+	extractReply = { ok: false, reason: '模型回的不是 JSON' };
+	await registered['olympia.problem.pull']();
+	assert.equal(extractCalls.length, 1, '这条用例得真的走到那一步');
+	assert.deepEqual(templates.parseSampleBlocks(readStatement('ABC300_A')).map(s => [s.input, s.output]), [[SAMPLE_INPUT, '']]);
+	assert.ok(!said().includes('AI'), `什么都没补还提 AI：${said()}`);
 });
 
 console.log(failed ? '\nFAILED' : '\nall practice-list assertions passed');

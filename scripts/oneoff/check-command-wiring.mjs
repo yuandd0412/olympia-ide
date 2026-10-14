@@ -191,7 +191,7 @@ const problems = [];
 const summary = [];
 // 只给测试台用的内部命令，故意不进命令面板。
 /** 没有界面入口的内部命令：被另一个扩展或核心调用，不该要求界面引用。 */
-const INTERNAL_COMMANDS = new Set(['olympia.coach.debug.extensionState', 'olympia.contest.isRunning']);
+const INTERNAL_COMMANDS = new Set(['olympia.coach.debug.extensionState', 'olympia.contest.isRunning', 'olympia.ai.extract']);
 const registrationsByExtension = new Map();
 for (const id of OLYMPIA_EXTENSIONS) {
 	registrationsByExtension.set(id, registeredCommands(path.join(extensionsRoot, id, 'src')));

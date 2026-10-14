@@ -21,6 +21,10 @@ const EXTENSIONS = 'vs/workbench/contrib/extensions/browser/extensions.contribut
 const WELCOME = 'vs/workbench/contrib/welcomeGettingStarted/common/gettingStartedContent.js';
 const CHAT = 'vs/workbench/contrib/chat/browser/chat.shared.contribution.js';
 const COMMON_MAIN = 'vs/workbench/workbench.common.main.js';
+const FILES = 'vs/workbench/contrib/files/browser/files.contribution.js';
+const WATCHER = 'vs/workbench/contrib/files/browser/workspaceWatcher.js';
+const SAVEERR = 'vs/workbench/contrib/files/browser/editors/textFileSaveErrorHandler.js';
+const LAYOUT = 'vs/workbench/contrib/preferences/browser/settingsLayout.js';
 
 /** [文件, 文案, 应该出现吗] */
 const copy = [
@@ -40,7 +44,19 @@ const copy = [
 	[WELCOME, 'vscode-getting-started-video', false],
 	[WELCOME, 'https://code.visualstudio.com/docs/editor/workspace-trust', false],
 	// GitHub 链接呈现没注册，就不该在 workbench 入口里被带进来（它注册的「登录 GitHub」在这个构建里只会报错）
-	[COMMON_MAIN, 'githubLinkPresentation', false]
+	[COMMON_MAIN, 'githubLinkPresentation', false],
+	// 文件设置这几条描述学生真会点开：链接指向微软短链只会撞「是否信任此链接」，就地讲清即可
+	[FILES, 'https://aka.ms/vscode-glob-patterns', false],
+	[FILES, 'code.visualstudio.com', false],
+	[FILES, '`glob 模式`', true],
+	[WATCHER, 'go.microsoft.com', false],
+	[WATCHER, 'documentationUrl', true],
+	[SAVEERR, 'go.microsoft.com', false],
+	// 更新走官网、没有同步服务：这两节留在设置树里只是多两个能点进去的空页面（遥测保留，学生要能确认它是关的）
+	[LAYOUT, 'application/update', false],
+	[LAYOUT, 'application/settingsSync', false],
+	[LAYOUT, 'application/telemetry', true],
+	[LAYOUT, 'application/network', true]
 ];
 
 /** 没有配置这些服务，就不该默认开着让用户以为在用。 */
@@ -157,6 +173,46 @@ const MANAGE = 'vs/workbench/contrib/authentication/browser/actions/manageAccoun
 const manageAt = text(MANAGE).search(/workbench\.action\.manageAccounts/);
 report(manageAt >= 0 && /f1: false/.test(text(MANAGE).slice(manageAt, manageAt + 320)),
 	'「管理帐户」不再出现在命令面板');
+
+/**
+ * 源码侧（不需要编译）：整棵 `src/vs` 里指向微软的跳转链接只许降不许升。
+ * 这是棘轮而不是清单：计数把注释里的也算进去（就是上面那几条 `[X, 'go.microsoft.com', false]`
+ * 只能盯住个别文件的原因——剩下的两百来条散在 Copilot / chat / 远程这些本产品不跑的面上）。
+ * 收掉一批之后把 CEILING 改小，任何新写死的微软链接都会在这里变红。
+ */
+const CEILING = 221;
+const HOSTS = /https:\/\/(?:aka\.ms|go\.microsoft\.com|code\.visualstudio\.com)/g;
+const SRC_ROOT = path.resolve(here, '../../oss/src/vs');
+const MUST_STAY_CLEAN = [
+	'vs/workbench/contrib/files/browser/files.contribution.ts',
+	'vs/workbench/contrib/files/browser/workspaceWatcher.ts',
+	'vs/workbench/contrib/files/browser/editors/textFileSaveErrorHandler.ts'
+];
+
+function walkTs(dir, acc) {
+	for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+		const full = path.join(dir, entry.name);
+		if (entry.isDirectory()) { walkTs(full, acc); }
+		else if (entry.name.endsWith('.ts')) { acc.push(full.replace(/\\/g, '/')); }
+	}
+	return acc;
+}
+
+const allTs = fs.existsSync(SRC_ROOT) ? walkTs(SRC_ROOT, []) : [];
+const scannable = allTs.filter(f => !f.includes('/test/') && !f.endsWith('.test.ts'));
+report(scannable.length > 5000, `扫了 ${scannable.length} 个核心源码文件（少于 5000 说明根目录读错了，计数不作数）`);
+const counted = scannable.map(f => [f, (fs.readFileSync(f, 'utf8').match(HOSTS) ?? []).length]).filter(([, n]) => n > 0);
+const total = counted.reduce((sum, [, n]) => sum + n, 0);
+report(total > 0 && total <= CEILING, `核心源码里的微软跳转链接 ${total} 条，不超过记录的 ${CEILING} 条（只降不升）`);
+for (const rel of MUST_STAY_CLEAN) {
+	// 逐文件按路径直接读：写错路径 / 文件被改名时必须报错而不是"没找到=没有"地蒙过去。
+	const abs = path.resolve(SRC_ROOT, rel.replace(/^vs\//, ''));
+	const exists = fs.existsSync(abs);
+	const n = exists ? (fs.readFileSync(abs, 'utf8').match(HOSTS) ?? []).length : -1;
+	report(exists && n === 0, `${rel.split('/').pop()} 里一条微软链接都没有${exists ? `（读到 ${n} 条）` : '（文件不存在）'}`);
+}
+const heaviest = [...counted].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([f, n]) => `${n} ${f.split('/').slice(-2).join('/')}`);
+console.log(`剩下的集中在：${heaviest.join(' | ')}`);
 
 console.log(failed ? '\nFAILED' : '\nall core-copy checks passed');
 process.exitCode = failed ? 1 : 0;

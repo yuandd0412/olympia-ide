@@ -356,6 +356,119 @@ details[open] summary { margin-bottom: 14px; }
 .site-foot b { color: var(--fg-strong); }
 .legal { font-size: .8rem; line-height: 1.7; }
 
+/* ---------- motion ----------
+   所有动效都由 <html class="motion"> 兜住开关：这个类只由 JS 在确认浏览器支持
+   IntersectionObserver 且用户没有关掉动效时才加上。JS 没跑起来时内容照常显示，
+   不会卡在「等动画触发」的初始隐藏态上。 */
+
+.motion .read-progress { display: block; }
+
+.read-progress {
+	display: none;
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 0;
+	height: 2px;
+	z-index: 30;
+	background: linear-gradient(90deg, var(--blue), var(--green));
+	box-shadow: 0 0 12px -2px var(--blue);
+}
+
+/* 进场：滚到视口内才淡入上移 */
+.motion .reveal {
+	opacity: 0;
+	transform: translateY(16px);
+	transition: opacity .6s cubic-bezier(.22, .61, .36, 1), transform .6s cubic-bezier(.22, .61, .36, 1);
+}
+.motion .reveal.is-in { opacity: 1; transform: none; }
+
+/* 首屏：不等滚动，直接进场 */
+.motion .hero-copy > *,
+.motion .mock {
+	opacity: 0;
+	animation: fadeUp .7s cubic-bezier(.22, .61, .36, 1) forwards;
+}
+.motion .hero-copy > *:nth-child(1) { animation-delay: .05s; }
+.motion .hero-copy > *:nth-child(2) { animation-delay: .13s; }
+.motion .hero-copy > *:nth-child(3) { animation-delay: .21s; }
+.motion .hero-copy > *:nth-child(4) { animation-delay: .29s; }
+.motion .hero-copy > *:nth-child(5) { animation-delay: .37s; }
+.motion .mock { animation-delay: .18s; }
+
+@keyframes fadeUp {
+	from { opacity: 0; transform: translateY(14px); }
+	to { opacity: 1; transform: none; }
+}
+
+/* hero 里的光标跟着鼠标走 */
+.motion .hero {
+	background: radial-gradient(460px 320px at var(--mx, 50%) var(--my, 20%), rgba(97, 175, 239, .10), transparent 70%);
+}
+
+/* 品牌图标描线画出来 */
+.motion .brand svg path {
+	stroke-dasharray: var(--len, 700);
+	stroke-dashoffset: var(--len, 700);
+	animation: draw 1s cubic-bezier(.65, .05, .36, 1) forwards;
+}
+.motion .brand svg path:nth-child(2) { animation-delay: .2s; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+
+/* 产品示意图：代码从左往右擦出来，输出行依次落地 */
+.motion .mock-code pre {
+	clip-path: inset(0 100% 0 0);
+	animation: wipeIn .8s cubic-bezier(.22, .61, .36, 1) .5s forwards;
+}
+@keyframes wipeIn { to { clip-path: inset(0 0 0 0); } }
+
+.motion .mock-code pre::after {
+	content: "▌";
+	color: var(--blue);
+	animation: blink 1.1s step-end infinite;
+}
+@keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+.motion .mock-out > * {
+	opacity: 0;
+	animation: fadeUp .38s ease forwards;
+}
+.motion .mock-out > *:nth-child(1) { animation-delay: 1.15s; }
+.motion .mock-out > *:nth-child(2) { animation-delay: 1.32s; }
+.motion .mock-out > *:nth-child(3) { animation-delay: 1.49s; }
+
+/* 体检通过那一枚 chip 轻轻呼吸 */
+.motion .chip.ok { animation: chipPulse 3.4s ease-in-out infinite; }
+@keyframes chipPulse {
+	0%, 100% { box-shadow: 0 0 0 0 rgba(152, 195, 121, 0); }
+	50% { box-shadow: 0 0 0 3px rgba(152, 195, 121, .12); }
+}
+
+/* 导航下划线从左展开 */
+#site-nav a { position: relative; }
+.motion #site-nav a:not(.btn)::after {
+	content: "";
+	position: absolute;
+	left: 0;
+	bottom: -5px;
+	width: 0;
+	height: 1px;
+	background: var(--blue);
+	transition: width .22s ease;
+}
+.motion #site-nav a:not(.btn):hover::after { width: 100%; }
+
+/* 快捷键按下的手感 */
+.motion kbd { transition: transform .14s ease, border-color .14s ease, color .14s ease; }
+.motion tbody tr:hover kbd {
+	transform: translateY(-1px);
+	border-color: var(--blue);
+	color: var(--blue);
+}
+
+/* FAQ 展开时正文跟着淡入 */
+.motion .faq details[open] > p { animation: fadeUp .3s ease both; }
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 940px) {
@@ -392,4 +505,20 @@ details[open] summary { margin-bottom: 14px; }
 @media (prefers-reduced-motion: reduce) {
 	html { scroll-behavior: auto; }
 	.btn:hover { transform: none; }
+	/* 双保险：即便 motion 类被加上了，这里也把动效全部按静态处理 */
+	.motion .reveal,
+	.motion .hero-copy > *,
+	.motion .mock,
+	.motion .mock-code pre,
+	.motion .mock-out > * {
+		opacity: 1;
+		transform: none;
+		clip-path: none;
+		animation: none;
+		transition: none;
+	}
+	.motion .brand svg path { stroke-dashoffset: 0; animation: none; }
+	.motion .chip.ok,
+	.motion .mock-code pre::after { animation: none; }
+	.motion kbd { transition: none; }
 }

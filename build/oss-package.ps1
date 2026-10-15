@@ -101,6 +101,20 @@ if ($running.Count -gt 0) {
 
 Set-Location $Oss
 
+# ---------------------------------------------------------------- 0. pre-flight
+
+# build/ 不在 compile-client 的覆盖范围里，所以里面的类型错误要等到第 3 阶段才炸，
+# 而那时 clean-vscode-win32-x64 已经跑过，产物目录是空的。2026-10-15 那次就是这么
+# 报废了一整轮 bundle（许可证存在性检查读了后面才声明的 const root）。1 秒，先挡住。
+Write-Output ("=== STAGE 0/4 build typecheck START " + (& $stamp) + " ===")
+node 'D:\oler-ide-v2\scripts\oneoff\check-build-typecheck.mjs'
+$rc = $LASTEXITCODE
+Write-Output ("=== STAGE 0/4 build typecheck EXITCODE=$rc  " + (& $stamp) + " ===")
+if ($rc -ne 0) {
+    Write-Output 'build/ 的类型检查没过，按上面列出的文件改完再打包。' -ForegroundColor Red
+    exit $rc
+}
+
 # ---------------------------------------------------------------- 1. bundle
 
 if ($SkipBundle) {
@@ -190,6 +204,18 @@ $vrc = $LASTEXITCODE
 if ($vrc -ne 0) {
     Write-Output '产物内置编译器不可用。' -ForegroundColor Red
     exit $vrc
+}
+
+# The licence texts are the other thing that must be true: scripts/oneoff/check-licence-surface.mjs
+# only proves the packaging *code* asks for them, and gulp.src(..., { allowEmpty: true }) silently
+# drops a name that matched nothing. This reads the finished directory instead.
+Write-Output ''
+Write-Output '=== 验证许可证文本进产物 ==='
+node 'D:\oler-ide-v2\build\verify-product-licence.mjs' $dist
+$lrc = $LASTEXITCODE
+if ($lrc -ne 0) {
+    Write-Output '产物里缺许可证文本，这是 GPL 合规的底线。' -ForegroundColor Red
+    exit $lrc
 }
 
 exit 0

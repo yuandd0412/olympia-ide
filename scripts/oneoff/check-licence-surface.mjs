@@ -37,10 +37,14 @@ const notice = noticeRaw.replace(/^\uFEFF/, '');
 const noticeFlat = notice.replace(/\\/g, '/');
 
 // 1) 三份文本要真的在仓库里，而且不是空壳
-for (const name of ['LICENSE.txt', 'NOTICE.olympia.txt', 'ThirdPartyNotices.txt']) {
+for (const name of ['LICENSE.txt', 'NOTICE.olympia.txt', 'GPL-3.0.txt', 'ThirdPartyNotices.txt']) {
 	const size = fs.existsSync(path.join(oss, name)) ? fs.statSync(path.join(oss, name)).size : 0;
 	report(size > 400, `${name} 在 oss/ 里存在且有内容（${size} 字节）`);
 }
+// 声明按 GPL 发布，就必须随每一份副本给出 GPL 正文——网页上写一句不算。
+const gplText = fs.existsSync(path.join(oss, 'GPL-3.0.txt')) ? fs.readFileSync(path.join(oss, 'GPL-3.0.txt'), 'utf8') : '';
+report(/GNU GENERAL PUBLIC LICENSE/.test(gplText) && /Version 3/.test(gplText) && gplText.length > 30000,
+	`GPL-3.0.txt 是 GNU 官方第 3 版正文（读到 ${gplText.length} 字节）`);
 report(notice.startsWith('Olympia IDE —— 许可证与第三方组件说明'), 'NOTICE.olympia.txt 的标题行在（读到的开头：' + JSON.stringify(notice.slice(0, 18)) + '）');
 // Inno 的许可页按 BOM 判编码：没有 BOM 的 UTF-8 在中文 Windows（ACP 936）上是乱码。
 report(noticeRaw.charCodeAt(0) === 0xFEFF, 'NOTICE.olympia.txt 带 UTF-8 BOM（安装向导那一页才不会是乱码）');
@@ -52,6 +56,12 @@ report(typeof product.licenseFileName === 'string' && fs.existsSync(path.join(os
 // 3) 打包要把三份都拷进产品
 report(gulpfile.includes('product.licenseFileName'), '打包仍按 product.licenseFileName 拷 MIT 正文（不要写死文件名）');
 report(gulpfile.includes('NOTICE.olympia.txt'), '打包清单里有 NOTICE.olympia.txt');
+report(gulpfile.includes('GPL-3.0.txt'), '打包清单里有 GPL-3.0.txt（产品声明 GPL，全文得进包）');
+report(notice.includes('GPL-3.0.txt'), 'NOTICE 告诉了学生 GPL 全文在包里的哪个位置');
+// 组件数量不许是人手抄的：直接从 ThirdPartyNotices.txt 的分隔线数出来。
+const tpnSeparators = (fs.readFileSync(path.join(oss, 'ThirdPartyNotices.txt'), 'utf8').match(/^-{20,}$/gm) ?? []).length;
+report(tpnSeparators % 2 === 0 && notice.includes(`那 ${tpnSeparators / 2} 个 npm`),
+	`NOTICE 写的 npm/git 组件数与清单实际条目一致（分隔线 ${tpnSeparators} 行 = ${tpnSeparators / 2} 个条目）`);
 report(/licenceFiles[\s\S]{0,220}existsSync[\s\S]{0,120}throw new Error/.test(gulpfile),
 	'打包前会检查这些文件存在，缺了就报错而不是静默少拷（allowEmpty 单独用会吞掉问题）');
 

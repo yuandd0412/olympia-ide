@@ -166,7 +166,7 @@ while the menu stops advertising them.
 
 The 远程隧道 commands were the last reachable dead end: six of them sat in the command palette
 (打开远程隧道访问…, 关闭…, 显示日志, 配置…, 复制链接, Rename), and starting one needs a `github`
-authentication provider — `VSCode-win32-x64/resources/app/extensions` ships 50 extensions and none of
+authentication provider — `VSCode-win32-x64/resources/app/extensions` ships 42 extensions (measured 2026-10-15, count the directories) and none of
 them is `github-authentication` or any remote/resolver extension, so the flow can only end in an error
 toast. All six palette registrations now point at one constant, `REMOTE_TUNNEL_COMMANDS_AVAILABLE =
 ContextKeyExpr.false()`, so the entries cannot creep back one at a time, and the commands themselves
@@ -220,7 +220,7 @@ Labels are single-sourced too: a panel row's text must equal the palette title o
 (rule 6 in `check-command-wiring.mjs`, with the palette's trailing ellipsis ignored), which closed eight
 places where the panel said 打开题面库 while the palette called the same command 打开题面库（已缓存的题面）. The
 contest extension's commands also moved from the `Olympia 竞赛` category to plain `Olympia`, so typing
-`Olympia` in the palette lists all 21 entries in one place instead of splitting them across two prefixes.
+`Olympia` in the palette lists all 26 palette-visible entries (28 commands, 2 hidden with `when: "false"`) in one place instead of splitting them across two prefixes.
 
 ## `olympia-contest` — statement pull and contest templates
 
@@ -520,7 +520,7 @@ list again.
 
 `check-core-copy.mjs` grew a **source-side ratchet** alongside its built-output entries for this: it walks
 `oss/src/vs/**/*.ts` (excluding tests; 6,902 files today) and counts `aka.ms` / `go.microsoft.com` /
-`code.visualstudio.com` occurrences, asserting the total never exceeds the recorded `CEILING` (221 as
+`code.visualstudio.com` occurrences, asserting the total never exceeds the recorded `CEILING` (191 as
 measured 2026-10-14) and that the three files above hold zero — read by path, so a renamed file reports
 「文件不存在」 instead of passing as "no links found". It is a ratchet, not an inventory: the residue is
 dominated by surfaces this product does not run (`platform/request/common/request.ts` 13,
@@ -826,7 +826,7 @@ to be the exception, and its failure looked exactly like a broken manifest:
 | `test-my-template.mjs` | 我的模板 against files on disk: the ACM header carries no leftover `$`, a created-but-unfilled `.olympia/template.cpp` is **not** a template (the picker offers 新建, and a forced empty pick warns instead of writing blank lines into the student's code), 我的模板 is listed first only once it has content, `新建我的模板` seeds from `templateFor('acm')` and opens the file **without** touching the current editor, inserting then writes exactly the bytes on disk, and `templateOnPull` seeds `<题号>.cpp` from 我的模板 — from ACM when there is none, and never over a half-written solution. 拉题面 runs with `./net` swapped through the same `Module._load` hook, so a canned Luogu page still goes through the product's real parser. Breaking any one of the three guards (blank-means-template, seed-ignores-mine, drop-the-existsSync) fails exactly the check that covers it. It also holds the **cross-extension** string together: `olympia-onboarding` cannot import contest's constants, so the path its panel row shows (`TEMPLATE_PATH_LABEL`) is asserted equal to `TEMPLATE_FOLDER`/`TEMPLATE_FILE` read out of contest's *compiled* output, and `toolsView.ts` is scanned to make sure the row didn't fall back to typing the path by hand |
 | `test-settings-panel.mjs` | the Olympia 设置 page against the manifests on disk: every `olympia.*` property in the three `package.json` files must be a row (row count is compared to the schema count, so adding a setting without the page listing it fails), grouping comes from the key, enum options show `enumDescriptions`, an unknown segment still shows up under 其他, `.path` rows get 浏览… and write what was picked to Global, a 改过的 row is marked 已改 and 恢复默认 deletes the key so the default comes back, a rejected `update` is shown instead of swallowed, the AI rows delegate, reopening reveals the same panel instead of stacking a second one, and a setting key or default containing `<script>` / `<img onerror>` comes out escaped (disabling `escapeHtml`, limiting the scan to one manifest, emptying the AI delegate list and removing the path-picker condition each make exactly the check that covers them fail) |
 | `test-practice-list.mjs` | 集训清单 against files on disk plus the command argument it hands over: the separators a student actually pastes (`P1001, P1002、P1001\np1002`) collapse to the right ids in the right order, `MAX_PRACTICE_PROBLEMS` caps the list, minutes accept only `5–600` integers (empty means 不设时限, never 0), a file that is not JSON reads as no lists, a half-broken array keeps the good entries, and same-name (case- and space-insensitive) means *replace* so editing a list cannot fork it into two. 「开始这一场」 is asserted on `executeCommand('olympia.contestMode', 60)` — dropping the argument turns exactly the two checks that cover the seed red — and a row with no cached statement ends with a real statement file written by the real parser (network stubbed at `./net`). The ✓ count on each row comes from records the **other** extension's `recordSolve` wrote, and the first check pins the path the panel promises (`.olympia/practice.json`) against the one contest writes. The menu's in-place editing is covered in the same harness: 加一道题 / 改时长 / 移掉一道题 each assert that the **file** changed *and* that the re-shown menu already says the new number (an item count or a `N 分钟` that lags the data is how a student ends up starting a 90-minute session he thought he had changed to 30), an Esc at any step leaves the file byte-identical and returns to the same menu, an input that adds nothing distinguishes 没认出来 from 已经在清单里, blanking the minutes makes 「开始这一场」 pass `undefined` rather than 0, and removing the **last** problem is refused because an empty list is dropped on read — switching that guard off turns exactly that check red |
-| `check-core-copy.mjs` | the sentences and switches we changed in `src/vs`, read back out of `oss/out`: 更新方式 / 发行说明 / 扩展自动检查更新 say what this build actually does, 自然语言搜索 and 实验 are **default `false`** (a service we never configured should not look enabled), and every welcome-page entry we turned off really carries `when: "false"` — 4 remote/Git start entries, 新建工作区 chat, the 调试 和 4 Git steps, and all four Copilot setup steps at once through `createCopilotSetupStep`. The "one constant gates the whole surface" claims are checked **per entry, by position** (`MenuId.CommandPalette` … `when: THE_CONST` within 520 chars), not by counting: counting passes when a leak and a spare gate cancel out, and that is exactly how the first version of this check missed one of the 15 task entries. It also asserts `HIDDEN_VIEWLETS` carries all four deregistered containers *and* imports each contribution module (a missing import fails silently at runtime — the loop just finds nothing to remove), and that 管理帐户 left the palette. It decodes `\uXXXX` before matching, because grepping the built tree for Chinese text reads nothing and reports a clean pass. It has a second, **source-side** half that needs no compile: the Microsoft-link ratchet over `oss/src/vs` (counted ≤ `CEILING` = 221, zero in the three files whose links were removed) and the settings-tree assertion that `application/update` / `application/settingsSync` are gone while `application/telemetry` / `application/network` are still there (the paired "still there" is the anti-vacuity half) |
+| `check-core-copy.mjs` | the sentences and switches we changed in `src/vs`, read back out of `oss/out`: 更新方式 / 发行说明 / 扩展自动检查更新 say what this build actually does, 自然语言搜索 and 实验 are **default `false`** (a service we never configured should not look enabled), and every welcome-page entry we turned off really carries `when: "false"` — 4 remote/Git start entries, 新建工作区 chat, the 调试 和 4 Git steps, and all four Copilot setup steps at once through `createCopilotSetupStep`. The "one constant gates the whole surface" claims are checked **per entry, by position** (`MenuId.CommandPalette` … `when: THE_CONST` within 520 chars), not by counting: counting passes when a leak and a spare gate cancel out, and that is exactly how the first version of this check missed one of the 15 task entries. It also asserts `HIDDEN_VIEWLETS` carries all four deregistered containers *and* imports each contribution module (a missing import fails silently at runtime — the loop just finds nothing to remove), and that 管理帐户 left the palette. It decodes `\uXXXX` before matching, because grepping the built tree for Chinese text reads nothing and reports a clean pass. It has a second, **source-side** half that needs no compile: the Microsoft-link ratchet over `oss/src/vs` (counted ≤ `CEILING` = 191, zero in the three files whose links were removed) and the settings-tree assertion that `application/update` / `application/settingsSync` are gone while `application/telemetry` / `application/network` are still there (the paired "still there" is the anti-vacuity half) |
 | `check-command-wiring.mjs` | every command the UI points at (palette entry, `editor/title`, keybinding, walkthrough button, start entry) actually has a `registerCommand` behind it, and vice versa — the "button that does nothing" class. It also resolves the ids the **code** clicks (tree rows, status chips, notification buttons) and requires them to be registered by one of the three extensions, which is what makes a typo in a cross-extension row (`olympia.problem.openStatement`) a build failure instead of a dead button. Bitten-ness is verified, not assumed: typo'ing one id in `olympia-onboarding/package.json` makes it report three problems and exit 1, and so does typo'ing the panel's library command. Rule 6 is the label-drift guard: every panel row must carry the same wording as the command's palette title (the trailing `...` aside), which is what keeps 「打开题面库」 from being two different strings in two different places |
 | `check-config-defaults.mjs` | every `get('key', 兜底)` in the three extensions against the `default` the manifest declares for that key — 18 of them today. The fallback is usually a **named constant**, so the checker resolves names through three steps: the declaring file's `const`/`export const` table, then the same extension's other files (a fallback imported from `templates.ts` is still a fixed value), then `${FOLDER}/problems`-style template strings expanded from that same table. Making onboarding's `OLYMPIA_FOLDER` say `.olympiax` turns exactly the `problemsDir` line red, and so does renaming contest's `TEMPLATE_FOLDER` — which is the cross-file case, since the `.get()` sits in `extension.ts`. Before the `export` prefix was accepted, every fallback written as an exported constant was invisible to this check (it printed `n/a`); that silently-blind class is what the composed-path refactor exposed. Memento/`SecretStorage` `.get(key)` calls are excluded on purpose (`olympia.contest.endsAt` is state, not a setting), and a fallback that is a real expression is printed as `n/a` rather than guessed, so the coverage boundary is visible instead of implied (one left: `OJ_TARGETS[0].id`) |
 | `check-built-in-trim.mjs` | the built-in extension trim table as *product data*: every id in `product.json:olympiaExcludedBuiltInExtensions` must resolve to a real folder under `oss/extensions/` (or to a `builtInExtensions` download), stay lower-cased and duplicate-free, keep the product promises trimmed (no `copilot`, no git family, no browser/notebook/ports/emmet/TS-intelligence), never contain an `olympia-*` id, and — the one that would break the product rather than the count — no **kept** extension may declare an `extensionDependencies` on a trimmed one, because a missing dependency fails activation, not just a menu entry. It also asserts both readers (`build/lib/extensions.ts`, the runtime scanner) and the `IProductService` declaration still reference the key, so re-copying the list back into code fails here instead of quietly reintroducing the drift that shipped `prompt-basics` while two hand-written lists both said `prompt`. Every rule was broken once on purpose and restored byte-for-byte: adding `"prompt"` back fails only the dead-entry line, dropping `emmet` only the promise line, a `['git']` literal in the build script only the private-copy line, deleting the field declaration only the `IProductService` line, and an `extensionDependencies: ["vscode.emmet"]` in `cpp/package.json` only the dependency line. Leftovers in the *installed* tree are printed as a note, never as a pass |
@@ -949,3 +949,50 @@ page. Nothing to fix unless the device check shows those keys searchable.
   above, so the workbench locale stays `en`. `product.json`'s `extensionsGallery` points at
   open-vsx.org, and [`oss/build/hygiene.ts`](../../oss/build/hygiene.ts) validates that the gallery host
   is not a Microsoft marketplace rather than banning the key outright.
+
+
+## Shipped-tree audit (2026-10-15)
+
+Everything below was measured against the finished product directory
+(`D:\oler-ide-v2\VSCode-win32-x64`, 1,544.5 MB) rather than the source, because a source-only
+gate had just spent the previous night proving it could not see these things:
+
+- **Licence texts do land, but in `resources/app/`, not at the product root** — `LICENSE.txt`,
+  `NOTICE.olympia.txt`, `GPL-3.0.txt`, `ThirdPartyNotices.txt`; only `LICENSES.chromium.html`
+  sits at the root. gulp **strips the UTF-8 BOM** on the way in (7,878 B → 7,875 B), which is
+  harmless for the wizard because `code.iss` reads the notice from the repo. The `'licenses/**'`
+  entry copied from upstream matches nothing here (there is no `oss/licenses/`), and
+  `allowEmpty: true` hides that — do not read the list entry as "shipped".
+- **`build/verify-product-licence.mjs`** now runs at the end of `build/oss-package.ps1`. Its very
+  first run against a real tree caught three wrong expectations of the author's own (the notice
+  says MSYS2 rather than "MinGW"; the component file opens with `NOTICES`, not "THIRD-PARTY
+  SOFTWARE NOTICES"; the BOM assertion belonged in the source gate) — which is the point of
+  running it instead of reasoning about it.
+- **GPL-3.0.txt ships.** The product declares GPL-3.0-or-later in four places while the package
+  carried only Microsoft's MIT text; GPL §4 wants a copy of the licence with every copy, and a
+  sentence on a webpage is not that. `olympia-onboarding` opens it from the
+  「许可证与第三方组件」 entry (`LICENCE_DOCS` is now 5 documents).
+- **Two dead chat surfaces actually reached students.** `byokOnly` writes the setup context keys
+  but left `ChatEntitlementService.sentiment.hidden` false, so `activateDefaultAgent` still threw
+  `No default agent contributed` on every session (visible in the shipped build's `renderer.log`);
+  and because that branch also forces `installed` true, the chat title-bar 「配置内联建议…」 item
+  rendered and executed `olympia.coach.toggleStatusMenu` — a command no extension registers.
+  Both fixed in oss `39f39862`. `scripts/oneoff/check-chat-product-ids.mjs` keeps the remaining
+  phantom ids registered **together with the source line that makes each one unreachable**, so
+  deleting a guard turns the gate red instead of letting "temporarily unreachable" rot into
+  "nobody remembers why".
+- **Distribution state, measured rather than assumed.** Gitee's only release is tag `v0.1.0` (a
+  prerelease whose body still describes the Tauri app) and the fork's slices hang off it;
+  `.../download/v1.0.0/OlympiaSetup-web.exe` answers 404 until the new release is uploaded. The
+  *deployed* website was an older page whose single download link pointed at the retired
+  `Olympia%20IDE_0.1.0_x64-setup.exe`. Hence `build/make-release.mjs --tag v1.0.0` (collects
+  slices, checks each is under Gitee's 100 MB and that no stale slice from an earlier compile
+  slipped in, regenerates SHA256SUMS.txt, compiles the bootstrapper with the same tag, rewrites
+  `说明.txt` and the byte figures in `website/index.html`) followed by
+  `node scripts/oneoff/check-website.mjs --online` before anything is deployed.
+- **Packaging pre-flight.** `scripts/oneoff/check-build-typecheck.mjs` (1.1 s) runs as STAGE 0 of
+  `oss-package.ps1`. `build/` is not inside `compile-client`'s scope, and a `TS2448`
+  (block-scoped variable used before its declaration) in `gulpfile.vscode.ts` reached stage 3,
+  died after 6 seconds — i.e. *after* `clean-vscode-win32-x64` — leaving an empty product tree
+  and 8 wasted minutes. The gate also proves with `--listFiles` that the files it guards are
+  actually inside the sweep, because "zero errors" and "looked at nothing" look identical.

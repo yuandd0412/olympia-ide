@@ -40,12 +40,12 @@
 			不用配 <code>tasks.json</code>，不用改 <code>PATH</code>，不用装 Python 跑脚本。
 		</p>
 		<div class="hero-actions">
-			<a class="btn btn-primary" href="https://gitee.com/yuanddMSK/olympia-ide/releases" data-download="OlympiaSetup-web.exe">
+			<a class="btn btn-primary" href="https://gitee.com/yuanddMSK/olympia-ide/releases/download/v1.0.0/OlympiaSetup-web.exe" data-download="OlympiaSetup-web.exe">
 				下载完整版<span class="btn-note">1.8 MB 引导器 · 自动校验</span>
 			</a>
-			<a class="btn btn-ghost" href="#download">查看分卷文件</a>
+			<a class="btn btn-ghost" href="https://gitee.com/yuanddMSK/olympia-ide/releases">全部文件与校验值</a>
 		</div>
-		<p class="hero-meta">v1.0.0 · 完整包 282 MiB · GPL-3.0-or-later 开源</p>
+		<p class="hero-meta">v1.0.0 · 完整包 281 MiB · GPL-3.0-or-later 开源</p>
 	</div>
 
 	<div class="mock" aria-hidden="true">
@@ -151,7 +151,7 @@
 			<code>.olympia/template.cpp</code>，保存之后每次插的都是它，拉题面建的文件也从它打底。
 			另有 20 条竞赛常用写法的补全：快速 IO、<code>freopen</code>、
 			并查集、快速幂、Dijkstra，中英文都搜得到。
-			所有动作都有快捷键，也都能在 Olympia 侧栏里点到。</p>
+			常用动作都有快捷键（下表就是全部键位），全部动作都能在 Olympia 侧栏里点到。</p>
 		</article>
 		<article>
 			<h3>全中文，去掉用不上的</h3>
@@ -182,7 +182,7 @@
 			<h3>状态栏与标题栏</h3>
 			<ul class="check">
 				<li>左下角三枚 chip：评测机档位、编译运行、体检结果，点击即执行</li>
-				<li>编辑器右上角：编译并运行、按评测机编译、提交前体检、拉取题面</li>
+				<li>编辑器右上角六个动作：编译并运行、编译当前文件、按评测机编译、提交前体检、拉取题面、插入赛制模板</li>
 				<li>运行不弹黑窗，输出在 Olympia 自己的面板里</li>
 			</ul>
 		</div>
@@ -251,10 +251,11 @@
 	<div class="editions">
 		<article class="edition is-primary">
 		<h3>完整版 <span class="pill">推荐</span></h3>
-			<p class="edition-size">282 MiB</p>
+			<p class="edition-size">281 MiB</p>
 			<p>内置 MinGW 编译器，装完直接能用。机房、家里、重装系统的机器都选这个。</p>
-			<a class="btn btn-primary btn-block" href="https://gitee.com/yuanddMSK/olympia-ide/releases" data-download="OlympiaSetup-web.exe">下载网络引导安装器</a>
-			<p class="hint">1.8 MB，自动下载全部分卷并逐个校验 SHA256，然后进入中文安装向导。</p>
+			<a class="btn btn-primary btn-block" href="https://gitee.com/yuanddMSK/olympia-ide/releases/download/v1.0.0/OlympiaSetup-web.exe" data-download="OlympiaSetup-web.exe">下载网络引导安装器</a>
+			<p class="hint">1.8 MB，自动下载全部分卷并逐个校验 SHA256，然后进入中文安装向导。
+			<a href="https://gitee.com/yuanddMSK/olympia-ide/releases">这一版的全部文件与校验值在这里</a>。</p>
 			<details>
 				<summary>网络不好？手动下载分卷</summary>
 				<p>把下面 5 个文件放进<b>同一个文件夹</b>，双击 <code>OlympiaSetup.exe</code>。缺任何一片，向导会提示「安装程序需要下一张磁盘」。</p>
@@ -265,10 +266,10 @@
 						<tr><td><code>OlympiaSetup-1.bin</code></td><td>91.8 MB</td><td><button class="copy" data-copy="OlympiaSetup-1.bin">复制文件名</button></td></tr>
 						<tr><td><code>OlympiaSetup-2.bin</code></td><td>94.4 MB</td><td><button class="copy" data-copy="OlympiaSetup-2.bin">复制文件名</button></td></tr>
 						<tr><td><code>OlympiaSetup-3.bin</code></td><td>94.4 MB</td><td><button class="copy" data-copy="OlympiaSetup-3.bin">复制文件名</button></td></tr>
-						<tr><td><code>OlympiaSetup-4.bin</code></td><td>12.7 MB</td><td><button class="copy" data-copy="OlympiaSetup-4.bin">复制文件名</button></td></tr>
+						<tr><td><code>OlympiaSetup-4.bin</code></td><td>11.7 MB</td><td><button class="copy" data-copy="OlympiaSetup-4.bin">复制文件名</button></td></tr>
 					</tbody>
 				</table>
-				<p class="hint">全部文件共 295,781,193 字节，校验值见同目录 <code>SHA256SUMS.txt</code>。</p>
+				<p class="hint">全部文件共 294,813,467 字节，校验值见同目录 <code>SHA256SUMS.txt</code>。</p>
 			</details>
 		</article>
 
@@ -286,7 +287,7 @@
 		<h3>装完之后</h3>
 		<ol class="steps">
 			<li>第一次打开会问你配色和键位，直接确认就行 —— 出厂主题是 One Dark Pro。</li>
-			<li>新建或打开一个 <code>.cpp</code>，按 <kbd>F9</kbd>。第一次会提示选择样例输入方式：直接敲，或选一个数据文件。</li>
+			<li>新建或打开一个 <code>.cpp</code>，按 <kbd>F9</kbd>。每次运行前都会问你输入从哪来：直接运行（空 stdin），或选一个数据文件。</li>
 			<li>想复现评测机行为，点状态栏的「洛谷 · C++23」换档位，或用 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F9</kbd> 打开 <code>-O2</code>。</li>
 		</ol>
 		<p class="hint">安装位置是 <code>%LocalAppData%\Programs</code>，不需要管理员权限，也不会改动系统 PATH。</p>
@@ -323,7 +324,7 @@
 <section class="cta">
 	<h2>把时间留给算法</h2>
 	<p>装完，就打比赛。</p>
-	<a class="btn btn-primary" href="https://gitee.com/yuanddMSK/olympia-ide/releases" data-download="OlympiaSetup-web.exe">下载 Olympia IDE v1.0.0</a>
+	<a class="btn btn-primary" href="https://gitee.com/yuanddMSK/olympia-ide/releases/download/v1.0.0/OlympiaSetup-web.exe" data-download="OlympiaSetup-web.exe">下载 Olympia IDE v1.0.0</a>
 </section>
 
 </main>

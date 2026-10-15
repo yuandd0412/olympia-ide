@@ -92,11 +92,12 @@
 
 <section id="ai" class="alt">
 	<h2>API Key 存在哪里</h2>
-	<p>Key 通过密码框输入，保存在 <b>Windows 凭据管理器</b>（VS Code 的 SecretStorage），
+	<p>Key 通过密码框输入，保存在 <b>本机加密存储</b>里（Olympia 的应用状态库，用你 Windows 账户的
+	密钥加密，对应 VS Code 的 SecretStorage），
 	不会写进 <code>settings.json</code>，不会出现在同步配置里，也不会打进日志。</p>
 	<ul class="check">
 		<li>设置文件里只有 <code>olympia.ai.baseUrl</code> 与 <code>olympia.ai.models</code>，不含密钥</li>
-		<li>想清除：设置 AI 教练的 API Key 时选清除，或者在「控制面板 → 凭据管理器」里删掉对应条目</li>
+		<li>想清除：在 AI 设置里对 Key 选「清除」即可。系统「凭据管理器」里不会有这个条目，去那里找不到</li>
 		<li>不用 AI 教练就什么都不用填，其他功能不受影响</li>
 	</ul>
 </section>

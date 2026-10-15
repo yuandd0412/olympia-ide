@@ -50,7 +50,7 @@
 	<p class="section-lede">装完到第一次运行，正常只需要这三步。</p>
 	<ol class="steps">
 		<li><b>打开题目文件夹。</b>「文件 → 打开文件夹」选你放 <code>.cpp</code> 的目录。内置 g++ 15.2.0 会被自动找到，不需要配 <code>PATH</code>。</li>
-		<li><b>写代码，按 <kbd>F9</kbd>。</b>Olympia 按当前评测机档位编译；编译通过后直接在面板里运行，输入可以现场敲，也可以选一个数据文件。</li>
+		<li><b>写代码，按 <kbd>F9</kbd>。</b>Olympia 按当前评测机档位编译；编译通过后在面板里运行，运行前会让你选输入来源：<b>直接运行（空 stdin）</b>或<b>选一个数据文件</b>当作 stdin。想现场改输入就再按一次 F9 换个文件。</li>
 		<li><b>保存即体检。</b>每次保存都会静默扫描会在评测机上编译失败的写法，结果显示在「问题」面板，不弹窗、不打断你打字。</li>
 	</ol>
 	<p class="hint">第一次启动会问你配色和键位。出厂主题是 One Dark Pro，直接确认即可。之后随时可以从顶部「帮助」菜单
@@ -78,7 +78,7 @@
 		</article>
 		<article>
 			<h3>编辑器标题栏</h3>
-			<p>当前文件右上角放了最常用的四个动作：编译并运行、按评测机编译、提交前体检、拉取题面。</p>
+			<p>当前文件右上角放了最常用的六个动作：编译并运行、编译当前文件、按评测机编译、提交前体检、拉取题面、插入赛制模板。</p>
 		</article>
 		<article>
 			<h3>帮助菜单</h3>
@@ -113,7 +113,7 @@
 		</div>
 	</div>
 	<p>默认 <code>olympia.compiler.optimization</code> 是 <code>none</code>：本地调试保持不优化，报错信息才对得上行号。
-	想确认 Olympia 到底跑了什么命令，状态栏下方终端会把完整 <code>g++</code> 命令行打印出来（可用
+	想确认 Olympia 到底跑了什么命令，Olympia 编译 输出面板会把完整 <code>g++</code> 命令行打印出来（可用
 	<code>olympia.compiler.showCompileCommand</code> 关掉）。</p>
 	<p class="hint">系统里已经有编译器、不想用内置的？把 <code>olympia.compiler.path</code> 填成你自己的 <code>g++.exe</code> 路径；留空则优先用内置工具链，其次找 <code>PATH</code>。</p>
 </section>
@@ -293,7 +293,7 @@
 			<ol class="steps">
 				<li>左侧 Olympia 面板 → <em>AI 教练与帮助</em> → <em>AI 设置（地址 / 密钥 / 模型）</em></li>
 				<li><code>baseUrl</code> 填 OpenAI 兼容服务的根地址（不含 <code>/chat/completions</code>）</li>
-				<li>Key 在密码框里输入，存进 Windows 凭据管理器，不写进任何配置文件</li>
+				<li>Key 在密码框里输入，存进本机加密存储（用你的 Windows 账户密钥加密的应用状态库），不写进任何配置文件；系统「凭据管理器」里不会有这个条目</li>
 				<li>模型列表默认从 <code>{baseUrl}/models</code> 自动拉取（缓存 5 分钟）；拉不到就在
 				<code>olympia.ai.models</code> 里自己填</li>
 			</ol>
@@ -307,8 +307,7 @@
 				<li><code>/hint</code>：只给方向性提示与关键不变量，不输出完整代码</li>
 				<li><code>/check</code>：提交前风险清单——边界、整数溢出、复杂度、读入终止、多组数据</li>
 			</ul>
-			<p>命令面板里的 <em>选择 AI 教练使用的模型</em>、<em>设置 AI 教练的 API Key</em>、
-			<em>显示 AI 教练日志</em> 随时可换可查。</p>
+			<p>命令面板里有 <em>选择 AI 教练使用的模型</em> 和 <em>设置 AI 教练的 API Key</em>；日志不在命令面板里，去底部面板的 <em>Olympia AI Coach</em> 那一栏看。</p>
 			<p class="hint">比赛模式进行中教练不出场，详见<a href="#contest">比赛模式</a>。</p>
 		</div>
 	</div>
@@ -429,7 +428,7 @@
 		<details>
 			<summary>AI 教练不回话</summary>
 			<p>先跑「环境自检」，它会检查 <code>baseUrl</code> 是否可达、Key 是否已保存；
-			再执行「显示 AI 教练日志」看请求返回了什么。地址填的是根地址，不要带 <code>/chat/completions</code>。</p>
+			再看底部「输出」面板里选 <em>Olympia AI Coach</em> 那一栏，请求返回了什么都在里面。地址填的是根地址，不要带 <code>/chat/completions</code>。</p>
 		</details>
 	</div>
 </section>
@@ -513,7 +512,7 @@
 <section class="cta">
 	<h2>把时间留给算法</h2>
 	<p>装完，就打比赛。</p>
-	<a class="btn btn-primary" href="https://gitee.com/yuanddMSK/olympia-ide/releases" data-download="OlympiaSetup-web.exe">下载 Olympia IDE v1.0.0</a>
+	<a class="btn btn-primary" href="https://gitee.com/yuanddMSK/olympia-ide/releases/download/v1.0.0/OlympiaSetup-web.exe" data-download="OlympiaSetup-web.exe">下载 Olympia IDE v1.0.0</a>
 </section>
 
 </main>

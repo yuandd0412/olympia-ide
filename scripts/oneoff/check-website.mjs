@@ -104,6 +104,75 @@ check('完整版每个文件的标称体积与实际字节一致', () => {
 	assert.ok(shown === total || shown === withWebExe, `总字节数写的是 ${shown}，分卷相加是 ${total}（含引导器 ${withWebExe}）`);
 });
 
+// ---- 下载按钮：写着"引导器"就得真的指向引导器 ----
+/** 发行版目录名带的标签就是 Gitee 那个 tag，页面和引导器都必须指着它。 */
+const releaseTag = /^olympia-release-(.+)$/.exec(path.basename(releaseDir))?.[1];
+
+/** 页面里所有 Gitee 附件直链（发行版列表页不算）。 */
+function directDownloadUrls() {
+	return [...new Set([...pages.values()]
+		.flatMap(html => [...html.matchAll(/href="(https:\/\/gitee\.com\/[^"]+\/releases\/download\/[^"]+)"/g)].map(m => m[1])))];
+}
+
+check('每个 data-download 按钮点下去就是它写的那个文件', () => {
+	assert.ok(releaseTag, `读不到发行版标签（${path.basename(releaseDir)}），这条检查就空转了`);
+	const anchors = [];
+	for (const [file, html] of pages) {
+		for (const m of html.matchAll(/<a[^>]*href="([^"]+)"[^>]*data-download="([^"]+)"/g)) {
+			anchors.push({ rel: path.relative(siteRoot, file), href: m[1], want: m[2] });
+		}
+	}
+	assert.ok(anchors.length >= 5, `只解析出 ${anchors.length} 条带 data-download 的按钮，结构改了吗？`);
+	const wrong = anchors
+		.map(a => ({ ...a, file: decodeURIComponent(a.href.split('/').pop()) }))
+		.filter(a => a.file !== a.want)
+		.map(a => `${a.rel}：写着 ${a.want}，点开是 ${a.file}`);
+	assert.deepEqual(wrong, [], wrong.join('\n        '));
+	const tags = [...new Set(anchors.map(a => /\/releases\/download\/([^/]+)\//.exec(a.href)?.[1]))];
+	assert.deepEqual(tags, [releaseTag], `按钮指向的标签是 ${tags.join(' / ') || '(没有)'}，产物目录是 ${releaseTag}`);
+	const stale = [...pages].filter(([, html]) => /_0\.1\.0_x64-setup\.exe/.test(html)).map(([f]) => path.relative(siteRoot, f));
+	assert.deepEqual(stale, [], `这些页面还在直接发退役的 Tauri 版：${stale.join('、')}`);
+});
+
+check('--online：每条下载直链在 Gitee 上都真的存在（部署前跑一次）', () => {
+	// 真正的网络核对在文件末尾异步做，这里只保证"要跑的话有东西可跑"，不空转。
+	if (!process.argv.includes('--online')) { return; }
+	assert.ok(directDownloadUrls().length > 0, '--online 一条下载直链都没解析出来，等于没查');
+});
+
+/** 发布目录里的那些安装器文件（不含清单与说明文本），名字 + 字节数都从磁盘上来。 */
+function filesInReleaseDir() {
+	if (!fs.existsSync(releaseDir)) { return []; }
+	return fs.readdirSync(releaseDir)
+		.filter(name => /^OlympiaSetup.*(exe|bin)$/.test(name))
+		.map(name => ({ name, bytes: fs.statSync(path.join(releaseDir, name)).size }));
+}
+
+// ---- DEPLOY.md 里的字节数：也是抄来的，那就得对着产物核 ----
+check('发布文档里的每个字节数都真在产物上存在', () => {
+	const deployPath = path.join(siteRoot, 'DEPLOY.md');
+	assert.ok(fs.existsSync(deployPath), 'website/DEPLOY.md 不在了，这条检查要跟着删或改写');
+	const doc = fs.readFileSync(deployPath, 'utf8');
+	const listed = filesInReleaseDir();
+	assert.ok(listed.length >= 2, `发布目录里只读到 ${listed.length} 个安装器文件，这条检查没意义`);
+	const real = new Map(listed.map(f => [f.bytes.toLocaleString('en-US'), f.name]));
+	// 「总计」说的是安装器本体（OlympiaSetup.exe + 各 .bin）；引导器是下载器，不在 payload 里。
+	const total = listed.filter(f => !/-web\.exe$/.test(f.name))
+		.reduce((sum, f) => sum + f.bytes, 0).toLocaleString('en-US');
+	const totalShown = [...doc.matchAll(/总计 ([\d,]+) B/g)].map(m => m[1]);
+	assert.deepEqual([...new Set(totalShown)], [total], `DEPLOY.md 的总计应是 ${total} B，写的是 ${totalShown.join(' / ') || '(没写)'}`);
+	real.set(total, '全部文件合计');
+	// 十进制上限这类"规定的数"不是实测值，单独放行，否则文档里连限制都不能写。
+	const NOT_A_MEASUREMENT = new Set(['100,000,000']);
+	const figures = [...new Set([...doc.matchAll(/\b\d{1,3}(?:,\d{3}){2,}\b/g)].map(m => m[0]))];
+	assert.ok(figures.length >= 4, `只从 DEPLOY.md 里解析出 ${figures.length} 个字节数，格式改了吗？`);
+	const wrong = figures.filter(n => !NOT_A_MEASUREMENT.has(n) && !real.has(n))
+		.map(n => `${n}（页面写的是这个数，产物里没有）`);
+	assert.deepEqual(wrong, [], wrong.join('\n        '));
+	const missing = [...real.values()].filter(name => name !== '全部文件合计' && !doc.includes(name));
+	assert.deepEqual(missing, [], `DEPLOY.md 没提到这些发布文件：${missing.join('、')}`);
+});
+
 // ---- 内部锚点、跨页链接与外链 ----
 const siteHost = 'olympia.dpdns.org';
 const anchorsOf = html => new Set([...html.matchAll(/id="([^"]+)"/g)].map(m => m[1]));
@@ -277,4 +346,22 @@ check('产品自己的许可证：官网页脚与 product.json 同一条', () =>
 	assert.ok(missing.length === 0, `这些页面提到上游 MIT 却没写产品自己的 ${lic}：${missing.join('、')}`);
 });
 
-console.log(failed ? `\n${failed} 处官网与产品不一致` : '\nall website checks passed');process.exitCode = failed ? 1 : 0;
+// 线上核对单独走异步：check() 是同步 try/catch，塞个 async 进去会因为
+// Promise 没被 await 而"永远绿"，那正是这条检查要避免的事。
+if (process.argv.includes('--online')) {
+	const urls = directDownloadUrls();
+	const bad = [];
+	for (const url of urls) {
+		try {
+			const res = await fetch(encodeURI(url), { method: 'HEAD', redirect: 'follow' });
+			if (!res.ok) { bad.push(`${url} → HTTP ${res.status}`); }
+		} catch (error) {
+			bad.push(`${url} → ${error.name}`);
+		}
+	}
+	if (bad.length) { failed++; console.log(`FAIL  线上取不到这些下载直链：\n        ${bad.join('\n        ')}`); }
+	else { console.log(`ok    ${urls.length} 条下载直链在线上都在`); }
+}
+
+console.log(failed ? `\n${failed} 处官网与产品不一致` : '\nall website checks passed');
+process.exitCode = failed ? 1 : 0;

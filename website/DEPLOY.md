@@ -11,8 +11,8 @@
 | Gitee Release 附件 | 100 MB（十进制） | 否 |
 | GitHub Releases | 无（国内下载慢） | 仅作备份 |
 
-安装器实测 295,410,537 B（281 MiB）。里面打的是整个 Electron 产品：主程序
-`Olympia.exe` 239 MB、内置 MinGW `toolchain/` 455 MB（机房没有编译器，这块必须留）。
+安装器实测 294,813,467 B（281 MiB，2026-10-15 编译）。里面打的是整个 Electron 产品：主程序
+`Olympia.exe` 239 MB、内置 MinGW `toolchain/` 467 MB（机房没有编译器，这块必须留）。
 **所以"单文件 <100 MB"在这个产品上不可能靠压缩做到**，方案只能是分卷或换宿主。
 
 分卷由 Inno 自己做，不再需要 `copy /b` 之类的合并脚本 —— `oss/build/win32/code.iss`
@@ -23,16 +23,17 @@ DiskSpanning=yes
 DiskSliceSize=94371840   ; 90 MiB，给十进制 100 MB 留余量
 ```
 
-实测一次编译（v1.140.0，2026-10-11）产出 5 个文件，总计 295,781,193 B，最大一片
+实测一次编译（2026-10-15 23:03，fork `39f39862`）产出 5 个文件，总计 294,813,467 B，最大一片
 94,371,840 B（94.37 MB，十进制口径也在 100 MB 以内）：
 
 | 文件 | 大小 |
 |---|---|
-| `OlympiaSetup.exe` | 2,598,288（启动器，双击它） |
-| `OlympiaSetup-1.bin` | 91,773,440 |
+| `OlympiaSetup.exe` | 2,604,153（启动器，双击它） |
+| `OlympiaSetup-1.bin` | 91,767,296 |
 | `OlympiaSetup-2.bin` | 94,371,840 |
 | `OlympiaSetup-3.bin` | 94,371,840 |
-| `OlympiaSetup-4.bin` | 12,665,785 |
+| `OlympiaSetup-4.bin` | 11,698,338 |
+| `OlympiaSetup-web.exe` | 1,807,471（引导器，官网按钮指向它） |
 
 用户把**全部文件放进同一个目录**，只双击 `OlympiaSetup.exe` 即可；缺片时向导会提示
 "安装程序需要下一张磁盘"（该文案在 `oss/build/win32/i18n/Default.zh-cn.isl` 的
@@ -43,47 +44,68 @@ DiskSliceSize=94371840   ; 90 MiB，给十进制 100 MB 留余量
 ```powershell
 # ① 先完全退出所有 Olympia 窗口（进程还在会让打包中途失败并留下半空的产物目录）
 
-# ② 四阶段打包（bundle → toolchain → extensions → node-compile-cache），约 7–9 分钟
+# ② 四阶段打包（bundle → toolchain → extensions → node-compile-cache），约 9–12 分钟
+#    第 0 阶段先对 oss/build/ 跑一次类型检查（1 秒），省掉"跑到第 3 阶段才炸"那一轮
 powershell -NoProfile -ExecutionPolicy Bypass -File build\oss-package.ps1
 
-# ③ 编译安装器（约 8 分钟）。注意 ② 不产出安装器，这一步才有
+# ③ 编译安装器（约 18 分钟）。注意 ② 不产出安装器，这一步才有
 cd oss; npm run gulp -- vscode-win32-x64-user-setup
 ```
 
 产物在 `oss\.build\win32-x64\user-setup\`。
 
-## 2. 校验分卷（每次发版都要跑）
+## 2. 一条命令收出发布目录
 
 ```powershell
-Get-ChildItem oss\.build\win32-x64\user-setup\OlympiaSetup* |
-  Select-Object Name, Length, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
-(Get-ChildItem oss\.build\win32-x64\user-setup\OlympiaSetup* |
-  Where-Object Length -ge 100000000).Count   # 必须是 0
-Get-FileHash oss\.build\win32-x64\user-setup\OlympiaSetup* -Algorithm SHA256
+node build\make-release.mjs --tag v1.0.0
 ```
 
-SHA256 要连同文件名一起写进 `index.html` 的下载说明，用户下错版本时能自查。
+它做六件事，全都不需要你抄数字：
+
+1. 收 `OlympiaSetup.exe` + 各 `.bin`，**逐片校验**每片 < 100,000,000 B（Gitee 十进制上限）、
+   编号连续（缺片会让用户卡在"下一张磁盘"）、没有上一次编译留下的旧片（按落盘时间卡）；
+2. 把上一次的 `dist\olympia-release-<tag>` **整份挪成** `.bak-<时间戳>`，不覆盖也不删——
+   那是已经发出去的那组字节，已经装上的学生还要靠它对照；
+3. 生成 `SHA256SUMS.txt`（coreutils 格式 `<hex>  *<名>`，CRLF）；
+4. 用**同一个 tag** 编译引导器 `oss\build\win32\code-web.iss`（标签是编译进二进制的，
+   换 tag 必须重编，否则它去旧标签找文件）；
+5. 按实测数字重写目录里的 `说明.txt`；
+6. 把 `website\index.html` 的分卷体积、总字节、引导器大小改成本次产物的真值。
+
+传之前自己核对一遍线上是否真的存在（**先传后部署**，顺序反了官网按钮就是 404）：
+
+```powershell
+node scripts\oneoff\check-website.mjs --online   # HEAD 每条下载直链
+```
 
 ## 3. 上传 Gitee Release
 
 仓库：<https://gitee.com/yuanddMSK/olympia-ide>（需已完成实名认证）。
 
-1. 仓库 → **发行版** → 新建标签，如 `v1.140.0`；
-2. 把 `OlympiaSetup.exe` 和**所有** `OlympiaSetup-N.bin` 一起拖进附件 —— 一个都不能漏，
-   文件名**不能改**（Inno 按原始名找下一片）；
-3. 附件直链形如
-   `https://gitee.com/yuanddMSK/olympia-ide/releases/download/v1.140.0/OlympiaSetup-1.bin`。
+**当前状态（2026-10-15 实测）**：这个仓库只有一个发行版，标签是 `v0.1.0`，而且是 prerelease，
+正文还在描述已经退役的 Tauri 版；fork 的分卷、引导器、`SHA256SUMS.txt` 全挂在那一个标签下，
+而 `.../releases/download/v1.0.0/OlympiaSetup-web.exe` 目前 **404**。所以发新版就是：
 
-GitHub Releases 同步上传同一组文件做备份。
+1. 仓库 → **发行版** → 新建标签 `v1.0.0`（必须与 `make-release --tag` 一致）；
+2. 把 `dist\olympia-release-v1.0.0\` 里的 7 个文件全部作为附件上传 —— 一个都不能漏，
+   文件名**不能改**（Inno 按原始名找下一片，引导器按清单里的名字下载）；
+3. 旧的 `v0.1.0` 不要删附件（已经装了 0.1.0 的学生还要对照），但请在那条发行版说明里写明
+   "旧版 Tauri，勿下载；新版见 v1.0.0"。
+
+GitHub 仓库 `yuandd0412/olympia-ide` 同步上传同一组文件做兜底 —— 引导器在 Gitee 拉不到时
+会逐文件换站。
 
 ## 4. 官网
 
-改 `index.html` 下载区：每个分卷一条链接 + 一句"全部下载到同一目录，双击
-`OlympiaSetup.exe`"。原来的单文件按钮描述已经不适用。
+上一步 `--online` 绿了再部署：
 
 ```powershell
-npx wrangler pages deploy . --project-name olympia-ide --branch main
+cd website; npx wrangler pages deploy . --project-name olympia-ide --branch main
 ```
+
+**这一步现在是必须的，不是可选的**：2026-10-15 实测 `https://olympia.dpdns.org/` 上还是
+一个 16,533 B 的旧页面，唯一下载链接指向 `v0.1.0/Olympia%20IDE_0.1.0_x64-setup.exe`
+（退役的 Tauri 版）。仓库里的 `website\index.html` 已经改好，但没部署，等于没改。
 
 ## 5. 机房侧须知
 

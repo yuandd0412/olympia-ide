@@ -101,7 +101,7 @@ for (const [field, value] of commandFields) {
 	const gate = DEAD_BUT_GATED.find(g => g.field === field);
 	if (!gate) { dead.push(`${field} = ${value}（既没实现，也没登记为"已挡住"）`); continue; }
 	const src = fs.readFileSync(path.join(oss, gate.guardFile), 'utf8');
-	report(gate.guard.test(src), `${field} 指向不存在的命令，按登记的说明挡住：${gate.because}`);
+	report(gate.guard.test(src), `${field} = ${value} 没实现，靠守卫挡住：${gate.because}${gate.guard.test(src) ? '' : ' —— 守卫在 ' + gate.guardFile + ' 里读不到了，这一项又会显示出来'}`);
 }
 for (const [field, value] of settingFields) {
 	if (allManifests.some(text => text.includes(`"${value}"`)) || coreText.includes(value)) { continue; }

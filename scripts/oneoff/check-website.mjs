@@ -9,9 +9,18 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../..');
 const siteRoot = path.join(repoRoot, 'website');
-const releaseDir = path.join(repoRoot, 'dist/olympia-release-v1.0.0');
-const extensionsRoot = path.join(repoRoot, 'oss/extensions');
 const productJson = path.join(repoRoot, 'oss/product.json');
+/**
+ * 版本号只写在 `oss/product.json` 的 olympiaVersion 一处。以前这里写死
+ * `dist/olympia-release-v1.0.0`，于是发新版本时"检查通过"只说明页面和上一次
+ * 的目录名对得上，不说明它们对得上真正要发的那一版。
+ */
+const olympiaVersion = JSON.parse(fs.readFileSync(productJson, 'utf8')).olympiaVersion;
+assert.ok(typeof olympiaVersion === 'string' && /^[\d][\w.]*$/.test(olympiaVersion),
+	`oss/product.json 的 olympiaVersion 不是一个版本号：${JSON.stringify(olympiaVersion)}`);
+const releaseTag = `v${olympiaVersion}`;
+const releaseDir = path.join(repoRoot, 'dist', `olympia-release-${releaseTag}`);
+const extensionsRoot = path.join(repoRoot, 'oss/extensions');
 
 let failed = 0;
 function check(name, fn) {
@@ -104,9 +113,16 @@ check('完整版每个文件的标称体积与实际字节一致', () => {
 	assert.ok(shown === total || shown === withWebExe, `总字节数写的是 ${shown}，分卷相加是 ${total}（含引导器 ${withWebExe}）`);
 });
 
+check(`页面上写的版本号就是 ${releaseTag}`, () => {
+	const shown = [...pages.entries()]
+		.flatMap(([file, html]) => [...html.matchAll(/\bv\d[\w.]*(?=\s*·)/g)].map(m => ({ rel: path.relative(siteRoot, file), tag: m[0] })));
+	assert.ok(shown.length > 0, '页面里一处 "vX.Y.Z ·" 都没找到，这条检查空转了');
+	const wrong = shown.filter(s => s.tag !== releaseTag).map(s => `${s.rel}：写着 ${s.tag}`);
+	assert.deepEqual(wrong, [], `这些位置还写着别的版本：${wrong.join('、')}`);
+});
+
 // ---- 下载按钮：写着"引导器"就得真的指向引导器 ----
-/** 发行版目录名带的标签就是 Gitee 那个 tag，页面和引导器都必须指着它。 */
-const releaseTag = /^olympia-release-(.+)$/.exec(path.basename(releaseDir))?.[1];
+/** releaseTag 在上面从 product.json 推出来：页面、产物目录名、Gitee 标签必须是同一个。 */
 
 /** 页面里所有 Gitee 附件直链（发行版列表页不算）。 */
 function directDownloadUrls() {

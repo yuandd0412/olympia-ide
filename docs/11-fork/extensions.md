@@ -581,6 +581,22 @@ assertion, written from the source's shape, reported 「没找到」 on a correc
 whether the pill actually disappears and whether the sign-in prompt is really gone — that needs the product
 launched, and it is on the 真机核对 list.
 
+**Three more surfaces `byokOnly` never reached** (fork `cb54a760`), each trimmed at the one place that decides
+it rather than at each call site. The 关于 box printed `productService.version`, which the packaging pipeline
+injects from `oss/package.json` — i.e. the VS Code base number 1.140.0 — while the website, the release tag and
+the installer all say Olympia v1.0.0; a student comparing the two could only conclude he had installed the
+wrong file. `olympiaVersion` in `product.json` used to be a field nothing read; it is now the single source
+(everything else derives from it, see `AGENTS.md` 发布), and 关于 reads it first: `1.0.0（VS Code 1.140.0）`.
+`tip.init` joined `TIPS_HIDDEN_IN_OLYMPIA` because that rotating hint was the one sitting under
+「没有可用模型」 on the first screen, telling students to generate an AGENTS.md — an engineering-convention file
+for coding agents, which is not what this product's chat is for. And the agents window is now gated by
+`AGENTS_WINDOW_DISABLED` in `common/constants.ts`, because `OPEN_AGENTS_WINDOW_PRECONDITION` alone was not
+enough: a keybinding's `when` does not include the command's precondition, so hiding the palette entry left
+`Ctrl+Shift+A` opening the window. All four are pinned in `check-core-copy.mjs` against the **built** files,
+and each was broken once on its own occurrence before being trusted — the first draft of the tip assertion used
+`[\s\S]*?` and happily matched past the array's closing bracket, so deleting `tip.init` did not turn it red.
+What is *not* device-verified: what 关于 actually renders.
+
 **No Microsoft hop survives in a surface a student can click.** Seven setting descriptions in
 [`files.contribution.ts`](../../oss/src/vs/workbench/contrib/files/browser/files.contribution.ts)
 linked out to Microsoft documentation — six *glob 模式* links to `https://aka.ms/vscode-glob-patterns`

@@ -23,13 +23,16 @@ const arg = name => {
 	const i = argv.indexOf(`--${name}`);
 	return i >= 0 ? argv[i + 1] : undefined;
 };
-const tag = arg('tag');
+/** 版本号只写在 oss/product.json 的 olympiaVersion 一处；--tag 不给就从这里推，给了就必须一致。 */
+const olympiaVersion = JSON.parse(fs.readFileSync(path.join(oss, 'product.json'), 'utf8')).olympiaVersion;
+const tag = arg('tag') ?? (olympiaVersion ? `v${olympiaVersion}` : undefined);
 const skipBootstrap = argv.includes('--skip-bootstrap');
 const slicesDir = arg('slices') ?? path.join(oss, '.build', 'win32-x64', 'user-setup');
 const outDir = path.join(repoRoot, 'dist', `olympia-release-${tag}`);
 const indexHtmlPath = path.join(repoRoot, 'website', 'index.html');
 
-assert.ok(tag && /^v[\d][\w.]*$/.test(tag), `--tag 要给形如 v1.0.0 的标签，现在给的是 ${JSON.stringify(tag)}`);
+assert.ok(tag && /^v[\d][\w.]*$/.test(tag), `--tag 要给形如 v1.0.0 的标签，或者在 oss/product.json 写好 olympiaVersion，现在给的是 ${JSON.stringify(tag)}`);
+assert.ok(tag === `v${olympiaVersion}`, `--tag ${tag} 与 oss/product.json 的 olympiaVersion（${olympiaVersion}）不一致。版本号只写在 product.json 一处：要改版本就改那里，别加 --tag。`);
 assert.ok(fs.existsSync(slicesDir), `分卷目录不存在：${slicesDir}（先跑 oss 的 vscode-win32-x64-user-setup）`);
 
 const GITEE_ATTACH_LIMIT = 100_000_000;   // Gitee 附件按十进制 100 MB 卡，一片都不能超

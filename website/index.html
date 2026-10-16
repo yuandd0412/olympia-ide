@@ -41,7 +41,7 @@
 		</p>
 		<div class="hero-actions">
 			<a class="btn btn-primary" href="https://gitee.com/yuanddMSK/olympia-ide/releases/download/v1.0.0/OlympiaSetup-web.exe" data-download="OlympiaSetup-web.exe">
-				下载完整版<span class="btn-note">1.8 MB 引导器 · 自动校验</span>
+				下载完整版<span class="btn-note">1.8 MB 引导器 · 需联网，边下边校验</span>
 			</a>
 			<a class="btn btn-ghost" href="https://gitee.com/yuanddMSK/olympia-ide/releases">全部文件与校验值</a>
 		</div>
@@ -324,6 +324,16 @@
 			<p>把输出的那串和 <code>SHA256SUMS.txt</code> 里对应文件那行比一下。
 			用引导安装器（<code>OlympiaSetup-web.exe</code>）就不用手动核对：它每下完一个分卷自己算一遍，
 			对不上会直接停下并说是哪一片。</p>
+		</details>
+		<details>
+			<summary>我的设置和题目存在哪儿？换机器、重装怎么办？</summary>
+			<p>三处，各自独立：程序装在 <code>%LocalAppData%\Programs\Olympia IDE</code>（当前用户目录，
+			不要管理员权限）；设置与界面状态在 <code>%AppData%\.olympia-ide\User</code>；
+			题目、集训清单和你自己的模板都在工程文件夹里的 <code>.olympia\</code> 下。</p>
+			<p class="tagline">所以换机时把<b>题目文件夹</b>拷走就够了——练习记录跟着文件夹走，
+			不跟着账号走。AI 教练的密钥存在系统密钥库里，不在上面任何一个文件夹中，
+			换机器要重新填一次（这是有意的：它不该被拷进 U 盘）。</p>
+			<p>卸载就是删掉安装目录；想连设置一起清干净，再删 <code>%AppData%\.olympia-ide</code>。</p>
 		</details>
 		<details>
 			<summary>需要联网吗？</summary>

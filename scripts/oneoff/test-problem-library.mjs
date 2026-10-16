@@ -23,6 +23,10 @@ const GPP = path.join(repoRoot, 'VSCode-win32-x64/resources/app/toolchain/mingw6
 
 const messages = [];
 const picks = [];
+/** createQuickPick 造出来的替身，按创建顺序排着；测试要点行末的 ★ 就从这里拿。 */
+const quickPicks = [];
+/** 扩展注册的 webview 视图提供方（题面侧栏），按视图 id 存着。 */
+const webviewProviders = new Map();
 const opened = [];
 /** 编辑器里开着的文档：appendSample 用它判断题面有没有没保存的改动。 */
 const textDocuments = [];
@@ -101,11 +105,50 @@ const vscodeStub = {
 		showWarningMessage: async (...a) => { messages.push(['warning', a[0]]); return undefined; },
 		showInformationMessage: async (...a) => { messages.push(['info', a[0]]); return undefined; },
 		showErrorMessage: async (...a) => { messages.push(['error', a[0]]); return undefined; },
+		registerWebviewViewProvider: (id, provider) => {
+			// 题面侧栏（statementView）在 activate 时注册；这里不需要它渲染，
+			// 但没有这个替身，扩展根本 activate 不起来，整份检查台一道题都测不了。
+			webviewProviders.set(id, provider);
+			return { dispose() { } };
+		},
 		showQuickPick: async (items, options) => {
 			const list = Array.isArray(items) ? items : await items;
 			picks.push({ items: list, options });
 			// 题库的选中逻辑：默认选第一项，测试里要别的自己改 picks 前的 pickIndex
 			return pickIndex === undefined ? list[0] : list[pickIndex()];
+		},
+		/**
+		 * createQuickPick 的替身：题面库用它是因为行末的 ★ 要能点（showQuickPick 给不了 item button）。
+		 * show() 之后立刻「选中第一项」，命令才能往下走；想看面板长什么样的测试读 quickPicks 最后一项。
+		 */
+		createQuickPick: () => {
+			const qp = {
+				items: [], value: '', title: '', placeholder: '',
+				matchOnDescription: false, matchOnDetail: false, ignoreFocusOut: false,
+				activeItems: [], _listeners: {},
+				onDidAccept: fn => { qp._listeners.accept = fn; return { dispose() { } }; },
+				onDidHide: fn => { qp._listeners.hide = fn; return { dispose() { } }; },
+				onDidTriggerItemButton: fn => { qp._listeners.itemButton = fn; return { dispose() { } }; },
+				show: () => {
+					picks.push({
+						items: qp.items,
+						options: {
+							title: qp.title, placeHolder: qp.placeholder,
+							matchOnDescription: qp.matchOnDescription, matchOnDetail: qp.matchOnDetail,
+							ignoreFocusOut: qp.ignoreFocusOut
+						}
+					});
+					quickPicks.push(qp);
+					qp.activeItems = qp.items.slice(0, 1);
+					qp._listeners.accept?.();
+				},
+				/** 假装学生点了某一行行末那颗 ★。 */
+				clickStar: async (index = 0) => {
+					await qp._listeners.itemButton?.({ item: qp.items[index], button: qp.items[index].buttons[0], index });
+				},
+				dispose: () => { }
+			};
+			return qp;
 		},
 		showInputBox: async () => undefined,
 		showOpenDialog: async () => undefined,
@@ -124,7 +167,13 @@ const vscodeStub = {
 	},
 	commands: {
 		registerCommand: (id, handler) => { registered[id] = handler; return { dispose() { } }; },
-		executeCommand: async (id, ...args) => registered[id]?.(...args),
+		executeCommand: async (id, ...args) => {
+			// 真的 VS Code 对没注册的命令是 reject，不是返回 undefined。检查台要照这个脾气来：
+			// 题面那条 `${视图 id}.focus` 在这儿没人注册，就该走「退回编辑器」那条路，
+			// 否则测试看不见到底打开的是哪一份文件（题面视图本身另有真机核对）。
+			if (!Object.hasOwn(registered, id)) { throw new Error(`command '${id}' not found`); }
+			return registered[id](...args);
+		},
 		getDiagnostics: () => []
 	},
 	languages: {
@@ -403,6 +452,59 @@ await check('题面在编辑器里有没保存的改动时先停手，别把人�
 
 // 「做过的题」是 olympia-onboarding 写的解题记录，题库这边只读——两边共用一个文件，
 // 字段名对不上就是一道道看不出勾的题，所以这里坚持用**写入方**造数据。
+const favorites = await import(pathToFileURL(path.join(contestOut, 'favorites.js')).href);
+
+await check('题面库的 ★ 点得动：写进工程的 .olympia/favorites.json，重读回来排在最前', async () => {
+	freshWorkspace();
+	writeStatement('P1001', 'A+B Problem');
+	writeStatement('P2001', '并查集');
+	await registered['olympia.problem.openStatement']();
+	const qp = quickPicks.at(-1);
+	assert.ok(qp, '题库没有用 createQuickPick 打开（行末按钮需要它）');
+	assert.equal(qp.items.length, 2, `题库列出了 ${qp.items.length} 道`);
+	assert.ok(qp.items.every(item => item.buttons?.length === 1), '每一行都要有一颗能点的收藏按钮');
+	assert.equal(qp.items[0].buttons[0].iconPath.id, 'star-empty', '没收藏的行应该是空心星');
+
+	const clicked = qp.items.at(-1).entry.id;
+	// 点的必须是「最近拉取」排在最后的那一道：两道题里点第一道，收藏不排前也看不出差别，
+	// 那条断言就成了空的（反向验证时把 sort 删掉它照样绿——真发生过）。
+	await qp.clickStar(qp.items.length - 1);
+
+	const file = path.join(workspaceRoot, '.olympia', 'favorites.json');
+	assert.ok(fs.existsSync(file), `点了 ★ 却没写出 ${file}`);
+	assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), [clicked.toLowerCase()], '写进去的不是被点的那道题');
+
+	// 图标翻转 + 排序：收藏的那道带着 ★ 排到最前，另一道不带。
+	assert.equal(qp.items[0].entry.id, clicked, `点完 ★ 它没跳到第一行：${qp.items.map(i => i.entry.id).join(', ')}`);
+	assert.equal(qp.items.find(i => i.entry.id === clicked).buttons[0].iconPath.id, 'star-full', '已收藏的行还是空心星');
+	const again = await favorites.readFavorites();
+	assert.equal(again.size, 1, '读回来的收藏数不对');
+	const entries = await library.readLibrary(problemsDir);
+	const ps = library.toPicks(entries, workspaceRoot, new Map(), again);
+	assert.equal(ps[0].entry.id, clicked, `收藏的题没排在最前：${ps.map(p => p.entry.id).join(', ')}`);
+	assert.ok(ps[0].label.startsWith('★ '), `星标要写在 label 里，搜「★」才只剩收藏的题：${ps[0].label}`);
+	assert.ok(!ps[1].label.includes('★'));
+	assert.match(ps[0].description, /已收藏/, `摘要里也要说清这道收藏了：${ps[0].description}`);
+
+	// 再点一次取消——留着「只能加不能减」的收藏等于没有收藏。
+	await qp.clickStar(0);
+	assert.equal((await favorites.readFavorites()).size, 0, '再点一次没有取消收藏');
+
+	// 按钮是题库这条调用方自己挂的：别的清单（打开原题网页）没有处理按钮的逻辑。
+	const plain = library.toPicks(entries, workspaceRoot);
+	assert.ok(plain.every(p => p.buttons === undefined), 'toPicks 不该自带按钮，否则点了没反应的地方就多一个假图标');
+});
+
+await check('收藏文件坏了或没有，题库照常打开（不能让一个 json 卡住整个清单）', async () => {
+	freshWorkspace();
+	writeStatement('P1001', 'A+B Problem');
+	fs.mkdirSync(path.join(workspaceRoot, '.olympia'), { recursive: true });
+	fs.writeFileSync(path.join(workspaceRoot, '.olympia', 'favorites.json'), '{不是数组]');
+	assert.equal((await favorites.readFavorites()).size, 0, '坏文件应该当没有，而不是抛出来');
+	await registered['olympia.problem.openStatement']();
+	assert.equal(quickPicks.at(-1).items.length, 1, '收藏文件坏了，题库干脆不列了');
+});
+
 const solveLog = await import(pathToFileURL(path.join(onboardingOut, 'solveLog.js')).href);
 const marks = await import(pathToFileURL(path.join(contestOut, 'solvedMarks.js')).href);
 

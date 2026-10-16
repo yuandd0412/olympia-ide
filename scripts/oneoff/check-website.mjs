@@ -63,10 +63,14 @@ const normalize = k => k.toLowerCase().split('+').map(part => KEY_ALIASES[part] 
 const productKeys = new Map(bindings.map(b => [normalize(b.key), b]));
 
 // ---- 页面上的键位行 ----
-const pageKeys = new Set();
+// 每一页自己算一份，别汇成一集：2026-10-16 手册漏了 Ctrl+Alt+M（题面进侧栏），
+// 而首页有这条，合集照样「全覆盖」——漏检的那一页正是学生照着抄的那一页。
+const pageKeys = new Map();
 for (const [file, html] of pages) {
 	const table = /<section id="keys"[\s\S]*?<\/section>/.exec(html)?.[0];
 	if (!table) { continue; }
+	const own = new Set();
+	pageKeys.set(path.relative(siteRoot, file), own);
 	const rowCells = [...table.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map(m => m[1]).filter(cell => cell.includes('<td>'));
 	check(`快捷键表（${path.relative(siteRoot, file)}）每行都绑了`, () => {
 		assert.ok(rowCells.length >= 8, `只解析出 ${rowCells.length} 行，页面结构改了吗？`);
@@ -76,19 +80,64 @@ for (const [file, html] of pages) {
 			const cells = [...cell.matchAll(/<kbd>([^<]*)<\/kbd>/g)].map(m => m[1]);
 			if (!cells.length) { continue; }   // 「点状态栏」这类行没有键位
 			const key = normalize(cells.join('+'));
-			pageKeys.add(key);
+			own.add(key);
 			if (!productKeys.has(key)) { unknown.push(`${label} → ${cells.join('+')}`); }
 		}
 		assert.deepEqual(unknown, [], `页面上写了产品里没绑的键：\n        ${unknown.join('\n        ')}`);
 	});
 }
 
-check('产品里绑了的键，快捷键表都要写到', () => {
-	const missing = [...productKeys.values()]
-		.filter(b => !pageKeys.has(normalize(b.key)))
-		.map(b => `${b.key} (${b.command})`);
-	assert.deepEqual(missing, [], `快捷键表漏了：${missing.join(', ')}`);
-});
+for (const [name, own] of pageKeys) {
+	check(`产品里绑了的键，${name} 的快捷键表都要写到`, () => {
+		const missing = [...productKeys.values()]
+			.filter(b => !own.has(normalize(b.key)))
+			.map(b => `${b.key} (${b.command})`);
+		assert.deepEqual(missing, [], `快捷键表漏了：${missing.join(', ')}`);
+	});
+}
+
+/**
+ * ---- 侧栏面板那四行 ----
+ * 首页和手册都照着 Olympia 面板写「什么地方点什么」，可这两处是最容易漂的：面板加一行、
+ * 改个叫法，页面上的清单不会跟着变（2026-10-16 一查就中了两条——「AI 教练与帮助」少写了
+ * 许可证那一行，手册还写着「只编译」这种面板里根本不存在的名字）。
+ * 所以清单从 toolsView.ts 现读，页面必须逐条对得上。
+ */
+const toolsViewPath = path.join(extensionsRoot, 'olympia-onboarding', 'src', 'toolsView.ts');
+const toolsView = fs.readFileSync(toolsViewPath, 'utf8');
+const panelGroups = [...toolsView.matchAll(/\{\s*kind:\s*'section',\s*id:\s*'(\w+)',\s*label:\s*'([^']+)'\s*\}/g)]
+	.map(m => ({ id: m[1], label: m[2] }));
+assert.ok(panelGroups.length >= 4, `toolsView.ts 里只解析出 ${panelGroups.length} 组面板分组，读法要改了`);
+const stripTags = s => s.replace(/<[^>]*>/g, '');
+/** 只有「讲界面在哪」的两页（首页 #workflow、手册 #bars）带这份清单，按 section 界定页面。 */
+const panelPages = [...pages].map(([file, html]) => {
+	const section = /<section id="(workflow|bars)"[\s\S]*?<\/section>/.exec(html)?.[0];
+	return section ? [path.relative(siteRoot, file), section] : null;
+}).filter(Boolean);
+assert.ok(panelPages.length >= 2, `只有 ${panelPages.length} 页带侧栏清单（首页 #workflow / 手册 #bars），页面结构改了吗？`);
+let panelChecks = 0;
+for (const g of panelGroups) {
+	const block = g.id === 'status' ? toolsView : ((toolsView.split(`case '${g.id}':`)[1] ?? '').split(/case '/)[0]);
+	const want = g.id === 'status' ? 'state' : 'action';
+	const labels = [...block.matchAll(/kind:\s*'(action|state)'[^{}]*?label:\s*'([^']+)'/g)]
+		.filter(m => m[1] === want).map(m => m[2]);
+	assert.ok(labels.length > 0, `面板分组「${g.label}」里一条都没解析出来（toolsView.ts 的写法变了？）`);
+	for (const [rel, section] of panelPages) {
+		const row = [...section.matchAll(/<li>([\s\S]*?)<\/li>/g)].map(m => stripTags(m[1])).find(t => t.startsWith(`${g.label}：`));
+		// 这一页有那一节，就必须有这一行：放过「找不到」等于让整组断言悄悄变成零条（绿色但什么都没查）。
+		if (!row) {
+			check(`${rel} 里还能找到「${g.label}」那一行`, () => assert.ok(false, `没有以「${g.label}：」开头的 <li>`));
+			continue;
+		}
+		panelChecks++;
+		check(`${rel} 的「${g.label}」一行写全了面板里的 ${labels.length} 条`, () => {
+			const missing = labels.filter(l => !row.includes(l));
+			assert.deepEqual(missing, [], `面板有但页面上没有：${missing.join('、')}`);
+		});
+	}
+}
+assert.ok(panelChecks === panelPages.length * panelGroups.length,
+	`侧栏分组断言只跑了 ${panelChecks} / ${panelPages.length * panelGroups.length} 条，这条门现在是空的`);
 
 // ---- 下载区：文件大小要和产物一致 ----
 check('完整版每个文件的标称体积与实际字节一致', () => {

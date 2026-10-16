@@ -144,5 +144,17 @@ const calledId = /createChatParticipant\(\s*['"]([^'"]+)['"]/.exec(coachSrc)?.[1
 report(!!participant && calledId === participant.id,
 	`清单里的 id 和 createChatParticipant 用的 id 是同一个（${calledId} = ${participant?.id}）；不一致就没有实现，选不出来`);
 
+/**
+ * 首次启动的「键位习惯」那一屏是从 product.json 的 onboardingKeymaps 画出来的，每个选项背后
+ * 是「去画廊装一个扩展」。出厂画廊是 open-vsx（product.json extensionsGallery），
+ * 而微软自己发布的 ms-vscode.* 不在那儿——点了什么也不会发生（onboardingVariationA 取不到就静默返回）。
+ * 所以这一屏里不能留这类 id：2026-10-16 摘掉了 Sublime Text 与 Notepad++ 两个。
+ */
+const gallery = String(product.extensionsGallery?.serviceUrl ?? '');
+const keymapExtIds = (product.onboardingKeymaps ?? []).map(k => k.extensionId).filter(Boolean);
+report(gallery.includes('open-vsx.org'), `出厂画廊是 ${gallery || '（没配）'}`);
+report(!keymapExtIds.some(id => id.startsWith('ms-vscode.')),
+	`键位选项里没有 open-vsx 上装不下来的 ms-vscode.*（现有：${keymapExtIds.join(', ') || '无'}）`);
+
 console.log(failed ? '\nFAILED' : '\nall chat product-id checks passed');
 process.exitCode = failed ? 1 : 0;

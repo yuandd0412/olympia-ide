@@ -151,13 +151,13 @@
 			<code>.olympia/template.cpp</code>，保存之后每次插的都是它，拉题面建的文件也从它打底。
 			另有 20 条竞赛常用写法的补全：快速 IO、<code>freopen</code>、
 			并查集、快速幂、Dijkstra，中英文都搜得到。
-			常用动作都有快捷键（下表就是全部键位），全部动作都能在 Olympia 侧栏里点到。</p>
+			常用动作都有快捷键（下表就是全部键位），面板里也各自有一行，不用去命令面板里翻。</p>
 		</article>
 		<article>
 			<h3>全中文，去掉用不上的</h3>
 			<p>界面、向导、报错文案汉化；调试器、源代码管理、测试这些竞赛用不到的视图从侧栏摘掉
 			（git 扩展干脆没进包，所以那一栏不是被隐藏，是真的没有），
-			左边只剩 资源管理器 / 搜索 / 扩展 / Olympia。</p>
+			左边只剩 资源管理器 / 搜索 / 扩展，再加 Olympia 与题面两栏。</p>
 		</article>
 	</div>
 </section>
@@ -172,10 +172,10 @@
 		<div>
 			<h3>Olympia 侧栏</h3>
 			<ul class="check">
-				<li>当前环境：编译器、编译配置、体检状态、题面库份数、解题记录（N 题 · 连续 D 天 · 今日 x/N）</li>
-				<li>编译与运行：编译并运行、编译当前文件、按评测机编译、提交前体检、跑样例、对比期望输出、对拍、比赛模式</li>
-				<li>题目与模板：拉取题面、从剪贴板拉题号、打开题面库、打开原题网页、集训清单、给这道题加一组自定义样例、插入赛制模板、编辑我的模板</li>
-				<li>AI 教练与帮助：AI 设置、全部设置、环境自检、打开官网与文档</li>
+				<li>当前环境：编译器、编译配置、提交前体检、题面库、解题记录、比赛剩余时间</li>
+				<li>编译与运行：编译并运行、编译当前文件、按评测机编译（-O2）、提交前体检、跑样例（本地评测）、对比期望输出、对拍（正解 vs 暴力）、比赛模式（倒计时）</li>
+				<li>题目与模板：拉取题面、从剪贴板拉取题号、打开题面库、打开原题网页、给这道题加一组自定义样例、集训清单、插入赛制模板、编辑我的模板</li>
+				<li>AI 教练与帮助：AI 设置（地址 / 密钥 / 模型）、全部设置（编译 / 评测 / 对拍 / 题面）、环境自检、打开官网与文档、许可证与第三方组件</li>
 			</ul>
 		</div>
 		<div>
@@ -232,6 +232,8 @@
 				<li>侧栏 Olympia → <em>AI 教练与帮助</em> → <em>AI 设置（地址 / 密钥 / 模型）</em></li>
 				<li>填 <code>baseUrl</code>，Key 在密码框里输入（存在系统密钥库，不写进配置文件）</li>
 				<li>模型列表自动从 <code>/models</code> 拉，拉不到就手动填，两行一个</li>
+				<li>地址只要是 OpenAI 兼容就行，哪家都行：例如 DeepSeek 填 <code>https://api.deepseek.com/v1</code>。
+					额度、价格、怎么充值都是那家服务商的事，Olympia 不经手、不抽成，也看不到你的 Key。</li>
 			</ol>
 		</div>
 		<div>
@@ -271,17 +273,18 @@
 						<tr><td><code>OlympiaSetup-4.bin</code></td><td>11.7 MB</td><td><button class="copy" data-copy="OlympiaSetup-4.bin">复制文件名</button></td></tr>
 					</tbody>
 				</table>
-				<p class="hint">全部文件共 294,858,823 字节，校验值见同目录 <code>SHA256SUMS.txt</code>。</p>
+				<p class="hint">全部文件共 294,848,273 字节，校验值见同目录 <code>SHA256SUMS.txt</code>。</p>
 			</details>
 		</article>
 
 		<article class="edition">
-			<h3>精简版 <span class="pill pill-wait">待发布</span></h3>
-			<p class="edition-size">预计 190 MiB 左右</p>
-			<p>不含内置编译器。只适合系统里已经有 <code>g++</code> 的机器。</p>
+			<h3>精简版 <span class="pill pill-wait">还在排期</span></h3>
+			<p class="edition-size">还没打这个包</p>
+			<p>不含内置编译器，只适合系统里已经有 <code>g++</code> 的机器。</p>
 			<button class="btn btn-primary btn-block" disabled>暂未提供</button>
-			<p class="hint">这个版本还没打出来，所以体积只是估算，发布时以实际分卷为准。
-			没有编译器也不用担心：完整版装上后 Olympia 会自己找到自己的 g++，不依赖系统环境。</p>
+			<p class="hint">这一版还没有构建，所以体积数字我们也给不出——不会先写一个估算上去。
+			不选它也不影响使用：完整版自带 g++，装完自己找到自己的编译器，
+			不需要系统里预装任何东西，也不碰 <code>PATH</code>。</p>
 		</article>
 	</div>
 
@@ -307,8 +310,20 @@
 		</details>
 		<details>
 			<summary>装完提示「已阻止未识别的应用」/ SmartScreen？</summary>
-			<p>因为安装包还没有代码签名证书。选「仍要运行」即可；安装器本身是 Inno Setup 生成的标准程序，
-			也可以先用 <code>SHA256SUMS.txt</code> 核对校验值。</p>
+			<p>因为安装包还没有代码签名证书。点「更多信息」→「仍要运行」即可，这只影响第一次；
+			安装器本身是 Inno Setup 生成的标准程序，装完之后的 <code>Olympia.exe</code> 也在
+			<code>%LocalAppData%\Programs\Olympia IDE</code>，可以随时删干净。</p>
+			<p class="tagline">360 / 电脑管家之类的安全软件也可能把它当陌生程序：装之前先在官网核对校验值，
+			被误报就加白名单，不要因为弹了提示就换别的下载站。</p>
+		</details>
+		<details>
+			<summary>怎么确认我下的包没被动过？</summary>
+			<p>发行页同目录有 <code>SHA256SUMS.txt</code>。Windows 自带工具就能核对，不用装任何东西——
+			在安装文件所在文件夹的地址栏输入 <code>cmd</code> 回车，然后：</p>
+			<p class="tagline"><code>certutil -hashfile OlympiaSetup-1.bin SHA256</code></p>
+			<p>把输出的那串和 <code>SHA256SUMS.txt</code> 里对应文件那行比一下。
+			用引导安装器（<code>OlympiaSetup-web.exe</code>）就不用手动核对：它每下完一个分卷自己算一遍，
+			对不上会直接停下并说是哪一片。</p>
 		</details>
 		<details>
 			<summary>需要联网吗？</summary>

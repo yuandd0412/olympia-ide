@@ -283,12 +283,18 @@ for (const id of OLYMPIA_EXTENSIONS) {
 const KEY_MENTIONS = /\b(?:Ctrl|Shift|Alt|Cmd)(?:\+(?:Ctrl|Shift|Alt|Cmd|F\d+|[A-Za-z0-9,;.])+)+/g;
 /** VS Code 自带的键：不在我们的清单里，但说错了同样是误导，所以写明白而不是不查。 */
 const STANDARD_EDITOR_KEYS = new Set(['Ctrl+S', 'Ctrl+Shift+P', 'Ctrl+P', 'Ctrl+Shift+E']);
+/**
+ * 这几个键说的是「在集成终端里按」，不是工作台命令的绑定，所以三个清单里本来就不该有它：
+ * compile.ts 那句「.exe 被占住了：先在终端里按 Ctrl+C 结束还在运行的程序」——
+ * 那是终端的中断键，Olympia 没有、也不该给它绑一条命令。
+ */
+const TERMINAL_KEYS = new Set(['Ctrl+C']);
 for (const id of OLYMPIA_EXTENSIONS) {
 	const srcDir = path.join(extensionsRoot, id, 'src');
 	if (!fs.existsSync(srcDir)) { continue; }
 	for (const name of fs.readdirSync(srcDir).filter(f => f.endsWith('.ts'))) {
 		for (const match of fs.readFileSync(path.join(srcDir, name), 'utf8').matchAll(KEY_MENTIONS)) {
-			if (!declaredKeys.has(match[0]) && !STANDARD_EDITOR_KEYS.has(match[0])) {
+			if (!declaredKeys.has(match[0]) && !STANDARD_EDITOR_KEYS.has(match[0]) && !TERMINAL_KEYS.has(match[0])) {
 				problems.push(`${id}: ${name} 里写着「${match[0]}」，三个清单的 keybindings 都没有这个键`);
 			}
 		}

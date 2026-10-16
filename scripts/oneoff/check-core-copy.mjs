@@ -27,6 +27,11 @@ const SAVEERR = 'vs/workbench/contrib/files/browser/editors/textFileSaveErrorHan
 const LAYOUT = 'vs/workbench/contrib/preferences/browser/settingsLayout.js';
 const CHAT_TIPS = 'vs/workbench/contrib/chat/browser/chatTipCatalog.js';
 const CHAT_CONSTANTS = 'vs/workbench/contrib/chat/common/constants.js';
+const SESSION_TYPES = 'vs/workbench/contrib/chat/browser/agentSessions/sessionTypeAvailability.js';
+const OLYMPIA_CHROME = 'vs/workbench/contrib/olympia/browser/olympiaChrome.js';
+const QUICKACCESS = 'vs/workbench/contrib/quickaccess/browser/commandsQuickAccess.js';
+const DEVELOPER_ACTIONS = 'vs/workbench/electron-browser/actions/developerActions.js';
+const WORKBENCH_CONTRIB = 'vs/workbench/browser/workbench.contribution.js';
 const AGENTS_ACTIONS = 'vs/workbench/contrib/chat/electron-browser/agentSessions/agentSessionsActions.js';
 const ABOUT_DIALOG = 'vs/platform/dialogs/electron-browser/dialog.js';
 const MODEL_PICKER = 'vs/workbench/contrib/chat/browser/widget/input/modelPicker/modelPickerItemSections.js';
@@ -46,6 +51,9 @@ const copy = [
 	[EXTENSIONS, '扩展市场链接', true],
 	[EXTENSIONS, 'VS Marketplace 链接', false],
 	[WELCOME, 'https://olympia.dpdns.org/docs/', true],
+	// 演练页的标签页标题：上游这三条是 "Setup Olympia" 一类，直译成「安装程序 Olympia」后，
+	// 学生会以为点开了一个装软件的东西。三条都收成产品名本身，和同级的「基本功能」「笔记本」对齐。
+	[WELCOME, '安装程序 Olympia', false],
 	[WELCOME, 'vscode-getting-started-video', false],
 	[WELCOME, 'https://code.visualstudio.com/docs/editor/workspace-trust', false],
 	// GitHub 链接呈现没注册，就不该在 workbench 入口里被带进来（它注册的「登录 GitHub」在这个构建里只会报错）
@@ -72,6 +80,15 @@ const defaults = [
 	[CHAT_TIPS, /TIPS_HIDDEN_IN_OLYMPIA\s*=\s*\[[^\]]*['"]tip\.createPrompt['"][^\]]*\]/, '聊天提示位不轮播 /create-prompt（学生不会去写可复用提示文件）'],
 	[MODEL_PICKER, /enabled: goToSettings/, 'BYOK 空列表时「没有可用模型」这一行点得动——屏幕上那句结论必须连着下一步'],
 	[CHAT_CONSTANTS, /AGENTS_WINDOW_DISABLED = !!product\.defaultChatAgent\?\.byokOnly/, '智能体窗口那扇门读 byokOnly 这一个判断'],
+	[CHAT_CONSTANTS, /HOSTED_ACCOUNT_FLOWS_DISABLED = !!product\.defaultChatAgent\?\.byokOnly/, '「登录」和「升级」这两条出路读同一个产品开关（一个判断，不是四处 byokOnly）'],
+	[SESSION_TYPES, /if \(!HOSTED_ACCOUNT_FLOWS_DISABLED && entitlement === ChatEntitlement\.Unknown/, '会话类型不提示「登录」：本产品没有可登录的账号'],
+	[SESSION_TYPES, /canUpgrade = !HOSTED_ACCOUNT_FLOWS_DISABLED/, '会话类型不提示「升级到 Copilot Pro」：没有可买的套餐'],
+	[OLYMPIA_CHROME, /['"]status\.host['"]/, '状态栏左下角那枚远程图标按掉（点开是一个空的远程选择器）'],
+	[OLYMPIA_CHROME, /['"]status\.debug['"]/, '调试 chip 也不留在状态栏：调试视图整栏已经摘掉，点它只能进空的调试环境列表'],
+	[QUICKACCESS, /HIDDEN_COMMAND_CATEGORIES = \[[^\]]*Categories\.Developer\.value/, '「开发人员」整组不进命令面板（类目名读同一个常量，汉化改叫法也跟着走）'],
+	[QUICKACCESS, /KEPT_COMMANDS_IN_HIDDEN_CATEGORIES = \[[^\]]*workbench\.action\.reloadWindow/, '放行名单里留着「重新加载窗口」——整组关掉不能把说明书里让学生按的那条一起带走'],
+	[WORKBENCH_CONTRIB, /workbench\.editor\.languageDetection['"]?:\s*\{[^}]*default: false/, '自动语言检测出厂关闭：点一下检测 chip 会改掉正在写的那份代码的语言模式'],
+	[WELCOME, /gettingStarted\.setup\.walkthroughPageTitle['"],\s*['"]Olympia['"]/, '演练页标题读作「演练: Olympia」，不是「安装程序 Olympia」'],
 	[AGENTS_ACTIONS, /keybinding: AGENTS_WINDOW_DISABLED \? void 0/, 'Ctrl+Shift+A 在 BYOK 产品里不注册——只关 precondition 会留下一个还能按响的快捷键'],
 	[ABOUT_DIALOG, /VS Code \$\{productService\.version\}/, '「关于」第一行是 Olympia 的版本号，VS Code 基线号在括号里']
 ];
@@ -133,7 +150,19 @@ report(!text(WELCOME).includes('chatSetupCompleted && !chatSetupDisabled'),
  */
 const TASKS = 'vs/workbench/contrib/tasks/browser/task.contribution.js';
 report(/TASKS_UI_AVAILABLE = (?:\w+\.)?ContextKeyExpr\.false\(\)/.test(text(TASKS)),
-	'任务入口整组挂在一个恒假开关上');
+	'任务入口整组挂在一个恒假开关上');/**
+ * 「运行任务」曾经是整组任务入口里唯一没挂 `when` 的那条：别的都在 TASKS_UI_AVAILABLE 上，
+ * 它继续出现在命令面板，按下去是一个空的选择器。按 id 找到它自己那一段再读 when，
+ * 这样把 guard 删掉会红，而不是被同文件里另一条任务的 when 顶替掉。
+ */
+const runTaskSlice = text(TASKS).split('workbench.action.tasks.runTask')[1] ?? '';
+report(/when:\s*(?:\w+\.)?TASKS_UI_AVAILABLE/.test(runTaskSlice.slice(0, 400)),
+	'「运行任务」也挂在同一个恒假开关上（面板里不再有按下去是空选择器的一条）');
+/** 「切换开发人员工具」：快捷键本来有 when，帮助菜单那一项以前谁都看得见。 */
+const devToolsAt = text(DEVELOPER_ACTIONS).indexOf('workbench.action.toggleDevTools');
+const devToolsMenu = (text(DEVELOPER_ACTIONS).slice(devToolsAt, devToolsAt + 1200).split('MenubarHelpMenu')[1] ?? '').slice(0, 200);
+report(/when:\s*IsDevelopmentContext/.test(devToolsMenu),
+	`帮助菜单里的「切换开发人员工具」和它的快捷键用同一个 when（菜单那一段读到：${JSON.stringify(devToolsMenu.slice(0, 60))}）`);
 report(!/when: TaskExecutionSupportedContext/.test(text(TASKS)),
 	'没有任何任务入口还留在 TaskExecutionSupportedContext 上');
 const taskPalette = [...text(TASKS).matchAll(/MenuId\.CommandPalette/g)];

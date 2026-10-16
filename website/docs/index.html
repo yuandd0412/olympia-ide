@@ -34,7 +34,7 @@
 
 <section class="hero">
 	<div class="hero-copy">
-		<p class="eyebrow">使用手册 · 对应 v1.140.0 / Olympia v1.0.0</p>
+		<p class="eyebrow">使用手册 · 对应 Olympia v1.0.0</p>
 		<h1>每一件事在哪里点</h1>
 		<p class="lede">
 			Olympia 是面向信息学竞赛的 VS Code fork。这份手册只讲 Olympia 自己加的那部分：
@@ -65,10 +65,10 @@
 		<article>
 			<h3>左侧 Olympia 面板</h3>
 			<ul class="check">
-				<li><em>当前环境</em>：编译器版本、编译档位、体检结果、比赛剩余时间</li>
-				<li><em>编译与运行</em>：编译并运行、只编译、按评测机编译、提交前体检、对拍、比赛模式</li>
-				<li><em>题目与模板</em>：拉取题面、从剪贴板拉题号、打开题面库、打开原题网页、集训清单、给这道题加一组自定义样例、插入赛制模板、编辑我的模板</li>
-				<li><em>AI 教练与帮助</em>：AI 设置、全部设置、环境自检、打开官网</li>
+				<li><em>当前环境</em>：编译器、编译配置、提交前体检、题面库、解题记录、比赛剩余时间</li>
+				<li><em>编译与运行</em>：编译并运行、编译当前文件、按评测机编译（-O2）、提交前体检、跑样例（本地评测）、对比期望输出、对拍（正解 vs 暴力）、比赛模式（倒计时）</li>
+				<li><em>题目与模板</em>：拉取题面、从剪贴板拉取题号、打开题面库、打开原题网页、给这道题加一组自定义样例、集训清单、插入赛制模板、编辑我的模板</li>
+				<li><em>AI 教练与帮助</em>：AI 设置（地址 / 密钥 / 模型）、全部设置（编译 / 评测 / 对拍 / 题面）、环境自检、打开官网与文档、许可证与第三方组件</li>
 			</ul>
 		</article>
 		<article>
@@ -334,6 +334,7 @@
 				<tr><td>拉取题面</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd></td><td>洛谷、Codeforces、AtCoder</td></tr>
 				<tr><td>从剪贴板拉题号</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd></td><td>复制网页链接后直接识别</td></tr>
 				<tr><td>打开题面库</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd></td><td>离线，按题号或标题搜</td></tr>
+				<tr><td>题面进侧栏</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd></td><td>把题面渲染在左栏：Markdown、公式、样例都在，代码区不受影响</td></tr>
 				<tr><td>打开原题网页</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>U</kbd></td><td>按当前文件认出这道题，去原题页交题、看数据范围</td></tr>
 				<tr><td>集训清单</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>L</kbd></td><td>一份命名题单，选它就能开一场</td></tr>
 				<tr><td>插入赛制模板</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd></td><td>ACM / IOI 起手代码</td></tr>

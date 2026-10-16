@@ -125,6 +125,19 @@ i.e. a saved build task silently stops working later. The provider's task defini
 `source` (an absolute path, because `TaskDefinition` must be serialisable — `resolveTask` re-wraps it
 with `Uri.file`).
 
+`F9` 编译并运行 asks *how* to run, because the three ways answer different questions and only one of
+them has a keyboard. [`compileAndRun`](../../oss/extensions/olympia-onboarding/src/compile.ts) offers
+在终端里运行（可以手敲输入）/ 直接运行（空 stdin）/ 选择测试数据文件, terminal first: the output-panel
+path runs through a pipe, so a program that reaches `cin >>` reads EOF and walks on with garbage
+values — which looks exactly like "the program printed nothing". The integrated terminal is the only
+place in the product with real stdin, and it is the parity item the old Tauri app's 交互控制台运行
+served. Two traps there are documented in the code because both were hit on a real window: a quoted
+path is a *string* in PowerShell (it echoes the path and runs nothing — hence `& "…"` for
+`powershell|pwsh`, plain quoting for cmd), and a program still waiting for input keeps its own `.exe`
+locked, so the next `F9` dies with `ld.exe: cannot open output file …: Permission denied`. That error
+is now recognised, the owning process is looked up by executable path, and the notification offers
+结束它并重试; when the lookup finds nothing the message says so instead of claiming the file is free.
+
 Pre-submit check on save is a fire-and-forget `onWillSaveTextDocument` listener with **no**
 `event.waitUntil(...)`: 体检 must never delay the write itself, and a participant that returns an
 unresolved promise gets its save killed after 1750 ms by the workbench.
@@ -854,7 +867,7 @@ re-derive it:
 | **集训清单（practice records）**：命名的一份题单 + 时长，开一场时用它做倒计时种子 | `useAppStore.ts:186`, `ProblemViewerPanel.tsx:60` | ported as [`src/practiceList.ts`](../../oss/extensions/olympia-contest/src/practiceList.ts): `<workspace>/.olympia/practice.json` holds named lists of OJ problem ids + minutes, `Ctrl+Alt+L` opens them, 「开始这一场」 hands the minutes to 比赛模式, and per-problem ✓ comes from the solve log. What changed: the old app's rows were PDF page ranges, these are 题号 — because the fork's 题面 is a file it can open, pull, and judge |
 | **训练中心统计**：连续打卡、今日目标、总题数、30 天趋势柱状图 | `TrainingPage.tsx:26,39,53` | the data (solve log) now exists; the page does not, and in the old app the page was never mounted in `App.tsx` either — so this is a *new* surface, not a parity item |
 | **收藏题目**：给题打星、按星筛选 | `lib.rs:54`, `models.rs:27` | not ported **as a second store** — the question it answered (「哪道我已经做过了」) is now answered from the solve log: 题面库 ticks solved problems and `AC` filters them. A manual star that must be remembered to be switched on is worse than free state the product already has; and in the old app the toggle had no UI at all (dormant) |
-| **交互控制台运行**：编译后开一个新控制台窗口带 `& pause`，能现场喂 stdin（Dev-C++ 那种） | `runner.rs:212`, `models.rs:69` | not ported — the fork runs through a captured task, so stdin-interactive programs have no terminal to talk to. Command was dormant in the old app |
+| **交互控制台运行**：编译后开一个新控制台窗口带 `& pause`，能现场喂 stdin（Dev-C++ 那种） | `runner.rs:212`, `models.rs:69` | ported as the first `F9` option, 在终端里运行（可以手敲输入）— the integrated terminal instead of a separate console window, because a window we spawn has no scrollback, no copy, and no way to read what the program printed (see 编译并运行 above) |
 | **自定义代码模板**：用户自己写一段模板，新建文件时自动注入 | `models.rs:64` | ported — `.olympia/template.cpp` + `olympia.template.editMy`; 插模板把它排第一，`templateOnPull` 从它打底 (see 我的模板 above) |
 
 Window chrome, the practice-folder root with auto file resolution, `pick_practice_folder` / `open_url`

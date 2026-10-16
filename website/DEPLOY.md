@@ -11,7 +11,7 @@
 | Gitee Release 附件 | 100 MB（十进制） | 否 |
 | GitHub Releases | 无（国内下载慢） | 仅作备份 |
 
-安装器实测 294,813,467 B（281 MiB，2026-10-15 编译）。里面打的是整个 Electron 产品：主程序
+安装器实测 294,858,823 B（281 MiB，2026-10-17 编译）。里面打的是整个 Electron 产品：主程序
 `Olympia.exe` 239 MB、内置 MinGW `toolchain/` 467 MB（机房没有编译器，这块必须留）。
 **所以"单文件 <100 MB"在这个产品上不可能靠压缩做到**，方案只能是分卷或换宿主。
 
@@ -23,16 +23,16 @@ DiskSpanning=yes
 DiskSliceSize=94371840   ; 90 MiB，给十进制 100 MB 留余量
 ```
 
-实测一次编译（2026-10-15 23:03，fork `39f39862`）产出 5 个文件，总计 294,813,467 B，最大一片
+实测一次编译（2026-10-17 02:46，fork `16f14a2d`）产出 5 个文件，总计 294,858,823 B，最大一片
 94,371,840 B（94.37 MB，十进制口径也在 100 MB 以内）：
 
 | 文件 | 大小 |
 |---|---|
-| `OlympiaSetup.exe` | 2,604,153（启动器，双击它） |
-| `OlympiaSetup-1.bin` | 91,767,296 |
+| `OlympiaSetup.exe` | 2,605,611（启动器，双击它） |
+| `OlympiaSetup-1.bin` | 91,765,760 |
 | `OlympiaSetup-2.bin` | 94,371,840 |
 | `OlympiaSetup-3.bin` | 94,371,840 |
-| `OlympiaSetup-4.bin` | 11,698,338 |
+| `OlympiaSetup-4.bin` | 11,743,772 |
 | `OlympiaSetup-web.exe` | 1,807,471（引导器，官网按钮指向它） |
 
 用户把**全部文件放进同一个目录**，只双击 `OlympiaSetup.exe` 即可；缺片时向导会提示

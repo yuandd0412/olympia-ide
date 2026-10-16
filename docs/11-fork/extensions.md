@@ -622,6 +622,22 @@ P99: the WA notification's 问教练 produced 「@coach P99「P99 A+B Problem（
 （WA），0/1 组通过。… 样例 1：第 1 行第 1 个数不同：期望 7，得到 12。」 with the input still to be sent,
 which is deliberate — the student reads the question before spending a request.
 
+**Until 2026-10-16 the chat panel could not answer at all** (fork `5ea14508`), and no static check could have
+told us: the trim that emptied `extensions/copilot/package.json`'s `chatAgents` removed the tree's only
+default-agent contribution, and `olympia-coach`'s own `chatParticipants` entry never set
+`isDefault`/`locations`/`modes`. `getDefaultAgent` (`chatAgents.ts:459`) requires all three, so the panel
+logged `sendRequest No default agent for location panel`, the mode chip never rendered, the draft never
+cleared, and no request left the machine — a local fake OpenAI server saw `GET /v1/models` and zero
+`POST /chat/completions`. Setting those three fields needs `defaultChatParticipant` (plus
+`chatParticipantAdditions` for `locations`) in the extension's `enabledApiProposals`, because
+`chatParticipant.contribution.ts:268-276` skips the *entire* entry without them. With that in place the coach
+answered end to end against the fake server, streaming through the panel. `check-chat-product-ids.mjs` now
+pins all of it — the three manifest fields, both proposals, and the participant id matching the string given
+to `createChatParticipant` — and each of the five was broken once to prove it turns red alone.
+Two follow-ups are still open: the panel's mode chip reads `Ask` because it resolves a different mode object
+than `ChatMode.Ask` (see `modePickerActionItem.ts:350`), and no answer has yet come from a *real* provider
+with his key.
+
 **No Microsoft hop survives in a surface a student can click.** Seven setting descriptions in
 [`files.contribution.ts`](../../oss/src/vs/workbench/contrib/files/browser/files.contribution.ts)
 linked out to Microsoft documentation — six *glob 模式* links to `https://aka.ms/vscode-glob-patterns`

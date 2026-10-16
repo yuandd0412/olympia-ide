@@ -1,6 +1,7 @@
 // product.json 的 defaultChatAgent 里写着一串命令 id 和设置 id。这些字段是上游 Copilot 链路留下的，
 // fork 把提供方换成自己的扩展后，有几个 id 就悬在了半空：菜单项照旧显示，点下去执行一条不存在的
 // 命令，学生只看到"什么都没发生"。2026-10-15 出厂审计在产物里抓到三条这样的 id。
+// 2026-10-16 又抓到一条更狠的：摘 Copilot 把全树唯一的默认智能体贡献也摘掉了，聊天面板回车没反应。
 // 这条门不是把它们"改对"，而是把现在的状态钉住：新增悬空 id 要红，把挡住它的那个条件删掉也要红。
 // 运行：node scripts/oneoff/check-chat-product-ids.mjs
 import assert from 'node:assert';
@@ -118,6 +119,30 @@ report(typeof chatExtId === 'string' && !extensionIds.has(chatExtId),
 	`chatExtensionId = ${chatExtId} 依旧不等于任何真实扩展 id（故意）：${reason}`);
 report(coreText.includes('ensureChatExtensionInitialDisabledState'),
 	'上面那条理由的函数还在；它要是被上游删了，这条断言就该提醒重新评估 chatExtensionId 的取值');
+
+// ---- 教练必须是聊天面板的默认智能体 ----
+// 摘 Copilot 时它的 chatAgents 被清成空数组，而 getDefaultAgent 要同时满足
+// isDefault && locations 含 panel && modes 含 ask —— 三条都不满足就永远选不出来，
+// 表现是"回车没反应"，日志里只有 sendRequest No default agent for location panel。
+const coachDir = path.join(oss, 'extensions', 'olympia-coach');
+const coachManifest = JSON.parse(fs.readFileSync(path.join(coachDir, 'package.json'), 'utf8'));
+const participant = (coachManifest.contributes?.chatParticipants ?? [])[0];
+const proposals = coachManifest.enabledApiProposals ?? [];
+report(!!participant && participant.isDefault === true,
+	`教练在清单里是默认智能体（isDefault=${participant?.isDefault}）`);
+report(!!participant && (participant.locations ?? []).includes('panel'),
+	`教练注册进聊天面板这个位置（locations=${JSON.stringify(participant?.locations)}）`);
+report(!!participant && (participant.modes ?? []).includes('ask'),
+	`教练能接住面板默认那个模式（modes=${JSON.stringify(participant?.modes)}）`);
+// 内核在 chatParticipant.contribution.ts:268-276 按 proposal 把关：缺了就把整条贡献跳过，
+// 上面三条仍然全绿——所以这条门必须连着 proposal 一起钉住。
+for (const needed of ['defaultChatParticipant', 'chatParticipantAdditions']) {
+	report(proposals.includes(needed), `清单声明了 ${needed}，否则上面三条会被内核整条跳过`);
+}
+const coachSrc = fs.readFileSync(path.join(coachDir, 'src', 'coach.ts'), 'utf8');
+const calledId = /createChatParticipant\(\s*['"]([^'"]+)['"]/.exec(coachSrc)?.[1];
+report(!!participant && calledId === participant.id,
+	`清单里的 id 和 createChatParticipant 用的 id 是同一个（${calledId} = ${participant?.id}）；不一致就没有实现，选不出来`);
 
 console.log(failed ? '\nFAILED' : '\nall chat product-id checks passed');
 process.exitCode = failed ? 1 : 0;

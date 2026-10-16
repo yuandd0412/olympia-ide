@@ -29,6 +29,7 @@ const CHAT_TIPS = 'vs/workbench/contrib/chat/browser/chatTipCatalog.js';
 const CHAT_CONSTANTS = 'vs/workbench/contrib/chat/common/constants.js';
 const AGENTS_ACTIONS = 'vs/workbench/contrib/chat/electron-browser/agentSessions/agentSessionsActions.js';
 const ABOUT_DIALOG = 'vs/platform/dialogs/electron-browser/dialog.js';
+const MODEL_PICKER = 'vs/workbench/contrib/chat/browser/widget/input/modelPicker/modelPickerItemSections.js';
 
 /** [文件, 文案, 应该出现吗] */
 const copy = [
@@ -68,6 +69,8 @@ const defaults = [
 	[PREFS, /enableNaturalLanguageSettingsSearch[\s\S]{0,300}\n\s*['"]default['"]:\s*false/, '自然语言搜索默认关闭'],
 	[ASSIGN, /workbench\.enableExperiments[\s\S]{0,260}\n\s*['"]default['"]:\s*false/, '实验默认关闭'],
 	[CHAT_TIPS, /TIPS_HIDDEN_IN_OLYMPIA\s*=\s*\[[^\]]*['"]tip\.init['"][^\]]*\]/, '聊天提示位不轮播 /init（AGENTS.md 是给编码智能体看的工程约定）'],
+	[CHAT_TIPS, /TIPS_HIDDEN_IN_OLYMPIA\s*=\s*\[[^\]]*['"]tip\.createPrompt['"][^\]]*\]/, '聊天提示位不轮播 /create-prompt（学生不会去写可复用提示文件）'],
+	[MODEL_PICKER, /enabled: goToSettings/, 'BYOK 空列表时「没有可用模型」这一行点得动——屏幕上那句结论必须连着下一步'],
 	[CHAT_CONSTANTS, /AGENTS_WINDOW_DISABLED = !!product\.defaultChatAgent\?\.byokOnly/, '智能体窗口那扇门读 byokOnly 这一个判断'],
 	[AGENTS_ACTIONS, /keybinding: AGENTS_WINDOW_DISABLED \? void 0/, 'Ctrl+Shift+A 在 BYOK 产品里不注册——只关 precondition 会留下一个还能按响的快捷键'],
 	[ABOUT_DIALOG, /VS Code \$\{productService\.version\}/, '「关于」第一行是 Olympia 的版本号，VS Code 基线号在括号里']

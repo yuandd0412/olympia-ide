@@ -597,6 +597,31 @@ and each was broken once on its own occurrence before being trusted — the firs
 `[\s\S]*?` and happily matched past the array's closing bracket, so deleting `tip.init` did not turn it red.
 What is *not* device-verified: what 关于 actually renders.
 
+**The empty model list is a first screen, not an error** (fork `56cbc549`). With `byokOnly` and nothing
+configured, `buildNoModelsItem` returned a row that was `disabled: true` and read 「没有可用模型」 — the only
+advice on screen was a conclusion, and the row that actually goes to configuration sat one entry below it.
+The row now carries that action itself when `manageModelsAction` exists: `enabled: goToSettings`, and its
+`run` forwards to the same action, so the sentence and the way out are one click. Its label is short
+(「没有可用模型 · 去配置」) on purpose — the label column truncates, and the first draft
+「没有可用模型：点这里去填服务地址与密钥」 lost its tail in a real dropdown; the explanation moved to the
+description line, which has room. `tip.createPrompt` joined the hidden hints for the same reason `tip.init`
+did: it rotated into the screenshot while the model list was still empty. Device-checked in a dev window:
+the dropdown reads 「没有可用模型 · 去配置 | 点这里填服务地址与密钥，填好后模型会自动出现在这里 | 管理模型…」.
+Getting that screenshot is now cheap — `node build/next/index.ts bundle --out out` (≈10 s) is the only `out/`
+shape that boots, because the per-module builds leave raw `import './media/x.css'` statements that Chromium
+rejects as ES modules; the gates read the per-module tree, so `npm run transpile-client` (≈76 s) restores it
+afterwards.
+
+**A judge verdict now hands itself to the coach** (same fork commit). 跑样例 used to end at a notification
+with 「对比期望输出」; the student then retyped the problem, the expected output and his output into the chat
+box. `judgeSamples.ts` adds a 问教练 button (shown for every non-AC verdict) that opens the chat panel with
+`workbench.action.chat.open` in `ask` mode and pre-fills the problem id and title, the verdict, the pass
+count, and up to two failed cases as `期望`/`我的输出` pairs, each clipped to `COACH_SAMPLE_LINES` (12) lines
+with a 「…（还有 N 行）」 tail so a 200-line output does not eat the context window. Verified end to end on
+P99: the WA notification's 问教练 produced 「@coach P99「P99 A+B Problem（题面视图真机核对）」 判成 答案错误
+（WA），0/1 组通过。… 样例 1：第 1 行第 1 个数不同：期望 7，得到 12。」 with the input still to be sent,
+which is deliberate — the student reads the question before spending a request.
+
 **No Microsoft hop survives in a surface a student can click.** Seven setting descriptions in
 [`files.contribution.ts`](../../oss/src/vs/workbench/contrib/files/browser/files.contribution.ts)
 linked out to Microsoft documentation — six *glob 模式* links to `https://aka.ms/vscode-glob-patterns`

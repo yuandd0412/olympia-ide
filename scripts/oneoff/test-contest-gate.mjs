@@ -16,7 +16,7 @@ import { readFileSync } from 'fs';
 
 const onboardingOut = new URL('../../oss/extensions/olympia-onboarding/out/', import.meta.url);
 const coachOut = new URL('../../oss/extensions/olympia-coach/out/', import.meta.url);
-for (const [dir, file] of [[onboardingOut, 'contestMode.js'], [coachOut, 'coach.js']]) {
+for (const [dir, file] of [[onboardingOut, 'contestMode.js'], [coachOut, 'coach.js'], [coachOut, 'model.js']]) {
 	try {
 		readFileSync(new URL(file, dir));
 	} catch {
@@ -43,6 +43,8 @@ const contexts = [];
 const registered = new Map();
 const warnings = [];
 let modelListCalls = 0;
+/** 教练那一轮能看到的模型；空表 = 这台机器还没配模型，走 NO_MODEL 那条文案。 */
+let listedModels = [];
 let lastStatusBar;
 
 class Disposable {
@@ -89,19 +91,15 @@ const vscodeStub = {
 	ChatResponseMarkdownPart: class { constructor(value) { this.value = value; } },
 	LanguageModelChatMessage: { User: t => ({ role: 'user', text: t }), Assistant: t => ({ role: 'assistant', text: t }) },
 	chat: { createChatParticipant: (id, handler) => ({ id, handler, iconPath: undefined, dispose() { } }) },
-	workspace: { getConfiguration: () => ({ get: (_key, fallback) => fallback }) }
+	workspace: { getConfiguration: () => ({ get: (_key, fallback) => fallback }) },
+	// 教练取模型的唯一出口：产品自己的 model.js → listModels() → vscode.lm.selectChatModels()。
+	// 计数放在这一层，检查台才能跑真的 model.js（含 resolveOrAskModel），而不是替它写好的一份假实现。
+	lm: { selectChatModels: async () => { modelListCalls++; return listedModels; } },
 };
 
 const originalLoad = Module._load;
 Module._load = function (request, parent, isMain) {
 	if (request === 'vscode') { return vscodeStub; }
-	// coach.js 只通过 ./model 碰网络，这里换成一个会计数的假实现。
-	if (request === './model' && parent?.filename?.endsWith('coach.js')) {
-		return {
-			listModels: async () => { modelListCalls++; return []; },
-			resolveModel: () => undefined
-		};
-	}
 	return originalLoad.call(this, request, parent, isMain);
 };
 

@@ -55,6 +55,8 @@ fs.rmSync(path.join(fixture, 'stress-fail'), { recursive: true, force: true });
 const messages = [];
 const channels = [];
 const registered = {};
+/** 扩展注册的 webview 视图提供方（题面侧栏），按视图 id 存着。 */
+const webviewProviders = new Map();
 /** 点错误提示里的哪个按钮；undefined 等于按 Esc。 */
 let errorAction;
 /** 每个角色该选哪个文件：按 quick pick 的 placeHolder 关键字匹配。 */
@@ -81,7 +83,12 @@ const vscodeStub = {
 	ProgressLocation: { Notification: 15 },
 	Uri: { file: p => uri(p), joinPath: (base, ...parts) => uri(path.join(base.fsPath, ...parts)) },
 	Disposable: { from: (...items) => ({ dispose() { for (const i of items) { i?.dispose?.(); } } }) },
-	EventEmitter: class { constructor() { this.event = () => ({ dispose() { } }); } fire() { } dispose() { } },
+	// .event 注册监听并返回 disposable，.fire 逐个通知——和真实 vscode 一样，哑火会让「文件变了就重画」这类联动悄悄失效。
+	EventEmitter: class {
+		constructor() { this.listeners = []; this.event = listener => { this.listeners.push(listener); return { dispose() { } }; }; }
+		fire(value) { for (const listener of [...this.listeners]) { listener(value); } }
+		dispose() { this.listeners.length = 0; }
+	},
 	workspace: {
 		workspaceFolders: [{ uri: uri(fixture), name: path.basename(fixture), index: 0 }],
 		// appendSample 会看编辑器里有没有没保存的改动；这里当作都保存过。
@@ -120,12 +127,24 @@ const vscodeStub = {
 			channels.push(channel);
 			return channel;
 		},
-		createStatusBarItem: () => ({ text: '', tooltip: '', command: undefined, show() { }, hide() { }, dispose() { } })
+		createStatusBarItem: () => ({ text: '', tooltip: '', command: undefined, show() { }, hide() { }, dispose() { } }),
+		// 题面侧栏（statementView）在 olympia-contest 的 activate 里注册：没有这个替身，
+		// 扩展根本 activate 不起来，下面那条「appendSample 必须被注册」的前置检查都到不了。
+		registerWebviewViewProvider: (id, provider) => {
+			webviewProviders.set(id, provider);
+			return { dispose() { } };
+		}
 	},
 	commands: {
 		registerCommand: (id, handler) => { registered[id] = handler; return { dispose() { } }; },
-		// 命令可以带参数：对拍把抓到的那组数据交给 olympia.problem.appendSample
-		executeCommand: async (...args) => registered[args[0]]?.(...args.slice(1))
+		// 命令可以带参数：对拍把抓到的那组数据交给 olympia.problem.appendSample。
+		// 没注册的命令照真的 VS Code 那样 reject，不是回 undefined：题面侧栏那条
+		// `olympia.statement.focus` 就是靠这个失败退回编辑器的，替它圆过去就看不见降级这条路了。
+		executeCommand: async (...args) => {
+			const [id, ...rest] = args;
+			if (!Object.hasOwn(registered, id)) { throw new Error(`command '${id}' not found`); }
+			return registered[id](...rest);
+		}
 	},
 	languages: { getDiagnostics: () => [], registerCompletionItemProvider: () => ({ dispose() { } }) },
 	env: { openExternal: async () => true }

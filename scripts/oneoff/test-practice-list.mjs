@@ -47,12 +47,19 @@ let inputs = [];
 let choices = [];
 let warnReply;
 
+/** 扩展注册的 webview 视图提供方（题面侧栏），按视图 id 存着。 */
+const webviewProviders = new Map();
 function uri(fsPath) {
 	return { fsPath, scheme: 'file', path: fsPath, toString: () => `file:///${fsPath.replace(/\\/g, '/')}` };
 }
 
 const vscodeStub = {
 	ProgressLocation: { Notification: 15 },
+	// 题库列表行末那颗 ★ 是 problemLibrary.js 模块级 new vscode.ThemeIcon(...) 建出来的：
+	// 桩里没有这个类，import 就炸，整份检查台一道也跑不了。
+	ThemeIcon: class { constructor(id) { this.id = id; } },
+	ThemeColor: class { constructor(id) { this.id = id; } },
+	RelativePattern: class { constructor(base, pattern) { this.base = base; this.pattern = pattern; } },
 	Uri: {
 		file: p => uri(p),
 		joinPath: (base, ...parts) => uri(path.join(base.fsPath, ...parts)),
@@ -70,6 +77,13 @@ const vscodeStub = {
 		getConfiguration: section => ({ get: (key, fallback) => settings[`${section}.${key}`] ?? fallback }),
 		asRelativePath: u => path.basename(u.fsPath),
 		openTextDocument: async u => ({ fileName: u.fsPath, uri: u, getText: () => fs.readFileSync(u.fsPath, 'utf8') }),
+		// 题面侧栏 show() 之前会先盯住那一份文件（statementView.watch），桩不给一个 watcher 就半路崩。
+		createFileSystemWatcher: () => ({
+			onDidCreate: () => ({ dispose() { } }),
+			onDidDelete: () => ({ dispose() { } }),
+			onDidChange: () => ({ dispose() { } }),
+			dispose() { }
+		}),
 		onDidChangeConfiguration: () => ({ dispose() { } }),
 		onDidSaveTextDocument: () => ({ dispose() { } })
 	},
@@ -90,16 +104,25 @@ const vscodeStub = {
 		showTextDocument: async doc => { shown.push(doc.fileName ?? doc.uri?.fsPath); return {}; },
 		withProgress: async (_options, task) => task({ report() { } }, { isCancellationRequested: false, onCancellationRequested: () => ({ dispose() { } }) }),
 		createOutputChannel: title => ({ title, appendLine() { }, append() { }, show() { }, dispose() { } }),
+		// 题面侧栏（statementView）在 activate 时注册；这里不需要它渲染，但没有这个替身，
+		// olympia-contest 根本 activate 不起来，整份检查台一道也跑不了。
+		registerWebviewViewProvider: (id, provider) => {
+			webviewProviders.set(id, provider);
+			return { dispose() { } };
+		},
 		onDidChangeActiveTextEditor: () => ({ dispose() { } })
 	},
 	commands: {
 		registerCommand: (id, handler) => { registered[id] = handler; return { dispose() { } }; },
-		// 没注册的命令只记参数：清单开场走的是「点 olympia.contestMode 并把分钟数交出去」，
-		// 计时本身由 olympia-onboarding 负责，这里有它自己的检查台（test-contest-gate）。
+		// 真的 VS Code 执行没注册的命令是 reject，不是返回 undefined：题面侧栏那条
+		// `olympia.statement.focus` 在这儿没人注册，就该走「退回编辑器」那条路，检查台才看得见
+		// 到底打开了哪一份文件。这里照实 reject，只是顺手把参数记下来，让「叫过几次」可断言。
+		// focus 属于视图自己（真 IDE 里由核心注册），不是跨扩展的一次调用，不进 executed，
+		// 免得把「本地有题面就不该去拉」那类断言弄脏。
 		executeCommand: async (id, ...args) => {
 			if (registered[id]) { return registered[id](...args); }
-			executed.push({ id, args });
-			return undefined;
+			if (!id.endsWith('.focus')) { executed.push({ id, args }); }
+			throw new Error(`command '${id}' not found`);
 		}
 	},
 	languages: { registerCompletionItemProvider: () => ({ dispose() { } }) },
@@ -231,6 +254,14 @@ const extractHandler = async request => {
 	return extractReply;
 };
 registered[enrich.EXTRACT_COMMAND] = extractHandler;
+
+/**
+ * 假的 `olympia.contestMode`：计时和锁 AI 都归 olympia-onboarding（那边另有检查台
+ * test-contest-gate），这里只把清单交出去的分钟数记下来——「点了真的叫了命令」全靠这张表。
+ * 桩对没注册的命令是 reject（和真 VS Code 一样），所以这条得真的注册上，
+ * 否则「开始这一场」走的是「入门扩展没在运行」那条退路，测的就不是清单了。
+ */
+registered['olympia.contestMode'] = async (...args) => { executed.push({ id: 'olympia.contestMode', args }); };
 
 await check('两个扩展说的是同一个文件：面板标签 = contest 真的写的那个路径', () => {
 	assert.equal(onboardingFiles.PRACTICE_PATH_LABEL, `${templates.TEMPLATE_FOLDER}/${practice.PRACTICE_FILE}`);

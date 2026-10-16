@@ -31,6 +31,8 @@ const SESSION_TYPES = 'vs/workbench/contrib/chat/browser/agentSessions/sessionTy
 const OLYMPIA_CHROME = 'vs/workbench/contrib/olympia/browser/olympiaChrome.js';
 const QUICKACCESS = 'vs/workbench/contrib/quickaccess/browser/commandsQuickAccess.js';
 const DEVELOPER_ACTIONS = 'vs/workbench/electron-browser/actions/developerActions.js';
+const WINDOW_ACTIONS = 'vs/workbench/electron-browser/actions/windowActions.js';
+const HELP_ACTIONS = 'vs/workbench/browser/actions/helpActions.js';
 const WORKBENCH_CONTRIB = 'vs/workbench/browser/workbench.contribution.js';
 const AGENTS_ACTIONS = 'vs/workbench/contrib/chat/electron-browser/agentSessions/agentSessionsActions.js';
 const ABOUT_DIALOG = 'vs/platform/dialogs/electron-browser/dialog.js';
@@ -56,6 +58,10 @@ const copy = [
 	[WELCOME, '安装程序 Olympia', false],
 	[WELCOME, 'vscode-getting-started-video', false],
 	[WELCOME, 'https://code.visualstudio.com/docs/editor/workspace-trust', false],
+	// 「聚焦窗口」是打包版真机截图里唯一整句英文的一行：它没有类目，夹在中文行中间最扎眼。
+	// 上游这条命令本身要留着（辅助窗口之间切换要用），改的只是叫法。
+	[WINDOW_ACTIONS, 'Focus Window', false],
+	[WINDOW_ACTIONS, '聚焦当前窗口', true],
 	// GitHub 链接呈现没注册，就不该在 workbench 入口里被带进来（它注册的「登录 GitHub」在这个构建里只会报错）
 	[COMMON_MAIN, 'githubLinkPresentation', false],
 	// 文件设置这几条描述学生真会点开：链接指向微软短链只会撞「是否信任此链接」，就地讲清即可
@@ -86,6 +92,8 @@ const defaults = [
 	[OLYMPIA_CHROME, /['"]status\.host['"]/, '状态栏左下角那枚远程图标按掉（点开是一个空的远程选择器）'],
 	[OLYMPIA_CHROME, /['"]status\.debug['"]/, '调试 chip 也不留在状态栏：调试视图整栏已经摘掉，点它只能进空的调试环境列表'],
 	[QUICKACCESS, /HIDDEN_COMMAND_CATEGORIES = \[[^\]]*Categories\.Developer\.value/, '「开发人员」整组不进命令面板（类目名读同一个常量，汉化改叫法也跟着走）'],
+	[QUICKACCESS, /HIDDEN_COMMAND_CATEGORIES = \[[^\]]*['"]MCP['"]/, '「MCP」整组不进命令面板：BYOK 产品里没有要给智能体挂外部工具的人'],
+	[HELP_ACTIONS, /getStartedWithAccessibilityFeatures[\s\S]{0,1400}?when: ContextKeyExpr\.and\(IsSessionsWindowContext\.negate\(\), CONTEXT_ACCESSIBILITY_MODE_ENABLED\)/, '「无障碍功能入门」菜单项的条件跟着那份演练自己的 when 走：看得见就得点得开，不能把人带到空页面'],
 	[QUICKACCESS, /KEPT_COMMANDS_IN_HIDDEN_CATEGORIES = \[[^\]]*workbench\.action\.reloadWindow/, '放行名单里留着「重新加载窗口」——整组关掉不能把说明书里让学生按的那条一起带走'],
 	[WORKBENCH_CONTRIB, /workbench\.editor\.languageDetection['"]?:\s*\{[^}]*default: false/, '自动语言检测出厂关闭：点一下检测 chip 会改掉正在写的那份代码的语言模式'],
 	[WELCOME, /gettingStarted\.setup\.walkthroughPageTitle['"],\s*['"]Olympia['"]/, '演练页标题读作「演练: Olympia」，不是「安装程序 Olympia」'],

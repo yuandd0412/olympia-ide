@@ -32,6 +32,14 @@ const registered = {};
 
 const vscodeStub = {
 	LanguageModelTextPart: TextPart,
+	// provider.js 用 EventEmitter 发「模型列表变了」通知（onDidChangeLanguageModelChatInformation）：
+	// .event 注册监听并返回 disposable，.fire 逐个通知，.dispose 收摊——和真实 vscode 一样。
+	// 这里少了它，扩展模块第一行就构造不出来，下面整份检查台一道也跑不了。
+	EventEmitter: class {
+		constructor() { this.listeners = []; this.event = listener => { this.listeners.push(listener); return { dispose() { } }; }; }
+		fire(value) { for (const listener of [...this.listeners]) { listener(value); } }
+		dispose() { this.listeners.length = 0; }
+	},
 	workspace: { getConfiguration: () => ({ get: key => configStore[`olympia.ai.${key}`] }), onDidChangeConfiguration: () => ({ dispose() { } }) },
 	lm: { registerLanguageModelChatProvider: () => ({ dispose() { } }) },
 	commands: { registerCommand: (id, handler) => { registered[id] = handler; return { dispose() { } }; } },
@@ -44,10 +52,18 @@ Module._load = function (request, parent, isMain) {
 	return originalLoad.call(this, request, parent, isMain);
 };
 
-const { OlympiaChatProvider, parseModelIds, invalidateModelsCache } = require('./provider.js');
+const { OlympiaChatProvider, parseModelIds, invalidateModelsCache, notifyModelsChanged } = require('./provider.js');
 
 const context = { secrets: { get: async () => 'sk-test' } };
 const provider = new OlympiaChatProvider(context, logStub);
+
+// ---- 模型列表变了必须通知到核心：没有这条路，聊天里的选择器永远是空的 ----
+// 这是新加的 vscode.EventEmitter 桩唯一被产品代码用到的地方，先确认它真的会通知监听者，
+// 免得桩写成哑的（fire 不叫监听者）而检查台一声不吭。
+let notifications = 0;
+provider.onDidChangeLanguageModelChatInformation(() => notifications++);
+notifyModelsChanged();
+assert.strictEqual(notifications, 1, 'notifyModelsChanged() 必须把监听者叫起来');
 
 // ---- an explicit list must win, and must not touch the network ----
 let modelRequests = 0;

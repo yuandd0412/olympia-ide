@@ -27,6 +27,9 @@ const shown = [];
 const inserted = [];
 let registered = {};
 
+/** 扩展注册的 webview 视图提供方（题面侧栏），按视图 id 存着。 */
+const webviewProviders = new Map();
+
 function uri(fsPath) {
 	return { fsPath, scheme: 'file', path: fsPath, toString: () => `file:///${fsPath.replace(/\\/g, '/')}` };
 }
@@ -47,6 +50,10 @@ let editor = undefined;
 
 const vscodeStub = {
 	ProgressLocation: { Notification: 15 },
+	// 题库列表行末那颗 ★ 是模块级 new vscode.ThemeIcon(...) 建出来的；桩里没有这个类，
+	// olympia-contest 的 problemLibrary 连 import 都过不去，整份检查台一道也跑不了。
+	ThemeIcon: class { constructor(id) { this.id = id; } },
+	ThemeColor: class { constructor(id) { this.id = id; } },
 	Uri: {
 		file: p => uri(p),
 		joinPath: (base, ...parts) => uri(path.join(base.fsPath, ...parts)),
@@ -87,11 +94,22 @@ const vscodeStub = {
 		showTextDocument: async doc => { shown.push(doc.fileName ?? doc.uri?.fsPath); return {}; },
 		withProgress: async (_options, task) => task({ report() { } }, { isCancellationRequested: false, onCancellationRequested: () => ({ dispose() { } }) }),
 		createOutputChannel: title => ({ title, appendLine() { }, append() { }, show() { }, dispose() { } }),
+		// 题面侧栏（statementView）在 activate 时注册：没有这个替身，olympia-contest 根本
+		// activate 不起来，整份检查台一道也跑不了。这里不需要它渲染，只把提供方收着。
+		registerWebviewViewProvider: (id, provider) => {
+			webviewProviders.set(id, provider);
+			return { dispose() { } };
+		},
 		onDidChangeActiveTextEditor: () => ({ dispose() { } })
 	},
 	commands: {
 		registerCommand: (id, handler) => { registered[id] = handler; return { dispose() { } }; },
-		executeCommand: async (id, ...args) => registered[id]?.(...args)
+		// 和真 VS Code 一样：没注册的命令是 reject，不是回 undefined。
+		// （题面侧栏 `olympia.statement.focus` 就靠这个失败退回编辑器。）
+		executeCommand: async (id, ...args) => {
+			if (!Object.hasOwn(registered, id)) { throw new Error(`command '${id}' not found`); }
+			return registered[id](...args);
+		}
 	},
 	languages: {
 		registerCompletionItemProvider: () => ({ dispose() { } })

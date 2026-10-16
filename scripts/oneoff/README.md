@@ -23,6 +23,14 @@
   `check-licence-surface.mjs` 只证明打包代码"点名要它们"，而 `gulp.src(..., { allowEmpty: true })`
   会把匹配不到的名字静默吞掉。
 
+UI 贡献点侧：
+
+- `check-view-containers.mjs` —— 左栏容器的"注册成功但看不见"门。三件事只能从 `package.json` 反查：
+  容器 `icon` 必须是真实存在的 SVG 路径（写成 `$(book)` 这种 codicon 引用时工作台不报错、不警告，
+  整个容器直接消失——2026-10-16 的题面视图就是这样），每个贡献的视图都要在源码里有 provider
+  （容器在它下面所有视图都有 provider 时才画图标），以及图标文件在**出厂产物**里也有一份
+  （只有源码里有 = 装出去是一个空图标）。
+
 发布侧：`../../build/make-release.mjs --tag v<x>` 收分卷、生成 SHA256SUMS.txt、按同一 tag 编引导器，
 并把 `website/index.html` 里的体积/总字节改成这次的真实数字；之后
 `node scripts/oneoff/check-website.mjs --online` 会 HEAD 每条下载直链，确认线上真的存在再部署官网。

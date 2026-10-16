@@ -93,6 +93,7 @@ const defaults = [
 	[OLYMPIA_CHROME, /['"]status\.debug['"]/, '调试 chip 也不留在状态栏：调试视图整栏已经摘掉，点它只能进空的调试环境列表'],
 	[QUICKACCESS, /HIDDEN_COMMAND_CATEGORIES = \[[^\]]*Categories\.Developer\.value/, '「开发人员」整组不进命令面板（类目名读同一个常量，汉化改叫法也跟着走）'],
 	[QUICKACCESS, /HIDDEN_COMMAND_CATEGORIES = \[[^\]]*['"]MCP['"]/, '「MCP」整组不进命令面板：BYOK 产品里没有要给智能体挂外部工具的人'],
+	[QUICKACCESS, /HIDDEN_COMMAND_CATEGORIES = \[[^\]]*Categories\.Account\.value/, '「账户」整组不进命令面板：本产品没有托管账号，那几条点开只有空列表'],
 	[HELP_ACTIONS, /getStartedWithAccessibilityFeatures[\s\S]{0,1400}?when: ContextKeyExpr\.and\(IsSessionsWindowContext\.negate\(\), CONTEXT_ACCESSIBILITY_MODE_ENABLED\)/, '「无障碍功能入门」菜单项的条件跟着那份演练自己的 when 走：看得见就得点得开，不能把人带到空页面'],
 	[QUICKACCESS, /KEPT_COMMANDS_IN_HIDDEN_CATEGORIES = \[[^\]]*workbench\.action\.reloadWindow/, '放行名单里留着「重新加载窗口」——整组关掉不能把说明书里让学生按的那条一起带走'],
 	[WORKBENCH_CONTRIB, /workbench\.editor\.languageDetection['"]?:\s*\{[^}]*default: false/, '自动语言检测出厂关闭：点一下检测 chip 会改掉正在写的那份代码的语言模式'],
@@ -186,6 +187,18 @@ report(/MenuId\.GlobalActivity[\s\S]{0,220}when: TASKS_UI_AVAILABLE/.test(text(T
 	'齿轮菜单不再列「任务」');
 report(/MenuId\.MenubarPreferencesMenu[\s\S]{0,220}when: TASKS_UI_AVAILABLE/.test(text(TASKS)),
 	'菜单栏的偏好子菜单也不再列「任务」');
+/**
+ * 「账户」类目：上游原本在五个工作区命令里各写一遍 localize2('accounts', "账户")，
+ * 命令面板要整组关掉就没有一个共同的值可读——所以先把它收进 Categories.Account，五处一起改读。
+ * 这里逐文件按位置查，少改一处就红：改了一半正是最难看出来的那种。
+ */
+const ACCOUNT_ACTIONS = [
+	'manageAccountsAction', 'manageAccountPreferencesForExtensionAction', 'manageAccountPreferencesForMcpServerAction',
+	'manageTrustedExtensionsForAccountAction', 'manageTrustedMcpServersForAccountAction'
+].map(n => `vs/workbench/contrib/authentication/browser/actions/${n}.js`);
+const inlineAccounts = ACCOUNT_ACTIONS.filter(f => !/category:\s*Categories\.Account\b/.test(text(f)) || /localize2\(["']accounts["']/.test(text(f)));
+report(ACCOUNT_ACTIONS.length === 5 && inlineAccounts.length === 0,
+	`「账户」类目只剩 actionCommonCategories 那一处定义（还在自己写的：${inlineAccounts.map(f => f.split('/').pop()).join(' ') || '无'}）`);
 
 /** 远程隧道：这个构建里没有 github 认证提供方，命令点了只能走到死路。 */
 const TUNNEL = 'vs/workbench/contrib/remoteTunnel/electron-browser/remoteTunnel.contribution.js';

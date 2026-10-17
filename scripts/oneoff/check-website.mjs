@@ -348,9 +348,11 @@ check('官网每一处出现的编译参数串，都和 renderFlags 现在算出
 	const first = /\{\s*id: '\w+',\s*label: '[^']+',\s*gcc: '[^']+',\s*std: '([^']+)'/.exec(src);
 	assert.ok(first, '读不到第一个档位');
 	const expected = `-x c++ -std=${first[1]} ${[...flags[1].matchAll(/'([^']+)'/g)].map(m => m[1]).join(' ')}`;
-	// 页面上这串参数写了不止一处（示例输出、tagline），只查一处等于放过另一处过期的。
+	// 页面上这串参数以前写了两处（手画的假终端 + 示例段）。首屏换成真截图以后，假终端没了，
+	// 所以下限降到 1；真正要防的是「留下的那一处跟产品算出来的不一致」，那条不降。
+	// 别为了凑数再把假终端加回来——那等于让检查台逼着页面上留一块假东西。
 	const hits = [...indexHtml.matchAll(/-x c\+\+ -std=[\w=+.-]+(?: -[\w=+.-]+)+/g)].map(m => m[0].split(' -o')[0]);
-	assert.ok(hits.length >= 2, `页面上只解析出 ${hits.length} 串编译参数，示例那处改了吗？`);
+	assert.ok(hits.length >= 1, `页面上解析不出编译参数串（${hits.length} 处），示例那处没了？`);
 	const wrong = [...new Set(hits)].filter(line => line !== expected);
 	assert.deepEqual(wrong, [], `页面的参数串和产品不一致，产品现在是：${expected}\n        过期的是：${wrong.join('\n        ')}`);
 });

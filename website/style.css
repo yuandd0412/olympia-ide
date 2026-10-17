@@ -154,87 +154,20 @@ main > section.alt > * { max-width: var(--maxw); margin-left: auto; margin-right
 .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 26px 0 12px; }
 .hero-meta { color: var(--fg-dim); font-size: .85rem; }
 
-/* ---------- product mock ---------- */
-
-.mock {
+/* ---------- 首屏：真产品截图 ---------- */
+/* 以前这里是一张手画的假界面（.mock）。现在换成从装出来的产品里拍的真图，
+   样式跟着改：边框与阴影沿用原来那套，但不再需要假标题栏与假语法配色。 */
+.hero-shot { margin: 0; }
+.hero-shot img {
+	display: block;
+	width: 100%;
+	height: auto;
 	border: 1px solid var(--line);
 	border-radius: 12px;
 	background: var(--bg-sunken);
-	overflow: hidden;
 	box-shadow: 0 30px 60px -30px #000;
-	font-size: 12.5px;
 }
-
-.mock-bar {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 9px 12px;
-	background: #1b1e24;
-	border-bottom: 1px solid var(--line);
-}
-.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
-.dot:first-child { background: var(--red); }
-.dot:nth-child(2) { background: var(--yellow); }
-.dot:nth-child(3) { background: var(--green); }
-.mock-title { margin-left: 8px; color: var(--fg-dim); }
-
-.mock-body { display: grid; grid-template-columns: 148px minmax(0, 1fr); }
-
-.mock-side {
-	display: flex;
-	flex-direction: column;
-	gap: 3px;
-	padding: 10px;
-	background: var(--bg-sunken);
-	border-right: 1px solid var(--line);
-}
-.side-title { color: var(--fg-strong); font-weight: 700; margin-bottom: 6px; }
-.side-group { color: var(--fg-dim); margin-top: 8px; }
-.side-item { color: var(--fg); padding-left: 8px; }
-.side-item.ok { color: var(--green); }
-.side-item.run { color: var(--blue); }
-.side-item em { color: var(--fg-dim); font-style: normal; }
-
-.mock-code { padding: 12px; background: var(--bg); }
-.mock-code pre { margin: 0; overflow-x: auto; line-height: 1.7; color: var(--fg); }
-.k { color: var(--purple); }
-.h { color: var(--orange); }
-.t { color: var(--yellow); }
-.f { color: var(--blue); }
-.n { color: var(--green); }
-
-.mock-out {
-	margin-top: 12px;
-	padding: 10px 12px;
-	border: 1px solid var(--line);
-	border-radius: 8px;
-	background: #1b1e24;
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-}
-.out-title { color: var(--fg-strong); font-weight: 700; margin-bottom: 4px; }
-.out-line { color: var(--fg); }
-.out-line.dim { color: var(--comment); }
-.out-line.ok { color: var(--green); }
-
-.mock-status {
-	display: flex;
-	gap: 8px;
-	padding: 7px 12px;
-	background: #21252b;
-	border-top: 1px solid var(--line);
-	flex-wrap: wrap;
-}
-.chip {
-	padding: 1px 8px;
-	border-radius: 20px;
-	background: var(--bg-raised);
-	color: var(--fg);
-}
-.chip.ok { color: var(--green); }
-.chip.grow { margin-left: auto; color: var(--fg-dim); background: none; }
+.hero-shot figcaption { margin-top: 10px; color: var(--fg-dim); font-size: 14px; line-height: 1.6; }
 
 /* ---------- steps strip ---------- */
 

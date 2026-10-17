@@ -157,6 +157,17 @@ if ($SkipExtensions) {
     # `-ci` consumes `.build/extensions`; the tasks that fill it hang off the outer
     # vscode-win32-x64 task, which this script does not run because it re-bundles the workbench.
     Write-Output ("=== STAGE 3/4 extensions START " + (& $stamp) + " ===")
+    # The three Olympia extensions are NOT in the upstream extension list, so
+    # `compile-extensions-build` never touches them and `vscode-win32-x64-ci` just copies whatever
+    # `oss/extensions/<ext>/out` already holds. Without this loop a source change ships the
+    # previous build silently — measured 2026-10-17: coach/onboarding fixes committed at 15:00
+    # came out at 15:07 as byte-identical 12:16 output.
+    foreach ($olympiaExt in @('olympia-coach', 'olympia-contest', 'olympia-onboarding')) {
+        Push-Location (Join-Path $Oss "extensions\$olympiaExt")
+        npm run compile
+        if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Output "=== STAGE 3/4 extensions $olympiaExt FAILED ==="; exit $LASTEXITCODE }
+        Pop-Location
+    }
     node node_modules/gulp/bin/gulp.js compile-extensions-build
     $rc = $LASTEXITCODE
     node node_modules/gulp/bin/gulp.js compile-extension-media
@@ -197,6 +208,14 @@ if (Test-Path $dist) {
 # The one thing that must be true: the packaged product contains a compiler that actually runs.
 # Checking that g++.exe exists proves nothing, so compile and execute P1001 with the copy that
 # shipped inside the product.
+Write-Output ''
+Write-Output '=== 验证产物里的三个 Olympia 扩展不是旧编译 ==='
+node 'D:\oler-ide-v2\build\verify-product-extensions.mjs' $dist
+$erc = $LASTEXITCODE
+if ($erc -ne 0) {
+    Write-Output '产物里的 Olympia 扩展比源码旧（打包链路没编它们，或 out/ 没重编）。' -ForegroundColor Red
+    exit $erc
+}
 Write-Output ''
 Write-Output '=== 验证产物内置编译器 ==='
 node 'D:\oler-ide-v2\build\verify-product-toolchain.mjs' $dist

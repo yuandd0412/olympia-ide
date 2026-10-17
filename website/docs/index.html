@@ -147,7 +147,7 @@
 			</tbody>
 		</table>
 	</div>
-	<p class="hint">整体开关是 <code>olympia.check.enabled</code>，保存时扫描是 <code>olympia.check.onSave</code>。体检不会改你的代码，也不会自己弹提示。</p>
+	<p class="hint">整体开关是 <code>olympia.check.enabled</code>。两档触发各管一层：<code>olympia.check.onBlockDone</code> 是写完一个部件就用编辑器内置的语法解析查结构（毫秒级，不启动编译器，所以它不会说「编译通过」），<code>olympia.check.onSave</code> 是真编一遍（「编译不过」这句话由它说）。体检不会改你的代码，也不会自己弹提示。</p>
 </section>
 
 <section id="samples">
@@ -366,7 +366,8 @@
 				<tr><td><code>olympia.compiler.showCompileCommand</code></td><td><code>true</code></td><td>打印完整编译命令</td></tr>
 				<tr><td><code>olympia.debug.showEntryPoints</code></td><td><code>false</code></td><td>把「运行」菜单里的调试入口项放回来（侧栏图标不会回来，包里也不带调试器）</td></tr>
 				<tr><td><code>olympia.check.enabled</code></td><td><code>true</code></td><td>提交前体检总开关</td></tr>
-				<tr><td><code>olympia.check.onSave</code></td><td><code>true</code></td><td>保存时自动体检</td></tr>
+				<tr><td><code>olympia.check.onSave</code></td><td><code>true</code></td><td>保存时真编一遍（<code>g++ -fsyntax-only</code>）</td></tr>
+				<tr><td><code>olympia.check.onBlockDone</code></td><td><code>true</code></td><td>写完一个部件就查结构：顶层花括号一闭合就用编辑器内置的语法解析报「少分号、括号不配对、写到一半断链」，不用保存、不启动编译器</td></tr>
 				<tr><td><code>olympia.check.rules.pragmaOptimize</code></td><td><code>true</code></td><td>检查优化属性</td></tr>
 				<tr><td><code>olympia.check.rules.reservedWord</code></td><td><code>true</code></td><td>检查 MSVC/GNU 关键字冲突</td></tr>
 				<tr><td><code>olympia.check.rules.removedCpp</code></td><td><code>true</code></td><td>检查标准里已删除的写法</td></tr>

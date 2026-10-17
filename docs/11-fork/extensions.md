@@ -218,7 +218,9 @@ check that greps `oss/out` for the old sentence is what catches it.
 
 Settings: everything under `olympia.*` — `olympia.compiler.*` (`path`, `profile` default `luogu`,
 `customFlags`, `optimization` default `none`, `showCompileCommand` default `true`),
-`olympia.check.enabled` / `olympia.check.onSave` and the rule toggles that still exist
+`olympia.check.enabled` / `olympia.check.onSave`（保存时真编一遍）/
+`olympia.check.onBlockDone`（写完一个部件——顶层那对花括号闭合——就用进程内的
+tree-sitter 语法解析查结构，不启编译器、不用保存）and the rule toggles that still exist
 (`olympia.check.rules.pragmaOptimize`, `.reservedWord`, `.removedCpp`), `olympia.judge.memoryLimitMb`,
 `olympia.train.*` (`recordSolves` default `true`, `dailyGoal` default `3`),
 `olympia.stress.*`, `olympia.debug.showEntryPoints`, plus the contest extension's `olympia.problem.*`

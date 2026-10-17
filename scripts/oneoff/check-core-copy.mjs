@@ -84,6 +84,7 @@ const defaults = [
 	[ASSIGN, /workbench\.enableExperiments[\s\S]{0,260}\n\s*['"]default['"]:\s*false/, '实验默认关闭'],
 	[CHAT_TIPS, /TIPS_HIDDEN_IN_OLYMPIA\s*=\s*\[[^\]]*['"]tip\.init['"][^\]]*\]/, '聊天提示位不轮播 /init（AGENTS.md 是给编码智能体看的工程约定）'],
 	[CHAT_TIPS, /TIPS_HIDDEN_IN_OLYMPIA\s*=\s*\[[^\]]*['"]tip\.createPrompt['"][^\]]*\]/, '聊天提示位不轮播 /create-prompt（学生不会去写可复用提示文件）'],
+	[CHAT_TIPS, /TIPS_HIDDEN_IN_OLYMPIA\s*=\s*\[[^\]]*['"]tip\.troubleshoot['"][^\]]*\]/, '聊天提示位不轮播 /troubleshoot：那句「从调试日志诊断问题」要的是上游智能体的工具，BYOK 教练做不到'],
 	[MODEL_PICKER, /enabled: goToSettings/, 'BYOK 空列表时「没有可用模型」这一行点得动——屏幕上那句结论必须连着下一步'],
 	[CHAT_CONSTANTS, /AGENTS_WINDOW_DISABLED = !!product\.defaultChatAgent\?\.byokOnly/, '智能体窗口那扇门读 byokOnly 这一个判断'],
 	[CHAT_CONSTANTS, /HOSTED_ACCOUNT_FLOWS_DISABLED = !!product\.defaultChatAgent\?\.byokOnly/, '「登录」和「升级」这两条出路读同一个产品开关（一个判断，不是四处 byokOnly）'],

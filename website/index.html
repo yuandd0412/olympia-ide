@@ -95,6 +95,33 @@
 	<div class="step"><b>3</b><span>按 F9</span><small>按评测机参数编译并运行，输入直接喂给程序</small></div>
 </section>
 
+<section id="shots">
+	<h2>装完打开长这样</h2>
+	<p class="section-lede">下面三张都在 v1.0.0 的打包版里截的，没有拼贴、没有重画：装完第一屏就是它。</p>
+	<figure class="shot">
+		<img src="img/shot-welcome.png" width="2560" height="1400" loading="lazy"
+			alt="Olympia 首屏：左栏是资源管理器、搜索、扩展、题面、Olympia 五个入口，左下角状态栏是「洛谷 · C++23」编译档位，右侧是 AI 教练面板">
+		<figcaption>首屏。左栏只留竞赛用得到的入口——调试器和源代码管理不在里面；状态栏那枚「洛谷 · C++23」点下去换编译档位；右边是教练面板，没配 Key 时它会直接说「没有可用模型」。</figcaption>
+	</figure>
+	<div class="shot-pair">
+		<figure class="shot">
+			<img src="img/shot-library.png" width="2560" height="1400" loading="lazy"
+				alt="题面库列表：每行是题号加标题，后面跟着来源、难度、时限和样例组数，行末有一颗未填充的星">
+			<figcaption>题面库（<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd>）：缓存过的题按最近拉取排在前面，离线也能搜，行末那颗星是收藏。</figcaption>
+		</figure>
+		<figure class="shot">
+			<img src="img/shot-favorite.png" width="2560" height="1400" loading="lazy"
+				alt="题面库列表第一行变成一颗实心星，行尾写着已收藏，这道题排到了最前面">
+			<figcaption>点一下星：这道题标成「已收藏」并排到最前面，记录写在工程里的 <b>.olympia/favorites.json</b>——重装系统前把它和题面一起拷走就行。</figcaption>
+		</figure>
+	</div>
+	<figure class="shot">
+		<img src="img/shot-settings.png" width="2560" height="1400" loading="lazy"
+			alt="Olympia 设置页面：顶部一个搜索框，下面是分组的一页开关，每项写着中文说明和一个「恢复默认」">
+		<figcaption>Olympia 设置：编译档位、跑样例的内存上限、对拍轮数、题面存放位置都在这一页，顶部能直接搜「对拍」「内存」。它写的是 <b>settings.json</b> 里同样的键，改完立刻生效——不用去设置树里找那些以 olympia 开头的条目。</figcaption>
+	</figure>
+</section>
+
 <section id="features">
 	<h2>为竞赛写的那部分</h2>
 	<p class="section-lede">这些是 Olympia 自己加的，不是插件市场里拼出来的。</p>

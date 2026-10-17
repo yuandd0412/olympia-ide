@@ -281,6 +281,22 @@ main > section.alt > * { max-width: var(--maxw); margin-left: auto; margin-right
 
 .cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 
+/* 真机截图：图本身就是产品窗口，只需要一层边框把它从背景里拎出来，不另加装饰。 */
+.shot { margin: 0 0 18px; }
+.shot img {
+	display: block;
+	width: 100%;
+	height: auto;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--bg-sunken);
+}
+.shot figcaption { margin-top: 8px; color: var(--fg-dim); font-size: 14px; line-height: 1.6; }
+.shot-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+@media (max-width: 860px) {
+	.shot-pair { grid-template-columns: minmax(0, 1fr); }
+}
+
 ul.check, ul.tight, ol.steps { margin: 0; padding-left: 20px; }
 ul.check { list-style: none; padding-left: 0; }
 ul.check li { position: relative; padding-left: 24px; margin-bottom: 8px; }

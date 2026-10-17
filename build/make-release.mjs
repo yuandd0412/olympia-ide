@@ -83,19 +83,26 @@ step(`${files.length} 个文件，共 ${total} B（${(total / MIB).toFixed(1)} M
 // 旧目录整份挪走而不是就地覆盖：这一版如果切片数变了，留下上一次多出来的 .bin
 // 会被一起拖上传，用户那边就是"下一张磁盘"永远点不完。也不删，那是上一次真正
 // 发出去的那组字节，还得留给已经装上的学生对照。
+let previousDir = null;
 if (fs.existsSync(outDir)) {
 	const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 13);
 	const backup = `${outDir}.bak-${stamp}`;
 	assert.ok(!fs.existsSync(backup), `${backup} 已经在了，脚本不敢再挪一次`);
 	fs.renameSync(outDir, backup);
+	previousDir = backup;
 	step(`上一次的发布目录挪到 ${path.basename(backup)}`);
 }
 fs.mkdirSync(outDir, { recursive: true });
 for (const f of files) {
 	fs.copyFileSync(path.join(slicesDir, f.name), path.join(outDir, f.name));
 }
-// 引导器按这份清单逐个下载并校验，格式必须是 coreutils 的 "<hex>  *<name>"，行尾 CRLF。
-const manifest = files.map(f => `${sha256(path.join(outDir, f.name))}  *${f.name}`).join('\r\n') + '\r\n';
+// 引导器按这份清单逐个下载并校验。格式用 GNU 的二进制模式写法：`<hex><空格>*<名>`。
+// 这里踩过两次：先误以为是 CRLF 让 `sha256sum -c` 读不了（改了行尾照样报错），真正的原因是
+// coreutils 规定「两个空格」= 文本模式、「一个空格 + `*`」= 二进制模式，我们以前写成
+// 「两个空格 + `*`」，于是 `*` 被当成文件名的一部分，5 行全部 "No such file or directory"，
+// 发布页上那步校验等于假的。引导器不受影响：code-web.iss 的 ParseManifest 从第 66 个字符起取
+// 名字并剥掉开头的 `*`，两种写法都吃得下。
+const manifest = files.map(f => `${sha256(path.join(outDir, f.name))} *${f.name}`).join('\n') + '\n';
 fs.writeFileSync(path.join(outDir, 'SHA256SUMS.txt'), manifest, 'utf8');
 step(`发布目录：${outDir}`);
 
@@ -113,6 +120,12 @@ if (!skipBootstrap) {
 	fs.copyFileSync(built, path.join(outDir, 'OlympiaSetup-web.exe'));
 	bootstrap = fs.statSync(path.join(outDir, 'OlympiaSetup-web.exe')).size;
 	step(`引导器 ${bootstrap} B，ReleaseTag=${tag}`);
+} else if (previousDir && fs.existsSync(path.join(previousDir, 'OlympiaSetup-web.exe'))) {
+	// --skip-bootstrap 的意思是「这次不重编引导器」，不是「把官网按钮指向的那个文件丢掉」。
+	// 上一次不做这件事时，发布目录里就没有它，跟着上传一轮就是线上下载链 404。
+	fs.copyFileSync(path.join(previousDir, 'OlympiaSetup-web.exe'), path.join(outDir, 'OlympiaSetup-web.exe'));
+	bootstrap = fs.statSync(path.join(outDir, 'OlympiaSetup-web.exe')).size;
+	step(`引导器沿用上一次的 ${bootstrap} B（--skip-bootstrap，没重编）`);
 }
 
 // ---- 3.5 随包说明：数字全部来自上面量出来的东西 ----

@@ -18,8 +18,10 @@
  *--------------------------------------------------------------------------------------------*/
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import https from 'node:https';
 import { spawn } from 'node:child_process';
+import { buildProviderIndex, scanPES } from './pe-imports.mjs';
 
 /** Mirrors in preference order. The default MSYS2 host is kept as a fallback. */
 const MIRRORS = [
@@ -38,12 +40,23 @@ const TAR = fs.existsSync('C:/Windows/System32/tar.exe') ? 'C:/Windows/System32/
 /**
  * The packages a working g++ needs at runtime.
  *
+ * The list is NOT a judgement call about what a compiler "should" need — `ensureDependencyClosure`
+ * below reads every PE's import table and fails the build when something is still unresolved, so
+ * adding a package here is the only way to keep the tree loadable.
+ *
  * `zlib`, `zstd` and `gettext-runtime` look optional but are not: `ld.exe` from binutils imports
  * `zlib1.dll`, `libzstd.dll` and `libintl-8.dll` directly. Without them the linker fails at process
  * start and collect2 reports only `error: ld returned 8 exit status`; the raw exit code is
  * `0xC0000138` (entry point not found) or `0xC0000135` (DLL not found), neither of which names the
- * culprit. `isl`/`mpc`/`mpfr` are GCC *build-time* dependencies and stay out — they never appear in
- * a shipped binary.
+ * culprit.
+ *
+ * `gmp`/`isl`/`mpc`/`mpfr` and `libiconv` were excluded on the strength of an earlier note here
+ * claiming they are build-time-only dependencies. That was wrong and it shipped a toolchain that
+ * could not compile anything on a machine without another MinGW on PATH: `cc1plus.exe` imports all
+ * four math libraries, and `libintl-8.dll` imports `libiconv-2.dll`, which takes down every
+ * binutils program — 41 executables in the shipped tree. A DLL the loader cannot find is not a
+ * warning; the process dies before it prints anything, which is why the failure looked like a
+ * silent `--- 编译失败 ---`.
  */
 const PACKAGES = [
 	{ name: 'gcc-libs', why: 'libstdc++ / libgcc — linked into every produced binary' },
@@ -64,6 +77,12 @@ const PACKAGES = [
 	{ name: 'zlib', why: 'zlib1.dll — ld.exe will not start without it' },
 	{ name: 'zstd', why: 'libzstd.dll — imported by ld.exe for compressed debug sections' },
 	{ name: 'gettext-runtime', why: 'libintl-8.dll — imported by ld.exe' },
+	// Imported by libintl-8.dll itself, so it is invisible to anyone who only checks ld.exe.
+	{ name: 'libiconv', why: 'libiconv-2.dll — imported by libintl-8.dll, i.e. by all of binutils' },
+	{ name: 'gmp', why: 'libgmp-10.dll — imported by cc1/cc1plus' },
+	{ name: 'mpfr', why: 'libmpfr-6.dll — imported by cc1/cc1plus' },
+	{ name: 'mpc', why: 'libmpc-3.dll — imported by cc1/cc1plus' },
+	{ name: 'isl', why: 'libisl-23.dll — imported by cc1/cc1plus (graphite loops)' },
 	{ name: 'windows-default-manifest', why: 'default-manifest.o — collect2 links it unconditionally' },
 ];
 
@@ -280,9 +299,23 @@ async function main() {
 		console.log(`  实体化 ${linked} 个编译器驱动（Windows 无符号链接支持）`);
 	}
 
+	// Import tables, not a hand-kept list, decide which DLL has to sit next to which image.
+	const closure = ensureDependencyClosure(ROOT);
+	const placed = new Map();
+	for (const step of closure) { placed.set(step.dll, (placed.get(step.dll) ?? 0) + 1); }
+	console.log(`  依赖闭包: 补位 ${closure.length} 次，涉及 ${placed.size} 个 DLL`);
+
+	// Relocate licence texts before the docs prune: mpfr's only copy lives under share/doc.
+	const relocated = relocateLicenceTexts(ROOT);
+
 	const pruned = prune(ROOT);
 	if (pruned.length) {
 		console.log(`  精简: 移除 ${pruned.join(', ')}`);
+	}
+
+	const filled = ensureLicenceTexts(ROOT);
+	if (relocated || filled.length) {
+		console.log(`  许可证文本: 搬迁 ${relocated} 份，补齐 ${filled.join(' / ') || '无'}`);
 	}
 
 	console.log('');
@@ -312,74 +345,100 @@ async function main() {
 		return;
 	}
 
-	// Existence proves nothing. Compile Luogu P1001 with the exact flags Olympia ships and check the
-	// answer, so a toolchain that unpacks but cannot link — a missing libstdc++ or a dropped
-	// cc1plus — is caught here instead of on a student's first submission.
+	// Existence proves nothing, and neither does the driver: see verifyToolchain for why the check
+	// loads every image and compiles-and-runs under both shipped standards.
 	console.log('');
-	console.log('验证：按洛谷参数编译并运行 P1001 ...');
-	const ok = await verifyCompile(gpp, ROOT);
-	if (!ok) {
+	console.log('验证：逐个加载 exe，并按出厂参数在 c++23 / c++14 下各编译运行一次 ...');
+	const problems = await verifyToolchain(ROOT);
+	const provenance = await recordProvenance(ROOT, latest, total);
+	console.log(`  编译器自报: ${provenance.compilerVersion}`);
+	for (const problem of problems) { console.log(`  FAIL ${problem}`); }
+	if (problems.length) {
 		process.exitCode = 1;
-		console.log('失败：内置工具链无法完成一次真实编译。');
+		console.log(`\n失败：${problems.length} 项没通过，这份工具链不出厂。`);
+		return;
 	}
+	console.log('\n内置工具链可用：所有 exe 可加载，两套标准均编译并运行成功。');
 }
 
-/** Compiles P1001 with the shipped Luogu switch set and checks the output is 50. */
-async function verifyCompile(gpp, root) {
-	const dir = fs.mkdtempSync(path.join(TMP, 'verify-'));
-	const src = path.join(dir, 'main.cpp');
-	fs.writeFileSync(src,
-		'#include <cstdio>\n' +
-		'int main() { int a, b; if (scanf("%d%d", &a, &b) != 2) return 1; printf("%d\\n", a + b); return 0; }\n');
+/**
+ * Moves licence texts out of `share/doc` before the doc prune deletes it.
+ *
+ * MSYS2 packages are inconsistent about where the licence lives: `mpfr` ships `COPYING` and
+ * `COPYING.LESSER` under `share/doc`, nowhere else, so pruning the docs directory would have been
+ * stripping the licence of a library the installer distributes. LGPL and MIT both require the text
+ * to travel with the binary, so anything that looks like a licence is relocated into the
+ * `share/licenses/<package>` tree the notice files point at.
+ */
+function relocateLicenceTexts(root) {
+	const doc = path.join(root, 'share', 'doc');
+	const licences = path.join(root, 'share', 'licenses');
+	if (!fs.existsSync(doc)) { return 0; }
 
-	// mirrors olympia-onboarding's luogu profile: -std=c++23 -fPIC -DONLINE_JUDGE -Wall -fno-asm -lm
-	const args = ['-std=c++23', '-fPIC', '-DONLINE_JUDGE', '-Wall', '-fno-asm', '-lm',
-		'-o', 'main.exe', src];
-
-	const build = await run(gpp, args, { cwd: dir, extraPath: path.join(root, 'bin') });
-	if (build.code !== 0) {
-		console.log(`  编译失败（退出码 ${build.code}）`);
-		// collect2 hides the real reason behind `ld returned N`. Re-run the linker directly so a
-		// missing runtime DLL is named instead of surfacing as an unexplained exit code.
-		const detail = (build.stderr || build.stdout).trim();
-		console.log('  ' + detail.split('\n').slice(0, 4).join('\n  '));
-		if (/ld returned/.test(detail)) {
-			console.log('  链接器直接报错：');
-			const ld = await run(path.join(root, 'bin', 'ld.exe'), ['--version'],
-				{ cwd: dir, extraPath: path.join(root, 'bin') });
-			if (ld.code === 0) {
-				console.log('  ld.exe 可以启动 —— 问题在库搜索路径');
-			} else {
-				console.log(`  ld.exe 退出码 ${ld.code}`);
-				// Name the missing dependency instead of leaving the student to guess: a linker that
-				// will not start almost always means one of its imported DLLs is absent.
-				const missing = missingImports(path.join(root, 'bin', 'ld.exe'), path.join(root, 'bin'));
-				console.log(missing.length
-					? `  缺失的依赖 DLL: ${missing.join(', ')}`
-					: '  所有导入的 DLL 都在位，可能是版本不匹配');
-			}
+	let moved = 0;
+	for (const pkg of fs.readdirSync(doc)) {
+		const from = path.join(doc, pkg);
+		if (!fs.statSync(from).isDirectory()) { continue; }
+		const texts = fs.readdirSync(from).filter(f => /^(copying|licen[cs]e|copyright)/i.test(f));
+		if (!texts.length) { continue; }
+		const to = path.join(licences, pkg);
+		fs.mkdirSync(to, { recursive: true });
+		for (const file of texts) {
+			fs.renameSync(path.join(from, file), path.join(to, file));
+			moved++;
 		}
-		return false;
+	}
+	return moved;
+}
+
+/**
+ * Makes sure every bundled runtime library has a licence text that actually ships.
+ *
+ * `gmp` and `mpc` carry none in their MSYS2 binary packages. Their licence is the FSF's LGPL-3.0,
+ * whose canonical text the tree already distributes inside binutils, so the same bytes are placed
+ * under their own `share/licenses` entry — the alternative is shipping an LGPL library with no
+ * licence, which the notice file would then describe wrongly.
+ *
+ * `isl` is MIT, and the MIT text is a copyright line plus a permission notice: only the author's
+ * own copy is valid, and neither this package nor any other file in the tree carries it. Shipping a
+ * boilerplate MIT with a guessed copyright holder would be a fabrication, so this writes a pointer
+ * and the declared licence stays honest in ThirdPartyNotices.txt until the upstream text is added.
+ */
+function ensureLicenceTexts(root) {
+	const licences = path.join(root, 'share', 'licenses');
+	const canonical = {
+		lgpl3: path.join(licences, 'binutils', 'COPYING3.LIB'),
+		gpl3: path.join(licences, 'binutils', 'COPYING3'),
+	};
+	const filled = [];
+
+	for (const pkg of ['gmp', 'mpc']) {
+		const dir = path.join(licences, pkg);
+		if (fs.existsSync(dir) && fs.readdirSync(dir).length) { continue; }
+		if (!fs.existsSync(canonical.lgpl3)) {
+			throw new Error(`找不到 LGPL-3.0 正文（预期在 ${path.relative(root, canonical.lgpl3)}），`
+				+ `无法为 ${pkg} 补上许可证；不能把一个 LGPL 库发出去却不带文本`);
+		}
+		fs.mkdirSync(dir, { recursive: true });
+		fs.copyFileSync(canonical.lgpl3, path.join(dir, 'COPYING.LESSER'));
+		if (fs.existsSync(canonical.gpl3)) { fs.copyFileSync(canonical.gpl3, path.join(dir, 'COPYING')); }
+		filled.push(pkg);
 	}
 
-	const exe = path.join(dir, 'main.exe');
-	if (!fs.existsSync(exe)) {
-		console.log('  编译返回成功但没有生成可执行文件');
-		return false;
+	const isl = path.join(licences, 'isl');
+	if (!fs.existsSync(path.join(isl, 'COPYING'))) {
+		fs.mkdirSync(isl, { recursive: true });
+		fs.writeFileSync(path.join(isl, 'LICENCE-NOTICE.txt'),
+			'libisl-23.dll - the ISL integer set library, MIT licensed.\r\n'
+			+ 'Author: Cedric Bastoul and contributors, https://isl.inria.fr/\r\n'
+			+ '\r\n'
+			+ 'The MSYS2 binary package mingw-w64-x86_64-isl does not carry the licence text, and\r\n'
+			+ 'MIT is a copyright notice plus a permission notice, so only the author\'s own copy of\r\n'
+			+ 'it is a valid licence. Olympia IDE does not restate it here. Get it from the upstream\r\n'
+			+ 'source release, where the COPYING file is part of the repository.\r\n');
+		filled.push('isl(指针)');
 	}
-
-	const stdin = path.join(dir, 'in.txt');
-	fs.writeFileSync(stdin, '20 30\n');
-	const runResult = await run(exe, [], { cwd: dir, stdinFile: stdin });
-
-	const output = runResult.stdout.trim();
-	console.log(`  输入 20 30 -> 输出 "${output}"`);
-	if (output !== '50') {
-		console.log(`  期望 50，实际 ${JSON.stringify(output)}`);
-		return false;
-	}
-	console.log('  内置工具链可用。');
-	return true;
+	return filled;
 }
 
 /**
@@ -464,25 +523,191 @@ function removeTree(target) {
 	fs.rmdirSync(target);
 }
 
-/** DLL names referenced by a PE's import table, lower-cased. */
-function importedDlls(pePath) {
-	const buf = fs.readFileSync(pePath);
-	const found = new Set();
-	for (const m of buf.toString('latin1').matchAll(/[A-Za-z0-9_\-.]+\.dll/gi)) {
-		found.add(m[0].toLowerCase());
+/**
+ * Makes every PE in the tree loadable by itself.
+ *
+ * Windows looks for a DLL next to the image that imports it and then on PATH; it never searches a
+ * sibling directory. The toolchain has three kinds of host directory — `bin`, the multi-arch
+ * `x86_64-w64-mingw32\bin` that gcc actually spawns `as`/`ld` from, and
+ * `lib\gcc\<triple>\<version>` that holds `cc1`/`cc1plus` — and the latter two originally held no
+ * runtime DLLs at all. Filling only `bin` yields a tree where `-fsyntax-only` passes while `-c` and
+ * linking die silently, a state harder to diagnose than the original failure, so the rule here is
+ * per-image rather than per-package.
+ *
+ * Iterates to a fixpoint because a copied DLL carries its own imports: `libintl-8.dll` needs
+ * `libiconv-2.dll`, which is how binutils was dead in the shipped tree.
+ */
+function ensureDependencyClosure(root) {
+	const providers = buildProviderIndex(root);
+	const copied = [];
+	const unresolved = new Set();
+
+	for (let pass = 0; pass < 5; pass++) {
+		let didWork = false;
+		for (const image of scanPES(root)) {
+			for (const name of image.missing) {
+				const source = providers.get(name);
+				if (!source) {
+					unresolved.add(`${path.relative(root, image.file)} → ${name}`);
+					continue;
+				}
+				if (path.dirname(source).toLowerCase() === image.dir.toLowerCase()) { continue; }
+				fs.copyFileSync(source, path.join(image.dir, path.basename(source)));
+				copied.push({ dll: name, into: path.dirname(path.relative(root, image.file)) || '.' });
+				didWork = true;
+			}
+		}
+		if (!didWork) { break; }
 	}
-	return found;
+
+	if (unresolved.size) {
+		const list = [...unresolved];
+		throw new Error(
+			`${list.length} 个导入在树里找不到提供者，这是缺包不是缺复制。往 PACKAGES 里补上对应的 `
+			+ `mingw-w64-x86_64-* 包再重跑：\n  ${list.slice(0, 15).join('\n  ')}`);
+	}
+	return copied;
 }
 
-/** Which of a PE's imported DLLs are not present in `binDir`. */
-function missingImports(pePath, binDir) {
-	const onDisk = new Set(
-		fs.readdirSync(binDir)
-			.filter(f => f.toLowerCase().endsWith('.dll'))
-			.map(f => f.toLowerCase()));
-	// System DLLs live in System32, not next to the binary.
-	const system = new Set(['kernel32.dll', 'msvcrt.dll', 'rpcrt4.dll', 'ntdll.dll', 'user32.dll']);
-	return [...importedDlls(pePath)].filter(d => !onDisk.has(d) && !system.has(d));
+/** Every executable in the tree, so the health check can load each one. */
+function listExecutables(root) {
+	const out = [];
+	const walk = dir => {
+		for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+			const p = path.join(dir, entry.name);
+			if (entry.isDirectory()) { walk(p); } else if (/\.exe$/i.test(entry.name)) { out.push(p); }
+		}
+	};
+	walk(root);
+	return out.sort();
+}
+
+/**
+ * Records what the tree really is.
+ *
+ * MSYS2 packages each carry a `.PKGINFO`/`.BUILDINFO` at the prefix root, so unpacking several
+ * packages into one prefix leaves behind whichever one landed last — in the shipped tree that
+ * described a package set that never existed here, including a GCC version the disk disagrees with.
+ * Metadata that contradicts the binaries it labels is worse than none, so the foreign descriptors
+ * are removed and replaced by provenance derived from this run: the package versions the index
+ * served, the version the compiler reports when asked with no inherited PATH, and the digest of
+ * each runtime DLL.
+ */
+async function recordProvenance(root, latest, fetchedBytes) {
+	const bin = path.join(root, 'bin');
+	for (const junk of ['.PKGINFO', '.BUILDINFO', '.MTREE', '.INSTALL']) {
+		const p = path.join(root, junk);
+		if (fs.existsSync(p)) { fs.rmSync(p); }
+	}
+
+	const version = await run(path.join(bin, 'g++.exe'), ['--version'], { cwd: bin, extraPath: bin });
+	const dlls = {};
+	for (const entry of fs.readdirSync(bin).filter(f => /\.dll$/i.test(f)).sort()) {
+		const p = path.join(bin, entry);
+		dlls[entry] = {
+			sha256: crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'),
+			size: fs.statSync(p).size,
+		};
+	}
+
+	const provenance = {
+		generatedBy: 'build/fetch-toolchain.mjs',
+		generatedAt: new Date().toISOString(),
+		packages: [...latest.entries()].map(([name, v]) => ({ name: `mingw-w64-x86_64-${name}`, version: v.ver, size: v.size })),
+		downloadedBytes: fetchedBytes,
+		compilerVersion: (version.stdout || '').split('\n')[0].trim(),
+		runtimeDlls: dlls,
+	};
+	fs.writeFileSync(path.join(root, '.olympia-toolchain.json'), `${JSON.stringify(provenance, null, '\t')}\n`);
+	return provenance;
+}
+
+/**
+ * The acceptance check: every image loads, and a real program compiles and runs.
+ *
+ * `g++ --version` proves almost nothing — the driver imports four DLLs that all tend to survive,
+ * while `cc1plus`/`as`/`ld` die before printing a line, which is why a fatally broken tree once
+ * reported "编译器就绪". A load failure arrives as an NTSTATUS in the 0xC00000xx range with empty
+ * output, so that is what gets classified, not the exit code alone.
+ *
+ * The compile is split by stage (`-fsyntax-only` / `-c` / link / run) because each stage spawns a
+ * different program, and it runs under both shipped standards: `c++23` is the Luogu profile,
+ * `c++14` the NOI Linux one. Compiling without running is not enough either — the produced exe is
+ * the only thing in the chain that needs the C++ runtime to be reachable at process start.
+ */
+async function verifyToolchain(root) {
+	const bin = path.join(root, 'bin');
+	const problems = [];
+
+	const exes = listExecutables(root);
+	let unloadable = 0;
+	for (const file of exes) {
+		const r = await run(file, ['--version'], { cwd: path.dirname(file), extraPath: bin });
+		const code = r.code >>> 0;
+		if (code >= 0xC0000000 && code <= 0xC00002FF) {
+			unloadable++;
+			problems.push(`${path.relative(root, file)} 无法启动（0x${code.toString(16)}），导入的 DLL 不在它自己那个目录里`);
+		}
+	}
+	console.log(`  加载检查: ${exes.length} 个 exe，${unloadable} 个起不来`);
+
+	const dir = fs.mkdtempSync(path.join(TMP, 'verify-'));
+	const src = path.join(dir, 'main.cpp');
+	fs.writeFileSync(src,
+		'#include <bits/stdc++.h>\n'
+		+ 'using namespace std;\n'
+		+ 'int main() { int a, b; if (scanf("%d%d", &a, &b) != 2) return 1; cout << a + b << endl; return 0; }\n');
+	// The flags the Luogu profile ships, minus the output selection.
+	const flags = ['-x', 'c++', '-fPIC', '-DONLINE_JUDGE', '-Wall', '-fno-asm', '-lm'];
+
+	for (const std of ['c++23', 'c++14']) {
+		const stages = [
+			{ name: '前端', args: ['-fsyntax-only', ...flags, `-std=${std}`, src] },
+			{ name: '汇编', args: ['-c', ...flags, `-std=${std}`, '-o', 'main.o', src] },
+			{ name: '链接', args: [...flags, `-std=${std}`, '-o', 'main.exe', src] },
+		];
+		for (const stage of stages) {
+			const r = await run(path.join(bin, 'g++.exe'), stage.args, { cwd: dir, extraPath: bin });
+			if (r.code !== 0) {
+				const detail = (r.stderr || r.stdout).trim();
+				problems.push(`-std=${std} 的「${stage.name}」阶段失败（退出码 ${r.code}）：`
+					+ (detail ? detail.split('\n').slice(0, 3).join(' / ') : '编译器没有任何输出，可能是它自身无法启动'));
+			}
+		}
+
+		const exe = path.join(dir, 'main.exe');
+		if (!fs.existsSync(exe)) { problems.push(`-std=${std} 链接成功但没有产出 exe`); continue; }
+		fs.writeFileSync(path.join(dir, 'in.txt'), '20 30\n');
+		const ran = await run(exe, [], { cwd: dir, extraPath: bin, stdinFile: path.join(dir, 'in.txt') });
+		const got = ran.stdout.trim();
+		console.log(`  -std=${std}: 输入 20 30 -> "${got}"`);
+		if (ran.code !== 0 || got !== '50') {
+			problems.push(`-std=${std} 的产物运行失败（退出码 ${ran.code}，输出 ${JSON.stringify(got)}）`
+				+ '，产物需要 libstdc++-6 / libgcc_s_seh-1 / libwinpthread-1 在 PATH 上或同目录');
+		}
+	}
+	return problems;
+}
+
+/**
+ * The environment a probe runs in.
+ *
+ * Never inherit PATH here. This assembly box has its own MinGW installed, so a check that borrows
+ * the ambient PATH hands a broken tree a green result: `cc1plus` happily loads `libgmp-10.dll` from
+ * an unrelated compiler and the shipped toolchain then fails on every machine that does not have
+ * that compiler. The probe PATH is the toolchain's own `bin` plus System32, which is the same
+ * situation a student's machine is in. Never let the build machine's ambient PATH decide the answer.
+ */
+function childEnv(extraDirs) {
+	const systemRoot = process.env.SystemRoot || 'C:/Windows';
+	return {
+		SystemRoot: systemRoot,
+		WINDIR: process.env.WINDIR || systemRoot,
+		COMSPEC: process.env.COMSPEC || path.join(systemRoot, 'System32', 'cmd.exe'),
+		TEMP: process.env.TEMP,
+		TMP: process.env.TMP,
+		PATH: [...extraDirs, path.join(systemRoot, 'System32')].join(';'),
+	};
 }
 
 /** Spawns a binary, optionally feeding stdin from a file. */
@@ -491,9 +716,7 @@ function run(program, args, { cwd, extraPath, stdinFile } = {}) {
 		const child = spawn(program, args, {
 			cwd,
 			windowsHide: true,
-			env: extraPath
-				? { ...process.env, PATH: `${extraPath};${process.env.PATH}` }
-				: process.env,
+			env: childEnv(extraPath ? [extraPath] : []),
 		});
 		let stdout = '';
 		let stderr = '';

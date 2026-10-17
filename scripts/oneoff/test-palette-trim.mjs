@@ -64,18 +64,29 @@ check('智能体插件那组三条都在名单里',
 // 后两条是字面量（上游没导出常量），所以必须和注册处对拍：id 改了而名单没改，
 // 过滤会安静地不再命中——正是假绿的一种。反向夹具：把注册处字符串换个字，断言要翻红。
 const hiddenBody = quickAccess.slice(quickAccess.indexOf('function hiddenCommandIds'), quickAccess.indexOf('export class CommandsQuickAccessProvider'));
-const literalIds = [...hiddenBody.matchAll(/'(workbench\.action\.chat\.[A-Za-z]+)'/g)].map(m => m[1]);
-check('名单里的两条插件作者命令字面量已被读到（切片切到了）', literalIds.length === 2);
-for (const [id, file] of [
-	['workbench.action.chat.createPlugin', 'workbench/contrib/chat/browser/actions/createPluginAction.ts'],
-	['workbench.action.chat.installPluginFromSource', 'workbench/contrib/chat/browser/actions/chatPluginActions.ts'],
-]) {
+const literalIds = [...hiddenBody.matchAll(/^\t\t'([a-zA-Z.]+)',$/gm)].map(m => m[1]);
+check('名单里的字面量 id 都读到了（切片切到、且只有上游没导出的那五条）',
+	literalIds.length === 5 && new Set(literalIds).size === 5);
+const literalRegistrations = [
+	['workbench.action.chat.createPlugin', 'workbench/contrib/chat/browser/actions/createPluginAction.ts', "static readonly ID = 'workbench.action.chat.createPlugin'"],
+	['workbench.action.chat.installPluginFromSource', 'workbench/contrib/chat/browser/actions/chatPluginActions.ts', "static readonly ID = 'workbench.action.chat.installPluginFromSource'"],
+	['agentsVoice.simulateConnection', 'workbench/contrib/agentsVoice/browser/agentsVoice.contribution.ts', "id: 'agentsVoice.simulateConnection'"],
+	['agentsVoice.resetOnboarding', 'workbench/contrib/agentsVoice/browser/agentsVoice.contribution.ts', "id: 'agentsVoice.resetOnboarding'"],
+	['agentsVoice.showTranscripts', 'workbench/contrib/agentsVoice/browser/transcriptsView/voiceTranscripts.contribution.ts', "SHOW_VIEW_COMMAND_ID = 'agentsVoice.showTranscripts'"],
+];
+for (const [id, file, registration] of literalRegistrations) {
 	const source = read(file);
 	check(`${id} 与 ${file.split('/').pop()} 的注册处一致`,
-		hiddenBody.includes(`'${id}'`) && source.includes(`static readonly ID = '${id}'`));
+		hiddenBody.includes(`'${id}'`) && source.includes(registration));
+	// 反向夹具：注册处把 id 改了名，这条必须翻红——否则名单里的字面量就是一条死链接，
+	// 面板里那行英文字还在，而检查台一片绿。
 	check(`夹具：注册处 id 被改动时，${id} 这条会红`,
-		!source.replace(`static readonly ID = '${id}'`, "static readonly ID = 'renamed'").includes(`static readonly ID = '${id}'`));
+		!source.replace(registration, registration.replace(/'[A-Za-z.]+'$/, "'renamed'")).includes(registration));
 }
+check('两条 Voice: Configure … 走的是 chat 那侧导出的常量（没落字面量）',
+	/import \{ CONFIGURE_DICTATION_INSTRUCTIONS_ACTION_ID, CONFIGURE_VOICE_INSTRUCTIONS_ACTION_ID \} from '\.\.\/\.\.\/chat\/browser\/actions\/configureVoiceInstructionsAction\.js';/.test(quickAccess)
+	&& hiddenBody.includes('CONFIGURE_DICTATION_INSTRUCTIONS_ACTION_ID,')
+	&& hiddenBody.includes('CONFIGURE_VOICE_INSTRUCTIONS_ACTION_ID,'));
 const filterLine = quickAccess.indexOf('hiddenCommandIds().includes(action.item.id)');
 check('过滤真的接在命令循环里，且紧跟 continue',
 	filterLine > 0 && /hiddenCommandIds\(\)\.includes\(action\.item\.id\)\) \{\n\t\t\t\tcontinue;\n\t\t\t\}/.test(quickAccess));

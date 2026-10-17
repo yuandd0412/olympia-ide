@@ -23,17 +23,22 @@ DiskSpanning=yes
 DiskSliceSize=94371840   ; 90 MiB，给十进制 100 MB 留余量
 ```
 
-实测一次编译（2026-10-17 08:24，发行标签 v1.0.0）产出 5 个文件，总计 294,867,879 B，最大一片
-94,371,840 B（94.37 MB，十进制口径也在 100 MB 以内）：
+下表由 `node scripts/oneoff/installer-manifest.mjs` 从真产物读出来，别手抄——手抄的那次对得上，
+下一次打包就悄悄错了，而发版的人正是照它逐片核对「有没有下全」的。最近一次：2026-10-17 13:43
+（`vscode-win32-x64-user-setup` 跑了 9.4 分钟，产品版本 1.140.0），产出 5 个文件、合计 281.5 MiB，
+最大一片 94,371,840 B（十进制口径也在 100 MB 以内），分卷编号 1–4 连续成套：
 
-| 文件 | 大小 |
+| 文件 | 字节 |
 |---|---|
-| `OlympiaSetup.exe` | 2,605,997（启动器，双击它） |
-| `OlympiaSetup-1.bin` | 91,765,760 |
+| `OlympiaSetup.exe` | 2,607,503（启动器，双击它） |
+| `OlympiaSetup-1.bin` | 91,764,224 |
 | `OlympiaSetup-2.bin` | 94,371,840 |
 | `OlympiaSetup-3.bin` | 94,371,840 |
-| `OlympiaSetup-4.bin` | 11,752,442 |
-| `OlympiaSetup-web.exe` | 1,807,471（引导器，官网按钮指向它） |
+| `OlympiaSetup-4.bin` | 12,062,186 |
+
+同一次出包**不包含** `OlympiaSetup-web.exe`（官网按钮指向的那个引导器，上一轮是 1,807,471 B）：
+它不在这条 gulp 链路里，发版前要么单独重做，要么把按钮指回分卷集合，不能沿用旧文件——
+旧引导器里写死的还是退役的 Tauri 0.1.0 直链。
 
 用户把**全部文件放进同一个目录**，只双击 `OlympiaSetup.exe` 即可；缺片时向导会提示
 "安装程序需要下一张磁盘"（该文案在 `oss/build/win32/i18n/Default.zh-cn.isl` 的

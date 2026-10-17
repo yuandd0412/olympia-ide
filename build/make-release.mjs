@@ -24,7 +24,10 @@ const arg = name => {
 	return i >= 0 ? argv[i + 1] : undefined;
 };
 /** 版本号只写在 oss/product.json 的 olympiaVersion 一处；--tag 不给就从这里推，给了就必须一致。 */
-const olympiaVersion = JSON.parse(fs.readFileSync(path.join(oss, 'product.json'), 'utf8')).olympiaVersion;
+const productJson = JSON.parse(fs.readFileSync(path.join(oss, 'product.json'), 'utf8'));
+const olympiaVersion = productJson.olympiaVersion;
+/** 产品版本（1.140.0 那一套）在 fork 的 package.json，不在 product.json——写在这儿的数字也不该手抄。 */
+const productVersion = JSON.parse(fs.readFileSync(path.join(oss, 'package.json'), 'utf8')).version;
 const tag = arg('tag') ?? (olympiaVersion ? `v${olympiaVersion}` : undefined);
 const skipBootstrap = argv.includes('--skip-bootstrap');
 const slicesDir = arg('slices') ?? path.join(oss, '.build', 'win32-x64', 'user-setup');
@@ -34,6 +37,7 @@ const indexHtmlPath = path.join(repoRoot, 'website', 'index.html');
 assert.ok(tag && /^v[\d][\w.]*$/.test(tag), `--tag 要给形如 v1.0.0 的标签，或者在 oss/product.json 写好 olympiaVersion，现在给的是 ${JSON.stringify(tag)}`);
 assert.ok(tag === `v${olympiaVersion}`, `--tag ${tag} 与 oss/product.json 的 olympiaVersion（${olympiaVersion}）不一致。版本号只写在 product.json 一处：要改版本就改那里，别加 --tag。`);
 assert.ok(fs.existsSync(slicesDir), `分卷目录不存在：${slicesDir}（先跑 oss 的 vscode-win32-x64-user-setup）`);
+assert.ok(productVersion, 'oss/package.json 没有 version 字段：分卷表那段话里的「产品版本」就没来源了');
 
 const GITEE_ATTACH_LIMIT = 100_000_000;   // Gitee 附件按十进制 100 MB 卡，一片都不能超
 const MB = 1e6, MIB = 1024 * 1024;
@@ -72,7 +76,8 @@ const total = files.reduce((sum, f) => sum + f.bytes, 0);
 if (!argv.includes('--allow-tiny')) {
 	assert.ok(total > 50 * MIB, `这一组文件总共只有 ${total} B，不像一次真实编译的产物；确实要这样跑就加 --allow-tiny`);
 }
-step(`${files.length} 个文件，共 ${total} B（${(total / MIB).toFixed(1)} MiB），最大一片 ${Math.max(...files.map(f => f.bytes))} B`);
+const maxBytes = Math.max(...files.map(f => f.bytes));
+step(`${files.length} 个文件，共 ${total} B（${(total / MIB).toFixed(1)} MiB），最大一片 ${maxBytes} B`);
 
 // ---- 2. 落进发布目录 + 校验清单 ----
 // 旧目录整份挪走而不是就地覆盖：这一版如果切片数变了，留下上一次多出来的 .bin
@@ -185,23 +190,37 @@ if (fs.existsSync(deployPath)) {
 	let doc = fs.readFileSync(deployPath, 'utf8');
 	const docTotal = total.toLocaleString('en-US');
 	const rewrote = [];
+	// 每一处声明要改写的地方都必须真的命中。以前命不中就悄悄跳过，于是 2026-10-17 那次
+	// 「总计」那句早就换了写法、脚本一句没改，check-website 又在发版前一把逮住——
+	// 这条脚本存在的意义就是不再靠人手抄，跳过等于回到手抄。
+	const missed = [];
 	const swap = (label, re, to) => {
-		if (!re.test(doc)) { return; }
+		if (!re.test(doc)) { missed.push(label); return; }
 		doc = doc.replace(re, to);
 		rewrote.push(label);
 	};
 	swap('开头的实测总量', /安装器实测 [\d,]+ B（[\d.]+ MiB，[^）]* 编译）/, `安装器实测 ${docTotal} B（${(total / MIB).toFixed(1)} MiB，${stamp} 编译）`);
-	// 原来这里写的是 fork 提交号——那是第四个要手抄的字段，换成脚本本来就知道的标签。
-	swap('分卷表那一段', /实测一次编译（[^）]*）产出 \d+ 个文件，总计 [\d,]+ B/, `实测一次编译（${stamp}，发行标签 ${tag}）产出 ${files.length} 个文件，总计 ${docTotal} B`);
+	// 分卷表前面那段话：出分卷时刻、产品版本、总字节、文件数、最大一片、分卷编号全是脚本
+	// 已知的事实。原文里还写过「跑了 9.4 分钟」和「13:49 收发布目录」——前者只有 gulp 知道，
+	// 留着它就等于留一个必然过期又没人核对的数字，所以整段按已知事实重生成。
+	swap('分卷表那一段', /最近一次：[\s\S]*?连续成套：/,
+		`最近一次：${stamp} 出分卷（\`vscode-win32-x64-user-setup\`），${new Date().toLocaleString('sv-SE').slice(0, 16)} 收发布目录，发行标签 ${tag}。\n`
+		+ `产品版本 ${productVersion}。安装器本体（\`OlympiaSetup.exe\` + 各分卷）总计 ${docTotal} B，共 ${files.length} 个文件，\n`
+		+ `最大一片 ${maxBytes.toLocaleString('en-US')} B（十进制口径也在 100 MB 以内），分卷编号 1–${files.length - 1} 连续成套：`);
 	for (const f of files) {
 		// 行形状是「| `文件名` | 12,345」；这里不用模板字符串，反引号嵌在里面会把字面量截断。
 		const rowRe = new RegExp('(\\| ' + '`' + f.name.replace(/\./g, '\\.') + '` \\| )[\\d,]+');
 		swap(`分卷表 ${f.name}`, rowRe, `$1${f.bytes.toLocaleString('en-US')}`);
 	}
 	if (bootstrap) {
-		swap('引导器行', /(\| `OlympiaSetup-web\.exe` \| )[\d,]+/, `$1${bootstrap.toLocaleString('en-US')}`);
+		// 引导器的体积现在是正文里的一句「（1,807,471 B，官网按钮指向的引导器）」，不是表格行。
+		// 反引号在模板字符串里要转义，所以这条用拼接。
+		swap('引导器行', /(`OlympiaSetup-web\.exe`（)[\d,]+( B)/, '$1' + bootstrap.toLocaleString('en-US') + '$2');
+		// 同一句后面还写着「本次 ReleaseTag=v1.0.0」。那是这一版引导器里编译进去的标签，
+		// 脚本刚把它编出来，没有理由让文档抄第二次——抄第二次就会在换标签时留在原地。
+		swap('引导器里的标签', /(本次 ReleaseTag=)v[\d][\w.]*/, '$1' + tag);
 	}
-	assert.ok(rewrote.length >= 3, `DEPLOY.md 里只改写了 ${rewrote.length} 处（${rewrote.join('/')}），格式大概变了，这条检查要跟着改`);
+	assert.deepEqual(missed, [], `DEPLOY.md 里有 ${missed.length} 处声明要改写的位置没命中（${missed.join('、')}）：文档写法变了，脚本的正则得跟着改，跳过等于让人手抄`);
 	fs.writeFileSync(deployPath, doc, 'utf8');
 	step(`website/DEPLOY.md 的 ${rewrote.length} 处字节数已按本次产物改写（${rewrote.join('、')}）`);
 }

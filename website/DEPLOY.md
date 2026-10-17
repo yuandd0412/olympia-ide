@@ -11,7 +11,7 @@
 | Gitee Release 附件 | 100 MB（十进制） | 否 |
 | GitHub Releases | 无（国内下载慢） | 仅作备份 |
 
-安装器实测 295,186,611 B（281.5 MiB，2026-10-17 15:56 编译）。里面打的是整个 Electron 产品：主程序
+安装器实测 295,162,142 B（281.5 MiB，2026-10-17 16:38 编译）。里面打的是整个 Electron 产品：主程序
 `Olympia.exe` 239 MB、内置 MinGW `toolchain/` 467 MB（机房没有编译器，这块必须留）。
 **所以"单文件 <100 MB"在这个产品上不可能靠压缩做到**，方案只能是分卷或换宿主。
 
@@ -25,17 +25,17 @@ DiskSliceSize=94371840   ; 90 MiB，给十进制 100 MB 留余量
 
 下表由 `node build/make-release.mjs` 从真产物反推（`scripts/oneoff/installer-manifest.mjs` 可单独读一次），
 别手抄——手抄的那次对得上，下一次打包就悄悄错了，而发版的人正是照它逐片核对「有没有下全」的。
-最近一次：2026-10-17 15:56 出分卷（`vscode-win32-x64-user-setup`），2026-10-17 15:56 收发布目录，发行标签 v1.0.0。
-产品版本 1.140.0。安装器本体（`OlympiaSetup.exe` + 各分卷）总计 295,186,611 B，共 5 个文件，
+最近一次：2026-10-17 16:38 出分卷（`vscode-win32-x64-user-setup`），2026-10-17 16:40 收发布目录，发行标签 v1.0.0。
+产品版本 1.140.0。安装器本体（`OlympiaSetup.exe` + 各分卷）总计 295,162,142 B，共 5 个文件，
 最大一片 94,371,840 B（十进制口径也在 100 MB 以内），分卷编号 1–4 连续成套：
 
 | 文件 | 字节 |
 |---|---|
-| `OlympiaSetup.exe` | 2,607,763（启动器，双击它） |
+| `OlympiaSetup.exe` | 2,607,813（启动器，双击它） |
 | `OlympiaSetup-1.bin` | 91,763,712 |
 | `OlympiaSetup-2.bin` | 94,371,840 |
 | `OlympiaSetup-3.bin` | 94,371,840 |
-| `OlympiaSetup-4.bin` | 12,071,456 |
+| `OlympiaSetup-4.bin` | 12,046,937 |
 
 `OlympiaSetup-web.exe`（1,807,471 B，官网按钮指向的引导器）不在这条 gulp 链路里，是
 `make-release.mjs` 单独编出来再收进发布目录的——它把发行标签**编译进了二进制**（本次 ReleaseTag=v1.0.0），

@@ -104,6 +104,14 @@ report(/STRUCTURE_LABEL_PANEL/.test(toolsView) && /处结构错误/.test(toolsVi
 	'工具面板分得开结构错误与编译错误');
 report(/STRUCTURE_LABEL_PANEL = '结构没报错/.test(src('precheckState.ts')) && /STRUCTURE_LABEL_STATUS = '结构没报错/.test(src('precheckState.ts')),
 	'两处界面的「结构」字样出自 precheckState 一处');
+// 改完字，上一份结论就不属于这一版代码了。`isChecked` 按版本判，可要是没人重画，
+// 状态栏会继续挂着上一次的「体检通过」——2026-10-17 真机看到过一次（部件级只在闭合新块时跑，
+// 普通改字不触发任何检查，chip 就一直不动）。
+const state = src('precheckState.ts');
+report(/export function onSourceEdited/.test(state) && /STALE_RERENDER_MS/.test(state),
+	'precheckState 提供一条节流过的"源文件被改过"订阅，时间是具名常量');
+report(/onSourceEdited\(render\)/.test(statusBar), '状态栏听了它：改完字不能还挂着「体检通过」');
+report(/onSourceEdited\(\(\) => provider\.refresh\(\)\)/.test(toolsView), '工具面板也听了：改完字不能还写着「无问题」');
 report(/depth === 0 && blocks > before/.test(extension), '触发条件：顶层闭合且部件数变大');
 report(/BLOCK_DEBOUNCE_MS/.test(extension), '防抖时间是个具名常量，不是写在调用点的一个数');
 report(packageJson.contributes?.configuration?.properties?.['olympia.check.onBlockDone']?.default === true,

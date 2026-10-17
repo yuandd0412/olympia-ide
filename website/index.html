@@ -63,29 +63,18 @@
 
 <section id="shots">
 	<h2>装完打开长这样</h2>
-	<p class="section-lede">下面三张都在 v1.0.0 的打包版里截的，没有拼贴、没有重画：装完第一屏就是它。</p>
+	<p class="section-lede">下面几张都是在 v1.0.0 的打包版里截的真图，没有拼贴、没有重画。第一张就是双击图标后看到的第一屏。</p>
 	<figure class="shot">
-		<img src="img/shot-welcome.png" width="2560" height="1400" loading="lazy"
-			alt="Olympia 首屏：左栏是资源管理器、搜索、扩展、题面、Olympia 五个入口，左下角状态栏是「洛谷 · C++23」编译档位，右侧是 AI 教练面板">
-		<figcaption>首屏。左栏只留竞赛用得到的入口——调试器和源代码管理不在里面；状态栏那枚「洛谷 · C++23」点下去换编译档位；右边是教练面板，没配 Key 时它会直接说「没有可用模型」。</figcaption>
+		<img src="img/shot-firstrun.png" width="2398" height="1600" loading="lazy"
+			alt="首启引导「按你的习惯配置」：提示按 Ctrl+Shift+P 可调用全部 Olympia IDE 命令，下面是颜色主题五张卡片——One Dark Pro（出厂默认，已选中）、Dark 2026、Dark High Contrast、Light 2026、Light High Contrast，右下角是「开始使用」按钮">
+		<figcaption>第一屏只有一步：选个顺眼的主题。出厂默认是 One Dark Pro，深色／浅色高对比都在里面；这一步没有登录、没有订阅。想再来一次，命令面板里搜「首次启动引导」。</figcaption>
 	</figure>
-	<div class="shot-pair">
-		<figure class="shot">
-			<img src="img/shot-library.png" width="2560" height="1400" loading="lazy"
-				alt="题面库列表：每行是题号加标题，后面跟着来源、难度、时限和样例组数，行末有一颗未填充的星">
-			<figcaption>题面库（<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd>）：缓存过的题按最近拉取排在前面，离线也能搜，行末那颗星是收藏。</figcaption>
-		</figure>
-		<figure class="shot">
-			<img src="img/shot-favorite.png" width="2560" height="1400" loading="lazy"
-				alt="题面库列表第一行变成一颗实心星，行尾写着已收藏，这道题排到了最前面">
-			<figcaption>点一下星：这道题标成「已收藏」并排到最前面，记录写在工程里的 <b>.olympia/favorites.json</b>——重装系统前把它和题面一起拷走就行。</figcaption>
-		</figure>
-	</div>
 	<figure class="shot">
-		<img src="img/shot-settings.png" width="2560" height="1400" loading="lazy"
-			alt="Olympia 设置页面：顶部一个搜索框，下面是分组的一页开关，每项写着中文说明和一个「恢复默认」">
-		<figcaption>Olympia 设置：编译档位、跑样例的内存上限、对拍轮数、题面存放位置都在这一页，顶部能直接搜「对拍」「内存」。它写的是 <b>settings.json</b> 里同样的键，改完立刻生效——不用去设置树里找那些以 olympia 开头的条目。</figcaption>
+		<img src="img/shot-welcome.png" width="2398" height="1600" loading="lazy"
+			alt="Olympia IDE 主界面：左栏是「Olympia：竞赛工具」面板，当前环境写着编译器 g++ 15.2.0、编译配置 洛谷 · C++23、提交前体检、题面库、解题记录；编译与运行一组是编译并运行 F9、编译当前文件 Shift+F9、按评测机编译（-O2）Ctrl+Shift+F9、提交前体检 Ctrl+Alt+Enter、跑样例（本地评测）Ctrl+Alt+J、对比期望输出 Ctrl+Alt+K、对拍（正解 vs 暴力）Ctrl+Alt+S、比赛模式（倒计时）Ctrl+Alt+C；题目与模板一组有拉取题面 Ctrl+Alt+P、打开题面库 Ctrl+Alt+O、集训清单 Ctrl+Alt+L 等；AI 教练与帮助一组有 AI 设置、全部设置、环境自检 Ctrl+Alt+D。中间是 Olympia 自己的欢迎页，标题「装完，就打比赛」，右边是使用指南。左下角状态栏那枚写着 洛谷 · C++23">
+		<figcaption>选完主题之后的主界面。招牌功能连快捷键一起写在左栏那一页里，不用先背键位；中间是我们自己的欢迎页——新建文件、打开文件夹、十分钟上手、内置编译器与环境自检都在上面。调试器和源代码管理没有占左栏的位置。</figcaption>
 	</figure>
+	<p class="section-lede">还有两块故意不配图：截图比文字更容易过期，产品改掉一个控件，图就变成承诺了我们不做东西。一个是<b>题面库</b>（<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd>）——缓存过的题按最近拉取排在前面，离线也能搜题号与标题，行末那颗星是收藏，收藏记录写在工程里的 <b>.olympia/favorites.json</b>，重装系统前把它和题面一起拷走就行。另一个是 <b>Olympia 设置</b>——编译档位、跑样例的内存上限、对拍轮数、题面存放位置都在那一页，顶部能直接搜「对拍」「内存」，写的是 <b>settings.json</b> 里同样的键，改完立刻生效，不用去设置树里找那些以 olympia 开头的条目。</p>
 </section>
 
 <section id="features">

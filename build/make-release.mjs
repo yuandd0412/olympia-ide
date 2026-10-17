@@ -175,6 +175,37 @@ if (bootstrap) {
 fs.writeFileSync(indexHtmlPath, html, 'utf8');
 step('website/index.html 的体积、总字节、引导器大小已按本次产物改写');
 
+// ---- 4b. DEPLOY.md 里那些抄来的字节数：同一批产物，别让第二个地方靠手抄 ----
+// 这一版之前漂了三次：check-website 每次都得把它逮出来，然后人手改四个地方。
+const deployPath = path.join(repoRoot, 'website', 'DEPLOY.md');
+if (fs.existsSync(deployPath)) {
+	// 分卷的 mtime 就是这一批编译完成的时刻；toLocaleString('sv-SE') 给的是本地时区的
+	// 「YYYY-MM-DD HH:mm」——用 toISOString 会写成 UTC，和文档里其它时间差八小时。
+	const stamp = new Date(Math.max(...files.map(f => f.mtime))).toLocaleString('sv-SE').slice(0, 16);
+	let doc = fs.readFileSync(deployPath, 'utf8');
+	const docTotal = total.toLocaleString('en-US');
+	const rewrote = [];
+	const swap = (label, re, to) => {
+		if (!re.test(doc)) { return; }
+		doc = doc.replace(re, to);
+		rewrote.push(label);
+	};
+	swap('开头的实测总量', /安装器实测 [\d,]+ B（[\d.]+ MiB，[^）]* 编译）/, `安装器实测 ${docTotal} B（${(total / MIB).toFixed(1)} MiB，${stamp} 编译）`);
+	// 原来这里写的是 fork 提交号——那是第四个要手抄的字段，换成脚本本来就知道的标签。
+	swap('分卷表那一段', /实测一次编译（[^）]*）产出 \d+ 个文件，总计 [\d,]+ B/, `实测一次编译（${stamp}，发行标签 ${tag}）产出 ${files.length} 个文件，总计 ${docTotal} B`);
+	for (const f of files) {
+		// 行形状是「| `文件名` | 12,345」；这里不用模板字符串，反引号嵌在里面会把字面量截断。
+		const rowRe = new RegExp('(\\| ' + '`' + f.name.replace(/\./g, '\\.') + '` \\| )[\\d,]+');
+		swap(`分卷表 ${f.name}`, rowRe, `$1${f.bytes.toLocaleString('en-US')}`);
+	}
+	if (bootstrap) {
+		swap('引导器行', /(\| `OlympiaSetup-web\.exe` \| )[\d,]+/, `$1${bootstrap.toLocaleString('en-US')}`);
+	}
+	assert.ok(rewrote.length >= 3, `DEPLOY.md 里只改写了 ${rewrote.length} 处（${rewrote.join('/')}），格式大概变了，这条检查要跟着改`);
+	fs.writeFileSync(deployPath, doc, 'utf8');
+	step(`website/DEPLOY.md 的 ${rewrote.length} 处字节数已按本次产物改写（${rewrote.join('、')}）`);
+}
+
 // ---- 5. 人要做的那两步 ----
 console.log(`
 下一步（这两步只有你能做，顺序不能反）：

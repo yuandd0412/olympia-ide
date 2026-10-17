@@ -53,12 +53,29 @@ check('转写服务读的就是 dictation.enabled 这一条（常量 ENABLED_SET
 const quickAccess = read('workbench/contrib/quickaccess/browser/commandsQuickAccess.ts');
 check('面板过滤读的是 chat 那一侧导出的命令 id（不另抄一份字符串）',
 	/import \{ ForceUpdateAgentPluginsCommandId, RefreshAgentPluginMarketplacesCommandId, UpdateAgentPluginsCommandId \} from '\.\.\/\.\.\/chat\/browser\/chat\.js';/.test(quickAccess));
-check('摘掉的名单在调用时取值（避免模块初始化顺序把它变成 undefined）',
-	/function hiddenCommandIds\(\): readonly string\[\] \{\s*\n\s*return \[\s*\n\s*RefreshAgentPluginMarketplacesCommandId,\s*\n\s*UpdateAgentPluginsCommandId,\s*\n\s*ForceUpdateAgentPluginsCommandId,\s*\n\s*\];/.test(quickAccess));
+check('摘掉的名单在调用时取值（写成函数，不是模块级常量——那样初始化顺序会把值变成 undefined）',
+	/function hiddenCommandIds\(\): readonly string\[\] \{\s*\n\s*return \[/.test(quickAccess)
+	&& !/^const HIDDEN_COMMAND_IDS/m.test(quickAccess));
 // 三条都属于智能体插件组：少一条就等于面板里还剩一条英文。
 check('智能体插件那组三条都在名单里',
 	['RefreshAgentPluginMarketplacesCommandId', 'UpdateAgentPluginsCommandId', 'ForceUpdateAgentPluginsCommandId']
 		.every(id => quickAccess.slice(quickAccess.indexOf('function hiddenCommandIds'), quickAccess.indexOf('export class CommandsQuickAccessProvider')).includes(id)));
+
+// 后两条是字面量（上游没导出常量），所以必须和注册处对拍：id 改了而名单没改，
+// 过滤会安静地不再命中——正是假绿的一种。反向夹具：把注册处字符串换个字，断言要翻红。
+const hiddenBody = quickAccess.slice(quickAccess.indexOf('function hiddenCommandIds'), quickAccess.indexOf('export class CommandsQuickAccessProvider'));
+const literalIds = [...hiddenBody.matchAll(/'(workbench\.action\.chat\.[A-Za-z]+)'/g)].map(m => m[1]);
+check('名单里的两条插件作者命令字面量已被读到（切片切到了）', literalIds.length === 2);
+for (const [id, file] of [
+	['workbench.action.chat.createPlugin', 'workbench/contrib/chat/browser/actions/createPluginAction.ts'],
+	['workbench.action.chat.installPluginFromSource', 'workbench/contrib/chat/browser/actions/chatPluginActions.ts'],
+]) {
+	const source = read(file);
+	check(`${id} 与 ${file.split('/').pop()} 的注册处一致`,
+		hiddenBody.includes(`'${id}'`) && source.includes(`static readonly ID = '${id}'`));
+	check(`夹具：注册处 id 被改动时，${id} 这条会红`,
+		!source.replace(`static readonly ID = '${id}'`, "static readonly ID = 'renamed'").includes(`static readonly ID = '${id}'`));
+}
 const filterLine = quickAccess.indexOf('hiddenCommandIds().includes(action.item.id)');
 check('过滤真的接在命令循环里，且紧跟 continue',
 	filterLine > 0 && /hiddenCommandIds\(\)\.includes\(action\.item\.id\)\) \{\n\t\t\t\tcontinue;\n\t\t\t\}/.test(quickAccess));

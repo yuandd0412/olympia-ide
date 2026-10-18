@@ -294,7 +294,8 @@ const NO_BRAND = [
 	{ label: 'MCP 欢迎页不再自称 VS Code', abs: path.resolve(SRC_ROOT, 'workbench/contrib/mcp/browser/mcpServersView.ts'), re: /VS Code/, want: false },
 	{ label: '主题列表里不再有 Visual Studio 字样', abs: path.join(EXT_ROOT, 'theme-defaults/package.nls.json'), re: /Visual Studio/, want: false },
 	{ label: '我们自己的设置页不再把用户称作 VS Code 用户', abs: path.join(EXT_ROOT, 'olympia-onboarding/src/settingsPanel.ts'), re: /VS Code/, want: false },
-	{ label: '设置项说明里不再出现 VS Code', abs: path.join(EXT_ROOT, 'olympia-onboarding/package.json'), re: /VS Code/, want: false }
+	{ label: '设置项说明里不再出现 VS Code', abs: path.join(EXT_ROOT, 'olympia-onboarding/package.json'), re: /VS Code/, want: false },
+	{ label: '首启自动展开的那一节先剔掉隐藏分区：全新装机第一眼是我们自己的十步演练，不是上游「选主题 + 看视频」那两步', abs: path.resolve(SRC_ROOT, 'workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts'), re: /openToFirstCategory[\s\S]{0,900}?getHiddenCategories\(\)[\s\S]{0,300}?hidden\.has\(c\.id\)/, want: true }
 ];
 for (const { label, abs, re, want } of NO_BRAND) {
 	if (!fs.existsSync(abs)) { report(false, `${label}：读不到文件 ${abs}`); continue; }

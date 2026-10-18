@@ -418,16 +418,10 @@ check('产品自己的许可证：官网页脚与 product.json 同一条', () =>
 if (process.argv.includes('--online')) {
 	const urls = directDownloadUrls();
 	const bad = [];
-	const live = new Map();
 	for (const url of urls) {
 		try {
 			const res = await fetch(encodeURI(url), { method: 'HEAD', redirect: 'follow' });
-			if (!res.ok) { bad.push(`${url} → HTTP ${res.status}`); continue; }
-			const size = Number(res.headers.get('content-length'));
-			// Gitee 的直链文件名在最后一段，且可能带 URL 编码
-			if (Number.isFinite(size) && size > 0) {
-				live.set(path.basename(decodeURIComponent(new URL(res.url ?? url).pathname)), size);
-			}
+			if (!res.ok) { bad.push(`${url} → HTTP ${res.status}`); }
 		} catch (error) {
 			bad.push(`${url} → ${error.name}`);
 		}

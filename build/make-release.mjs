@@ -39,6 +39,40 @@ assert.ok(tag === `v${olympiaVersion}`, `--tag ${tag} 与 oss/product.json 的 o
 assert.ok(fs.existsSync(slicesDir), `分卷目录不存在：${slicesDir}（先跑 oss 的 vscode-win32-x64-user-setup）`);
 assert.ok(productVersion, 'oss/package.json 没有 version 字段：分卷表那段话里的「产品版本」就没来源了');
 
+/**
+ * 出包是两步：oss-package.ps1 拼产品目录，gulp vscode-win32-x64-user-setup 只把那个目录压进
+ * 安装器。单独跑后一步会把上一次构建留在目录里的扩展字节原样发出去——体检全绿、修复没走
+ * （2026-10-18 实测错过一次）。所以收文件之前先卡每个内置扩展的新旧。
+ */
+function newestMtime(root, re) {
+	if (!fs.existsSync(root)) { return 0; }
+	let max = 0;
+	for (const entry of fs.readdirSync(root, { recursive: true, encoding: 'utf8' })) {
+		const name = String(entry);
+		if (!re.test(name)) { continue; }
+		const st = fs.statSync(path.join(root, name), { throwIfNoEntry: false });
+		if (st?.isFile()) { max = Math.max(max, st.mtimeMs); }
+	}
+	return max;
+}
+
+const productExtensions = path.join(repoRoot, 'VSCode-win32-x64', 'resources', 'app', 'extensions');
+const olympiaExts = fs.existsSync(productExtensions)
+	? fs.readdirSync(productExtensions).filter(n => n.startsWith('olympia-')) : [];
+assert.ok(olympiaExts.length > 0, `产品目录里一个 olympia-* 扩展都没有：${productExtensions}（先跑 build/oss-package.ps1）`);
+const staleExts = [];
+for (const ext of olympiaExts) {
+	const srcNew = newestMtime(path.join(oss, 'extensions', ext, 'src'), /\.ts$/);
+	const outRoot = path.join(productExtensions, ext, 'out');
+	const outNew = newestMtime(outRoot, /\.js$/);
+	if (outNew === 0) { staleExts.push(`${ext}：产品目录里没有编好的 out/`); }
+	else if (outNew < srcNew) {
+		staleExts.push(`${ext}：产品目录里的 JS 比 src/ 的 TS 旧 ${((srcNew - outNew) / 60000).toFixed(1)} 分钟，装进去的是上一次构建的字节`);
+	}
+}
+assert.ok(staleExts.length === 0, `这些内置扩展没随本次改动重编：\n        ${staleExts.join('\n        ')}`);
+console.log(`ok    ${olympiaExts.length} 个内置扩展都比源码新`);
+
 const GITEE_ATTACH_LIMIT = 100_000_000;   // Gitee 附件按十进制 100 MB 卡，一片都不能超
 const MB = 1e6, MIB = 1024 * 1024;
 

@@ -183,6 +183,7 @@ const TEXT_SOURCES = [
 	// 注册块里只剩一个省略号，第一路更看不见。name 就是被展开的那个常量。
 	{ rel: 'workbench/contrib/chat/browser/aiCustomization/customizationMarketplaceConfiguration.ts', name: 'customizationMarketplaceConfigurationProperties', usedBy: 'workbench/contrib/chat/browser/chat.shared.contribution.ts' },
 	{ rel: 'platform/agentHost/common/artifactToolsConfiguration.ts', name: 'artifactToolsConfigurationProperties', usedBy: 'platform/agentHost/common/agentHostStarter.config.contribution.ts' },
+	{ rel: 'workbench/contrib/chat/browser/chatProgressConfiguration.ts', name: 'chatProgressConfigurationProperties', usedBy: 'workbench/contrib/chat/browser/chat.shared.contribution.ts' },
 ];
 let textChecked = 0;
 for (const src of TEXT_SOURCES) {
@@ -201,7 +202,12 @@ for (const src of TEXT_SOURCES) {
 	const region = text.slice(from, to);
 	for (const m of region.matchAll(/localize\(\s*'([^']+)'\s*,\s*["']([^"']*)["']/g)) {
 		const str = m[2];
-		if (!/copilot|github/i.test(str)) { continue; }
+		// 两类都算问题：提到 Copilot/GitHub 的必须翻过；整句还是英文的也算没汉化。
+		// 长度这道门槛是给 "Windsurf"、"Claude Desktop" 这类工具名留的——那些本来就该照抄，
+		// 要求它们带中文没道理（同文件里那个纯工具名的 label 表因此不放进来）。
+		const branded = /copilot|github/i.test(str);
+		const sentenceShaped = str.replace(/[`'"]/g, '').length >= 12;
+		if (!branded && !sentenceShaped) { continue; }
 		textChecked++;
 		if (!/[\u4e00-\u9fff]/.test(str)) {
 			const line = text.slice(0, from + m.index).split(/\r?\n/).length;

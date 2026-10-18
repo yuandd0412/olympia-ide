@@ -117,8 +117,20 @@ function report(ok, line) {
 }
 
 const cache = new Map();
+const stale = new Set();
 function text(file) {
-	if (!cache.has(file)) { cache.set(file, read(file)); }
+	if (!cache.has(file)) {
+		const built = path.join(out, file);
+		cache.set(file, fs.readFileSync(built, 'utf8')
+			.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))));
+		// 这一门判的是「编译进产物的文案」。打包走的是 gulp 直接从 src 出 bundle，
+		// 根本不刷新 oss/out——2026-10-19 就是它让两条新加的提示断言在旧字节上判红，
+		// 而另外四十来条在同一个旧产物上判绿。旧产物上的"通过"是假清静，必须自己喊出来。
+		const src = path.resolve(here, '../../oss/src/vs', file.replace(/^vs\//, '').replace(/\.js$/, '.ts'));
+		if (fs.existsSync(src) && fs.existsSync(built) && fs.statSync(src).mtimeMs > fs.statSync(built).mtimeMs) {
+			stale.add(file);
+		}
+	}
 	return cache.get(file);
 }
 
@@ -295,7 +307,11 @@ const NO_BRAND = [
 	{ label: '主题列表里不再有 Visual Studio 字样', abs: path.join(EXT_ROOT, 'theme-defaults/package.nls.json'), re: /Visual Studio/, want: false },
 	{ label: '我们自己的设置页不再把用户称作 VS Code 用户', abs: path.join(EXT_ROOT, 'olympia-onboarding/src/settingsPanel.ts'), re: /VS Code/, want: false },
 	{ label: '设置项说明里不再出现 VS Code', abs: path.join(EXT_ROOT, 'olympia-onboarding/package.json'), re: /VS Code/, want: false },
-	{ label: '首启自动展开的那一节先剔掉隐藏分区：全新装机第一眼是我们自己的十步演练，不是上游「选主题 + 看视频」那两步', abs: path.resolve(SRC_ROOT, 'workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts'), re: /openToFirstCategory[\s\S]{0,900}?getHiddenCategories\(\)[\s\S]{0,300}?hidden\.has\(c\.id\)/, want: true }
+	{ label: '首启自动展开的那一节先剔掉隐藏分区：全新装机第一眼是我们自己的十步演练，不是上游「选主题 + 看视频」那两步', abs: path.resolve(SRC_ROOT, 'workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts'), re: /openToFirstCategory[\s\S]{0,900}?getHiddenCategories\(\)[\s\S]{0,300}?hidden\.has\(c\.id\)/, want: true },
+	// 这两条查源码而不是查产物：文案进 bundle 之后变成 localize(13299, null)，
+	// 真正的字符串住在 out/nls.messages.json 里，按产物断言永远只能判到旧字节。
+	{ label: '聊天提示位不轮播「右键看更多 AI 操作」：那是上游 Copilot 的代码操作菜单，全新 profile 首屏实测被它占过一格', abs: path.resolve(SRC_ROOT, 'workbench/contrib/chat/browser/chatTipCatalog.ts'), re: /TIPS_HIDDEN_IN_OLYMPIA[^;]*tip\.codeActions/s, want: true },
+	{ label: '「# 引用文件」那条提示说的是我们的教练，不再是「为智能体提供上下文」', abs: path.resolve(SRC_ROOT, 'workbench/contrib/chat/browser/chatTipCatalog.ts'), re: /tip\.attachFiles[\s\S]{0,260}?把题面、数据或另一份代码一起发给教练/, want: true }
 ];
 for (const { label, abs, re, want } of NO_BRAND) {
 	if (!fs.existsSync(abs)) { report(false, `${label}：读不到文件 ${abs}`); continue; }
@@ -304,6 +320,14 @@ for (const { label, abs, re, want } of NO_BRAND) {
 }
 const heaviest = [...counted].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([f, n]) => `${n} ${f.split('/').slice(-2).join('/')}`);
 console.log(`剩下的集中在：${heaviest.join(' | ')}`);
+
+/**
+ * 产物比源码旧 = 这一门判的不是本次改动。打包（gulp 直接读 src 出 bundle）不刷新 oss/out，
+ * 所以只有 compile-client 会让它对齐；对不齐时必须红，不能把"在旧字节上找到的字样"报成通过。
+ */
+for (const f of stale) {
+	report(false, `产物比源码旧：${f} —— 先跑 npm run compile-client，这一门判的才是本次改动`);
+}
 
 console.log(failed ? '\nFAILED' : '\nall core-copy checks passed');
 process.exitCode = failed ? 1 : 0;

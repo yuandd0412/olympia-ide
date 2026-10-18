@@ -53,6 +53,13 @@ const ALLOW = {
 		// 出厂 false 就是终态，说明里已写明「Olympia 走自己的服务地址与密钥，不接 Microsoft / GitHub 账户」。
 		// 挡掉等于把一个有读者的开关从注册表里摘走，留在设置页讲清楚更诚实。
 		'ChatMicrosoftAuthenticationEnabledSettingId': '有活读者（登录对话框给哪几个按钮）；默认 false 即终态，文案已讲清',
+		// 命中在出厂默认的 URL 模式上（github.com/microsoft/vscode/wiki/*），不是文案。这一条是真在用的
+		// 功能：聊天工具抓网页时哪些地址免确认。要不要把 github.com 那条默认去掉是「改默认值」，
+		// 得单独决定——别混进文案清理里顺手改。
+		'AutoApprovedUrls': '命中在默认 URL 模式上而非文案；去掉默认属于行为改动，已单独登记',
+		// 说明已汉化，命中在 .github/agents 这个目录名上（自定义 agent 文件真实所在的路径，事实描述）。
+		// 里面的 {0} 链接是产品内命令，本产品的 Agent 定制编辑器可达性另有一项在核。
+		'MODE_LOCATION_KEY': '文案已汉化；命中在 .github/agents 这个目录名（事实），迁移链接可达性另记',
 	},
 };
 

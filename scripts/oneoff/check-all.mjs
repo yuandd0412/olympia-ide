@@ -17,10 +17,12 @@ const repoRoot = path.resolve(here, '..', '..');
 const GATES = [
 	{ file: 'scripts/oneoff/check-website.mjs', 保证: '官网链接、数字、承诺与代码一致' },
 	{ file: 'scripts/oneoff/check-no-copilot-claim.mjs', 保证: '已核实可达的用户可见文案里没有 Copilot' },
+	{ file: 'scripts/oneoff/check-byok-settings.mjs', 保证: '设置页里提到 Copilot 的条目要么挡掉要么有理由' },
 	{ file: 'scripts/oneoff/check-version-mirrors.mjs', 保证: '抄来的版本字面量等于真源' },
 	{ file: 'scripts/oneoff/check-olympia-command-ids.mjs', 保证: '三个扩展的命令 id 引用=声明=注册' },
 	{ file: 'scripts/oneoff/check-keybinding-mirrors.mjs', 保证: '文案里写的组合键与真实注册表一致' },
 	{ file: 'scripts/oneoff/check-problems-dir.mjs', 保证: '题面目录只有一个真源' },
+	{ file: 'scripts/oneoff/check-toolchain-notices.mjs', 保证: '随包工具链里每个运行库 DLL 都在第三方声明里有一条' },
 	{ file: 'scripts/oneoff/test-palette-trim.mjs', 保证: '命令面板裁剪（OI 用不到的条目不在）' },
 	{ file: 'scripts/oneoff/test-noise-trim.mjs', 保证: '首屏噪声裁剪' },
 	{ file: 'build/verify-product-extensions.mjs', 保证: '出厂的三个扩展是最新编译的', needsBuild: true },

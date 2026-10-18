@@ -29,6 +29,10 @@ const GATES = [
 	{ file: 'build/verify-product-extensions.mjs', 保证: '出厂的三个扩展是最新编译的', needsBuild: true },
 	{ file: 'build/verify-product-licence.mjs', 保证: '出厂目录带 GPL 文本', needsBuild: true },
 	{ file: 'build/verify-product-toolchain.mjs', 保证: '出厂目录带能用的 MinGW', needsBuild: true },
+	// build/verify-product-keybindings.mjs 先不登记：全新 profile 下首启界面会吃掉键盘输入，
+	// 命令面板一次都打不开（2026-10-18 实测 0/17），而它必须"每次都能跑"才有意义。
+	// 结论目前靠 .scratch/ui/kb-sweep.mjs 在已走完首启的 profile 上手工跑（17/17 一致）。
+	// 要接进门里得先解决首启阻塞：要么复用已首启的 profile，要么把那个界面 dismiss 掉。
 ];
 
 const wantBuild = process.argv.includes('--with-build');

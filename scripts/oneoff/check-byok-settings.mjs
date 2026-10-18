@@ -49,6 +49,10 @@ const ALLOW = {
 		// 指令文件位置是产品在用功能，列举的是第三方工具自己的文件名（事实描述）。
 		'AGENTS_LOCATION_KEY': '在用功能，列的是第三方文件名',
 		'HOOKS_LOCATION_KEY': '在用功能，列的是第三方文件名',
+		// 这一条有活的读者：chatSetupRunner.ts 开登录对话框时读它决定给哪几个按钮。本产品 byokOnly，
+		// 出厂 false 就是终态，说明里已写明「Olympia 走自己的服务地址与密钥，不接 Microsoft / GitHub 账户」。
+		// 挡掉等于把一个有读者的开关从注册表里摘走，留在设置页讲清楚更诚实。
+		'ChatMicrosoftAuthenticationEnabledSettingId': '有活读者（登录对话框给哪几个按钮）；默认 false 即终态，文案已讲清',
 	},
 };
 
@@ -138,7 +142,9 @@ for (const rel of FILES) {
 		scanned++;
 		// 光提 Copilot 不够：这个产品里同样不存在的是 GitHub 登录/托管账号那一整套。
 		const mentions = /copilot|github/i.test(own);
-		const included = /\bincluded:\s*([^,\n]+)/.exec(own)?.[1]?.trim();
+		// 只认「行首就是 included:」那一行。注释里恰好写上 included: false 也曾把这里骗过去，
+		// 于是门把一条没挡的设置当成挡过了。
+		const included = /^[ \t]+included:\s*([^,\n]+)/m.exec(own)?.[1]?.trim();
 		const gatedHere = !!included && (
 			included === 'false'
 			|| /!product\.defaultChatAgent\?\.byokOnly/.test(included)

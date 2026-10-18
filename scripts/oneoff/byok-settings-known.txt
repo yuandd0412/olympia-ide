@@ -1,29 +1,8 @@
 # 说明里提到 Copilot / GitHub、但既没被 included 挡掉也没写理由的设置项基线。
 # 格式：<源文件相对路径>#<设置 id>。处理掉一条就把那行删掉——留着会让这一门变红。
 workbench/contrib/chat/browser/chat.shared.contribution.ts#dictation.enabled
-workbench/contrib/chat/browser/chat.shared.contribution.ts#dictation.model
-workbench/contrib/chat/browser/chat.shared.contribution.ts#dictation.experimental.llmCleanup
-workbench/contrib/chat/browser/chat.shared.contribution.ts#dictation.experimental.llmCleanupModel
-workbench/contrib/chat/browser/chat.shared.contribution.ts#ChatConfiguration.MigrateLegacyCopilotCliSessions
 workbench/contrib/chat/browser/chat.shared.contribution.ts#chat.implicitContext.includeActiveEditor
 workbench/contrib/chat/browser/chat.shared.contribution.ts#ChatConfiguration.RichLinks
 workbench/contrib/chat/browser/chat.shared.contribution.ts#ChatConfiguration.AutoApprovedUrls
 workbench/contrib/chat/browser/chat.shared.contribution.ts#ChatConfiguration.PluginMarketplaces
-workbench/contrib/chat/browser/chat.shared.contribution.ts#ChatConfiguration.StrictMarketplaces
-workbench/contrib/chat/browser/chat.shared.contribution.ts#AgentHostShellToolInitScriptEnabledSettingId
-workbench/contrib/chat/browser/chat.shared.contribution.ts#CopilotClaudeAdvisorEnabledSettingId
-workbench/contrib/chat/browser/chat.shared.contribution.ts#CopilotTgrepEnabledSettingId
-workbench/contrib/chat/browser/chat.shared.contribution.ts#AgentHostMapLegacySettingsToManagedSettingsSettingId
-workbench/contrib/chat/browser/chat.shared.contribution.ts#AgentHostHydraFusionEnabledSettingId
-workbench/contrib/chat/browser/chat.shared.contribution.ts#CopilotAutoModeTierOverrideSettingId
-workbench/contrib/chat/browser/chat.shared.contribution.ts#AgentHostCopilotModelCapabilityOverridesSettingId
-workbench/contrib/chat/browser/chat.shared.contribution.ts#AgentHostAllowSignedOutWhenUsableSettingId
-workbench/contrib/chat/browser/chat.shared.contribution.ts#ChatMicrosoftAuthenticationEnabledSettingId
 workbench/contrib/chat/browser/chat.shared.contribution.ts#PromptsConfig.MODE_LOCATION_KEY
-workbench/contrib/chat/browser/chat.shared.contribution.ts#ChatConfiguration.WelcomePageSignInEnabled
-workbench/contrib/chat/browser/agentSessionsConfiguration.ts#ChatConfiguration.UnifiedWorkspacePicker
-platform/agentHost/common/agentHostStarter.config.contribution.ts#AgentHostSystemProxyEnabledSettingId
-platform/agentHost/common/agentHostStarter.config.contribution.ts#AgentHostOTelExporterTypeSettingId
-platform/agentHost/common/agentHostStarter.config.contribution.ts#AgentHostOTelOtlpEndpointSettingId
-platform/agentHost/common/agentHostStarter.config.contribution.ts#AgentHostOTelCaptureContentSettingId
-platform/agentHost/common/agentHostStarter.config.contribution.ts#AgentHostOTelOutfileSettingId

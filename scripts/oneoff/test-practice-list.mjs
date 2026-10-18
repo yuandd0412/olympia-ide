@@ -23,6 +23,13 @@ const contestOut = path.join(repoRoot, 'oss/extensions/olympia-contest/out');
 const onboardingOut = path.join(repoRoot, 'oss/extensions/olympia-onboarding/out');
 const onboardingSrc = path.join(repoRoot, 'oss/extensions/olympia-onboarding/src');
 
+// 这一份读的是编译产物。没编译过时给一句人话，别抛 ENOENT 让人以为清单逻辑坏了——
+// 它现在挂在 check-all 的门里，跑不动的门必须自己说清楚为什么跑不动。
+if (!fs.existsSync(path.join(contestOut, 'practiceList.js'))) {
+	console.log(`FAIL 缺编译产物：${path.join(contestOut, 'practiceList.js')}\n     先跑：npm run gulp -- compile-extension:olympia-contest compile-extension:olympia-onboarding`);
+	process.exit(1);
+}
+
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'olympia-practice-'));
 let noWorkspace = false;
 let settings = {};
@@ -809,6 +816,13 @@ await check('模型回散文/服务没配：{ok:false} 就当没这回事，题�
 	assert.equal(extractCalls.length, 1, '这条用例得真的走到那一步');
 	assert.deepEqual(templates.parseSampleBlocks(readStatement('ABC300_A')).map(s => [s.input, s.output]), [[SAMPLE_INPUT, '']]);
 	assert.ok(!said().includes('AI'), `什么都没补还提 AI：${said()}`);
+});
+
+await check('手写的 practice.json：时长写成 "120" 也要认，不能被静默改成不设时限', async () => {
+	fs.writeFileSync(listFile(), JSON.stringify({ lists: [{ name: '自己写的', problems: ['P1001'], minutes: '120', createdAt: '' }] }), 'utf8');
+	const back = await practice.readLists();
+	assert.equal(back.length, 1, '这条用例得真的走到读文件那一步');
+	assert.equal(back[0].minutes, 120, `"120" 没被认下来：读回来是 ${JSON.stringify(back[0].minutes)}`);
 });
 
 console.log(failed ? '\nFAILED' : '\nall practice-list assertions passed');

@@ -26,6 +26,7 @@ const GATES = [
 	{ file: 'scripts/oneoff/check-toolchain-notices.mjs', 保证: '随包工具链里每个运行库 DLL 都在第三方声明里有一条' },
 	{ file: 'scripts/oneoff/test-palette-trim.mjs', 保证: '命令面板裁剪（OI 用不到的条目不在）' },
 	{ file: 'scripts/oneoff/test-noise-trim.mjs', 保证: '首屏噪声裁剪' },
+	{ file: 'scripts/oneoff/test-practice-list.mjs', 保证: '集训清单：写盘/读回/时长/勾题/开始这一场（要扩展已编译）' },
 	{ file: 'build/verify-product-extensions.mjs', 保证: '出厂的三个扩展是最新编译的', needsBuild: true },
 	{ file: 'build/verify-product-licence.mjs', 保证: '出厂目录带 GPL 文本', needsBuild: true },
 	{ file: 'build/verify-product-toolchain.mjs', 保证: '出厂目录带能用的 MinGW', needsBuild: true },

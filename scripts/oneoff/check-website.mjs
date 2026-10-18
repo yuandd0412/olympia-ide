@@ -418,16 +418,62 @@ check('产品自己的许可证：官网页脚与 product.json 同一条', () =>
 if (process.argv.includes('--online')) {
 	const urls = directDownloadUrls();
 	const bad = [];
+	const live = new Map();
 	for (const url of urls) {
 		try {
 			const res = await fetch(encodeURI(url), { method: 'HEAD', redirect: 'follow' });
-			if (!res.ok) { bad.push(`${url} → HTTP ${res.status}`); }
+			if (!res.ok) { bad.push(`${url} → HTTP ${res.status}`); continue; }
+			const size = Number(res.headers.get('content-length'));
+			// Gitee 的直链文件名在最后一段，且可能带 URL 编码
+			if (Number.isFinite(size) && size > 0) {
+				live.set(path.basename(decodeURIComponent(new URL(res.url ?? url).pathname)), size);
+			}
 		} catch (error) {
 			bad.push(`${url} → ${error.name}`);
 		}
 	}
 	if (bad.length) { failed++; console.log(`FAIL  线上取不到这些下载直链：\n        ${bad.join('\n        ')}`); }
 	else { console.log(`ok    ${urls.length} 条下载直链在线上都在`); }
+
+	// 链接活着不等于发的是这一版：分卷名没变、标签没变，内容却可以是上一次那批字节。
+	// 官网写的体积与 SHA256SUMS.txt 都来自本次发布目录，线上对不上就是"网页在承诺另一份文件"。
+	// 只查页面上那条按钮不够：学生真正拖下来的是四个分卷，而页面上根本没有它们的链接。
+	const dirs = fs.readdirSync(path.join(repoRoot, 'dist'))
+		.filter(d => d.startsWith('olympia-release-v') && !d.includes('.bak-'));
+	const releaseDir = dirs.map(d => path.join(repoRoot, 'dist', d))
+		.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0];
+	assert.ok(releaseDir, `dist/ 下找不到 olympia-release-v* 目录：没法把线上字节和本次产物对上`);
+	const tag = path.basename(releaseDir).replace('olympia-release-', '');
+	const prefix = urls.map(u => u.slice(0, u.indexOf('/download/') + '/download/'.length))[0];
+	assert.ok(prefix && prefix !== '/download/'.slice(0, 10), `页面上解析不到 /download/ 前缀，拼不出逐附件的线上地址`);
+
+	const names = fs.readdirSync(releaseDir).filter(n => n !== '说明.txt');
+	const stale = [];
+	let checked = 0;
+	for (const name of names) {
+		let res;
+		try {
+			res = await fetch(encodeURI(`${prefix}${tag}/${encodeURIComponent(name)}`), { method: 'HEAD', redirect: 'follow' });
+		} catch (error) {
+			stale.push(`${name} → ${error.name}`);
+			continue;
+		}
+		if (!res.ok) { stale.push(`${name} → HTTP ${res.status}（标签 ${tag} 下大概没有这个附件）`); continue; }
+		const size = Number(res.headers.get('content-length'));
+		if (!Number.isFinite(size) || size <= 0) { stale.push(`${name} → 线上没给 Content-Length，字节核不了`); continue; }
+		checked++;
+		const want = fs.statSync(path.join(releaseDir, name)).size;
+		if (size !== want) { stale.push(`${name}: 线上 ${size.toLocaleString('en-US')} B ≠ 本次产物 ${want.toLocaleString('en-US')} B ← Gitee 上还是上一版`); }
+	}
+	if (!checked) {
+		failed++;
+		console.log('FAIL  一个附件的线上字节都没核到，这条等于没查');
+	} else if (stale.length) {
+		failed++;
+		console.log(`FAIL  线上附件与本次发布产物对不上（核了 ${checked} 个，标签 ${tag}）：\n        ${stale.join('\n        ')}`);
+	} else {
+		console.log(`ok    ${checked} 个附件在线上的字节与 ${path.basename(releaseDir)} 一致（标签 ${tag}）`);
+	}
 }
 
 console.log(failed ? `\n${failed} 处官网与产品不一致` : '\nall website checks passed');

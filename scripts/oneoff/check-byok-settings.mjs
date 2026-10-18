@@ -168,7 +168,43 @@ for (const rel of FILES) {
 	}
 }
 
-console.log(`扫了 ${scanned} 条设置，其中 ${gated} 条带 included 开关`);
+/**
+ * 第二路：设置页渲染的说明里有一批不写在注册块里，而是从别的模块取常量拼进去的
+ * （properties 的 description: discoverySourceSettingsLabel[k] 就是这种）。第一路只看注册块
+ * 文本，这类句子根本不在它眼前——那句整段英文的 "GitHub Copilot CLI configuration…" 就是这么
+ * 漏掉的。这里不问挡没挡（挡的是整条设置），只问句子翻过没有：提到 Copilot/GitHub 的必须是
+ * 一句中文，允许保留工具名这类事实词。
+ * name 是那个导出常量的名字，usedBy 是引用它的注册文件；两边任一边不再引用就说明结构变了，
+ * 宁可报错也不许把空转当成通过。
+ */
+const TEXT_SOURCES = [
+	{ rel: 'workbench/contrib/mcp/common/mcpConfiguration.ts', name: 'discoverySourceSettingsLabel', usedBy: 'workbench/contrib/chat/browser/chat.shared.contribution.ts' },
+];
+let textChecked = 0;
+for (const src of TEXT_SOURCES) {
+	const abs = path.join(srcRoot, src.rel);
+	assert.ok(fs.existsSync(abs), `文案常量来源不见了：${src.rel}`);
+	const text = fs.readFileSync(abs, 'utf8');
+	const usesIt = fs.readFileSync(path.join(srcRoot, src.usedBy), 'utf8').includes(src.name);
+	assert.ok(usesIt, `${src.usedBy} 已经不引用 ${src.name} 了：这一路的取样范围要重新对，别留着当摆设`);
+	const from = text.indexOf(src.name);
+	assert.ok(from >= 0, `${src.rel} 里找不到 ${src.name}：改名或挪走了，先修这一路`);
+	const to = text.indexOf('};', from);
+	assert.ok(to > from, `${src.name} 的块尾没找到，取样范围会失控`);
+	const region = text.slice(from, to);
+	for (const m of region.matchAll(/localize\(\s*'([^']+)'\s*,\s*["']([^"']*)["']/g)) {
+		const str = m[2];
+		if (!/copilot|github/i.test(str)) { continue; }
+		textChecked++;
+		if (!/[\u4e00-\u9fff]/.test(str)) {
+			const line = text.slice(0, from + m.index).split(/\r?\n/).length;
+			bad.push(`${src.rel}:${line} 设置页用的常量文案还是整句英文：${str.slice(0, 60)}`);
+		}
+	}
+}
+assert.ok(textChecked >= 1, `这一路只核对到 ${textChecked} 条提到 Copilot/GitHub 的常量文案：多半是正则不认现在的引号写法，别把空转当成通过`);
+
+console.log(`扫了 ${scanned} 条设置，其中 ${gated} 条带 included 开关；另核对 ${textChecked} 条借常量渲染的设置页文案`);
 for (const b of bad) { console.log(`FAIL ${b}`); }
 assert.ok(scanned >= 120, `只扫到 ${scanned} 条设置，取样塌了：检查 blocks 正则还认不认现在的写法`);
 assert.ok(gated >= 3, `只有 ${gated} 条被挡掉，要么是真被上游同步冲掉了，要么是正则不认新的挡法`);

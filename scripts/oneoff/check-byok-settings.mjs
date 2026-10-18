@@ -179,6 +179,10 @@ for (const rel of FILES) {
  */
 const TEXT_SOURCES = [
 	{ rel: 'workbench/contrib/mcp/common/mcpConfiguration.ts', name: 'discoverySourceSettingsLabel', usedBy: 'workbench/contrib/chat/browser/chat.shared.contribution.ts' },
+	// 另一种形状：整段属性用展开语法从别的模块进来（...xxxConfigurationProperties），
+	// 注册块里只剩一个省略号，第一路更看不见。name 就是被展开的那个常量。
+	{ rel: 'workbench/contrib/chat/browser/aiCustomization/customizationMarketplaceConfiguration.ts', name: 'customizationMarketplaceConfigurationProperties', usedBy: 'workbench/contrib/chat/browser/chat.shared.contribution.ts' },
+	{ rel: 'platform/agentHost/common/artifactToolsConfiguration.ts', name: 'artifactToolsConfigurationProperties', usedBy: 'platform/agentHost/common/agentHostStarter.config.contribution.ts' },
 ];
 let textChecked = 0;
 for (const src of TEXT_SOURCES) {
@@ -189,8 +193,11 @@ for (const src of TEXT_SOURCES) {
 	assert.ok(usesIt, `${src.usedBy} 已经不引用 ${src.name} 了：这一路的取样范围要重新对，别留着当摆设`);
 	const from = text.indexOf(src.name);
 	assert.ok(from >= 0, `${src.rel} 里找不到 ${src.name}：改名或挪走了，先修这一路`);
-	const to = text.indexOf('};', from);
-	assert.ok(to > from, `${src.name} 的块尾没找到，取样范围会失控`);
+	const endPlain = text.indexOf('};', from);
+	const endSatisfies = text.indexOf('} satisfies', from);
+	const ends = [endPlain, endSatisfies].filter(x => x > from);
+	assert.ok(ends.length > 0, `${src.name} 的块尾没找到（}; 或 } satisfies 都没有），取样范围会失控`);
+	const to = Math.min(...ends);
 	const region = text.slice(from, to);
 	for (const m of region.matchAll(/localize\(\s*'([^']+)'\s*,\s*["']([^"']*)["']/g)) {
 		const str = m[2];

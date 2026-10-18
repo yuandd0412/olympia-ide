@@ -22,11 +22,7 @@ workbench/contrib/chat/browser/chat.shared.contribution.ts#ChatMicrosoftAuthenti
 workbench/contrib/chat/browser/chat.shared.contribution.ts#PromptsConfig.MODE_LOCATION_KEY
 workbench/contrib/chat/browser/chat.shared.contribution.ts#ChatConfiguration.WelcomePageSignInEnabled
 workbench/contrib/chat/browser/agentSessionsConfiguration.ts#ChatConfiguration.UnifiedWorkspacePicker
-platform/agentHost/common/agentHostStarter.config.contribution.ts#AgentMergeSettingId.AddressReviews
 platform/agentHost/common/agentHostStarter.config.contribution.ts#AgentHostSystemProxyEnabledSettingId
-platform/agentHost/common/agentHostStarter.config.contribution.ts#AgentHostGitHubMcpServerEnabledSettingId
-platform/agentHost/common/agentHostStarter.config.contribution.ts#AgentHostClaudeAgentEnabledSettingId
-platform/agentHost/common/agentHostStarter.config.contribution.ts#AgentHostCodexAgentEnabledSettingId
 platform/agentHost/common/agentHostStarter.config.contribution.ts#AgentHostOTelExporterTypeSettingId
 platform/agentHost/common/agentHostStarter.config.contribution.ts#AgentHostOTelOtlpEndpointSettingId
 platform/agentHost/common/agentHostStarter.config.contribution.ts#AgentHostOTelCaptureContentSettingId

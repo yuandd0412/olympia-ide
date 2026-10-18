@@ -21,6 +21,8 @@ const FILES = [
 	'workbench/contrib/chat/browser/agentSessionsConfiguration.ts',
 	'workbench/contrib/terminal/common/terminalConfiguration.ts',
 	'workbench/contrib/inlineChat/browser/inlineChat.contribution.ts',
+	// 2026-10-19 扫出来的：这一文件里三条设置既没 included 也没汉化，全在设置页里能翻到。
+	'platform/agentHost/common/agentHostStarter.config.contribution.ts',
 ];
 
 /** 每条都要写理由；理由不成立就别放这里，去把设置挡掉。 */
@@ -129,9 +131,13 @@ for (const rel of FILES) {
 		const id = m[1] ?? m[2] ?? m[3];
 		const body = objectBody(text, m.index + m[0].length - 1);
 		const own = ownProperties(body);
-		if (!/(description|enumDescriptions)/.test(own)) { continue; }
+		// 「description」在这里有三种写法：description / markdownDescription / enumDescriptions。
+		// 以前这条判据是大小写敏感的 /description/，markdownDescription 里那个大写 D 让它
+		// 永远不匹配——于是只写 markdownDescription 的设置项全被跳过，这道门一直在少报。
+		if (!/description/i.test(own)) { continue; }
 		scanned++;
-		const mentions = /copilot/i.test(own);
+		// 光提 Copilot 不够：这个产品里同样不存在的是 GitHub 登录/托管账号那一整套。
+		const mentions = /copilot|github/i.test(own);
 		const included = /\bincluded:\s*([^,\n]+)/.exec(own)?.[1]?.trim();
 		const gatedHere = !!included && (
 			included === 'false'
@@ -153,5 +159,24 @@ console.log(`扫了 ${scanned} 条设置，其中 ${gated} 条带 included 开�
 for (const b of bad) { console.log(`FAIL ${b}`); }
 assert.ok(scanned >= 120, `只扫到 ${scanned} 条设置，取样塌了：检查 blocks 正则还认不认现在的写法`);
 assert.ok(gated >= 3, `只有 ${gated} 条被挡掉，要么是真被上游同步冲掉了，要么是正则不认新的挡法`);
-assert.deepStrictEqual(bad, []);
+
+/**
+ * 待处理清单是棘轮，不是遮羞布。2026-10-19 把检测面从「只认 description」扩到
+ * 「也认 markdownDescription，并且 GitHub 一起算」之后，一次性多出来二十来条真该处理的设置项
+ * ——它们以前全被那个大小写敏感的判据跳过了。要么逐条挡掉/写理由，要么登记在
+ * byok-settings-known.txt 里：新增一条就红，处理掉一条却忘了删登记也红。
+ * 清单文件必须跟着仓库走，缺文件直接失败，免得有人靠"没有基线"蒙过去。
+ */
+const knownFile = path.join(here, 'byok-settings-known.txt');
+assert.ok(fs.existsSync(knownFile), `缺待处理清单 ${knownFile}：这一门的基线必须进仓库`);
+const known = new Set(fs.readFileSync(knownFile, 'utf8').split(/\r?\n/).map(s => s.trim()).filter(s => s && !s.startsWith('#')));
+const keyOf = b => b.replace(/:\d+ /, '#').replace(/ ——[\s\S]*$/, '');
+const now = new Set(bad.map(keyOf));
+const fresh = [...now].filter(k => !known.has(k));
+const stale = [...known].filter(k => !now.has(k));
+console.log(`待处理 ${now.size} 条（登记 ${known.size} 条）`);
+for (const f of fresh) { console.log(`NEW  ${f}`); }
+for (const s of stale) { console.log(`DONE ${s} —— 已经不违规了，把清单里这行删掉`); }
+assert.deepStrictEqual(fresh, [], '有新增的、说明里提 Copilot/GitHub 却没挡掉也没写理由的设置（见上面 NEW 行）');
+assert.deepStrictEqual(stale, [], '有登记但已不再违规的条目（见上面 DONE 行）');
 console.log('\nall Copilot-mentioning settings are gated or explained');

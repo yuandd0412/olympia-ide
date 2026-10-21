@@ -394,13 +394,14 @@
 	<div class="faq">
 		<details>
 			<summary>双击安装被 SmartScreen 拦住</summary>
-			<p>安装包没有代码签名证书，Windows 会拦一次。点「更多信息 → 仍要执行」即可；
+			<p>安装包没有代码签名证书，Windows 会拦一次。点「更多信息 → 仍要运行」即可；
 			不放心就先用 <code>SHA256SUMS.txt</code> 核对下载到的文件。</p>
 		</details>
 		<details>
 			<summary>提示「安装程序需要下一张磁盘」</summary>
-			<p>分卷没下全，或者文件没放在同一个目录。把 <code>OlympiaSetup.exe</code> 和
-			<code>OlympiaSetup-1.bin</code> … <code>OlympiaSetup-4.bin</code> 全放进同一个文件夹，
+			<p>分卷没下全，或者文件没放在同一个目录。把 <code>OlympiaSetup.exe</code> 和它旁边
+			<b>所有</b> <code>OlympiaSetup-*.bin</code>（分卷数量跟着包体大小变，别按个数找）
+			全放进同一个文件夹，
 			双击 <code>OlympiaSetup.exe</code>；文件名不要改。</p>
 		</details>
 		<details>

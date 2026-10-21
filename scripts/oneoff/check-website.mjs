@@ -143,7 +143,7 @@ assert.ok(panelChecks === panelPages.length * panelGroups.length,
 check('完整版每个文件的标称体积与实际字节一致', () => {
 	assert.ok(fs.existsSync(releaseDir), `${releaseDir} 不存在，体积断言只能跳过——先跑分卷打包再检查官网`);
 	const rows = [...indexHtml.matchAll(/<code>(OlympiaSetup[^<]*\.bin|OlympiaSetup\.exe)<\/code><\/td><td>([\d.]+) MB<\/td>/g)];
-	assert.ok(rows.length >= 5, `只解析出 ${rows.length} 行文件体积，下载表结构改了吗？`);
+	assert.ok(rows.length === fs.readdirSync(releaseDir).filter(n => /^OlympiaSetup(-\d+\.bin|\.exe)$/.test(n)).length, `下载表列了 ${rows.length} 行，和发布目录里的安装器文件数不一致——分卷个数是 Inno 按包体切的，会随体积变，别把行数写死在这条断言里`);
 	const wrong = [];
 	let total = 0;
 	for (const row of rows) {

@@ -9,10 +9,10 @@
 |---|---|---|
 | Cloudflare Pages | 25 MiB | 否 |
 | Gitee Release 附件 | 100 MB（十进制） | 否 |
-| GitHub Releases | 无（国内下载慢） | 仅作备份 |
+| GitHub Releases | 不适用 | 没往那边发过：引导器只重试 Gitee，官网按钮也是 Gitee |
 
 安装器实测 302,722,390 B（288.7 MiB，2026-10-21 23:20 编译）。里面打的是整个 Electron 产品：主程序
-`Olympia.exe` 239 MB、内置 MinGW `toolchain/` 467 MB（机房没有编译器，这块必须留）。
+`Olympia.exe` 239 MB、内置 MinGW `toolchain/` 496 MB（机房没有编译器，这块必须留）。
 **所以"单文件 <100 MB"在这个产品上不可能靠压缩做到**，方案只能是分卷或换宿主。
 
 分卷由 Inno 自己做，不再需要 `copy /b` 之类的合并脚本 —— `oss/build/win32/code.iss`
@@ -41,8 +41,8 @@ DiskSliceSize=94371840   ; 90 MiB，给十进制 100 MB 留余量
 `make-release.mjs` 单独编出来再收进发布目录的——它把发行标签**编译进了二进制**（本次 ReleaseTag=v1.0.0），
 所以换标签必须重跑那个脚本，否则它会去旧标签找文件。要说清楚的是：引导器本身按标签取
 `SHA256SUMS.txt` 再逐片下载校验，它不写死某个安装包；**在外面发旧版的是 Gitee 发行版里那批附件**，
-不传新文件它就还是退役的 Tauri 内容。要上传的是发布目录 `dist\olympia-release-v1.0.0` 里全部 7 个文件
-（5 个安装器文件 + `SHA256SUMS.txt` + `说明.txt`），文件名一个都不能改。
+不传新文件它就还是退役的 Tauri 内容。要上传的是发布目录 `dist\olympia-release-v1.0.0` 里的**全部**文件
+（`OlympiaSetup.exe` + 各 `OlympiaSetup-<n>.bin` 分卷 + `OlympiaSetup-web.exe` + `SHA256SUMS.txt` + `说明.txt`），文件名一个都不能改。
 
 用户把**全部文件放进同一个目录**，只双击 `OlympiaSetup.exe` 即可；缺片时向导会提示
 "安装程序需要下一张磁盘"（该文案在 `oss/build/win32/i18n/Default.zh-cn.isl` 的
@@ -96,7 +96,7 @@ node scripts\oneoff\check-website.mjs --online   # HEAD 每条下载直链
 而 `.../releases/download/v1.0.0/OlympiaSetup-web.exe` 目前 **404**。所以发新版就是：
 
 1. 仓库 → **发行版** → 新建标签 `v1.0.0`（必须与 `make-release --tag` 一致）；
-2. 把 `dist\olympia-release-v1.0.0\` 里的 7 个文件全部作为附件上传 —— 一个都不能漏，
+2. 把 `dist\olympia-release-v1.0.0\` 里的**全部**文件作为附件上传 —— 一个都不能漏，
    文件名**不能改**（Inno 按原始名找下一片，引导器按清单里的名字下载）；
 3. 旧的 `v0.1.0` 不要删附件（已经装了 0.1.0 的学生还要对照），但请在那条发行版说明里写明
    "旧版 Tauri，勿下载；新版见 v1.0.0"。

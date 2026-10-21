@@ -18,6 +18,7 @@ const GATES = [
 	{ file: 'scripts/oneoff/check-website.mjs', 保证: '官网链接、数字、承诺与代码一致' },
 	{ file: 'scripts/oneoff/check-no-copilot-claim.mjs', 保证: '已核实可达的用户可见文案里没有 Copilot' },
 	{ file: 'scripts/oneoff/check-byok-settings.mjs', 保证: '设置页里提到 Copilot 的条目要么挡掉要么有理由' },
+	{ file: 'scripts/oneoff/check-l10n-fragments.mjs', 保证: '汉化没把“个相似命令”这类量词碎片当整句灌进 localize，数字不被吃掉' },
 	{ file: 'scripts/oneoff/check-version-mirrors.mjs', 保证: '抄来的版本字面量等于真源' },
 	{ file: 'scripts/oneoff/check-olympia-command-ids.mjs', 保证: '三个扩展的命令 id 引用=声明=注册' },
 	{ file: 'scripts/oneoff/check-keybinding-mirrors.mjs', 保证: '文案里写的组合键与真实注册表一致' },

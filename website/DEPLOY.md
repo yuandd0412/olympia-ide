@@ -11,7 +11,7 @@
 | Gitee Release 附件 | 100 MB（十进制） | 否 |
 | GitHub Releases | 无（国内下载慢） | 仅作备份 |
 
-安装器实测 302,729,046 B（288.7 MiB，2026-10-18 23:28 编译）。里面打的是整个 Electron 产品：主程序
+安装器实测 302,722,390 B（288.7 MiB，2026-10-21 23:20 编译）。里面打的是整个 Electron 产品：主程序
 `Olympia.exe` 239 MB、内置 MinGW `toolchain/` 467 MB（机房没有编译器，这块必须留）。
 **所以"单文件 <100 MB"在这个产品上不可能靠压缩做到**，方案只能是分卷或换宿主。
 
@@ -25,19 +25,19 @@ DiskSliceSize=94371840   ; 90 MiB，给十进制 100 MB 留余量
 
 下表由 `node build/make-release.mjs` 从真产物反推（`scripts/oneoff/installer-manifest.mjs` 可单独读一次），
 别手抄——手抄的那次对得上，下一次打包就悄悄错了，而发版的人正是照它逐片核对「有没有下全」的。
-最近一次：2026-10-18 23:28 出分卷（`vscode-win32-x64-user-setup`），2026-10-18 23:28 收发布目录，发行标签 v1.0.0。
-产品版本 1.140.0。安装器本体（`OlympiaSetup.exe` + 各分卷）总计 302,729,046 B，共 5 个文件，
+最近一次：2026-10-21 23:20 出分卷（`vscode-win32-x64-user-setup`），2026-10-21 23:21 收发布目录，发行标签 v1.0.0。
+产品版本 1.140.0。安装器本体（`OlympiaSetup.exe` + 各分卷）总计 302,722,390 B，共 5 个文件，
 最大一片 94,371,840 B（十进制口径也在 100 MB 以内），分卷编号 1–4 连续成套：
 
 | 文件 | 字节 |
 |---|---|
-| `OlympiaSetup.exe` | 2,619,786（启动器，双击它） |
+| `OlympiaSetup.exe` | 2,619,779（启动器，双击它） |
 | `OlympiaSetup-1.bin` | 91,751,936 |
 | `OlympiaSetup-2.bin` | 94,371,840 |
 | `OlympiaSetup-3.bin` | 94,371,840 |
-| `OlympiaSetup-4.bin` | 19,613,644 |
+| `OlympiaSetup-4.bin` | 19,606,995 |
 
-`OlympiaSetup-web.exe`（1,807,471 B，官网按钮指向的引导器）不在这条 gulp 链路里，是
+`OlympiaSetup-web.exe`（1,807,485 B，官网按钮指向的引导器）不在这条 gulp 链路里，是
 `make-release.mjs` 单独编出来再收进发布目录的——它把发行标签**编译进了二进制**（本次 ReleaseTag=v1.0.0），
 所以换标签必须重跑那个脚本，否则它会去旧标签找文件。要说清楚的是：引导器本身按标签取
 `SHA256SUMS.txt` 再逐片下载校验，它不写死某个安装包；**在外面发旧版的是 Gitee 发行版里那批附件**，
@@ -101,8 +101,10 @@ node scripts\oneoff\check-website.mjs --online   # HEAD 每条下载直链
 3. 旧的 `v0.1.0` 不要删附件（已经装了 0.1.0 的学生还要对照），但请在那条发行版说明里写明
    "旧版 Tauri，勿下载；新版见 v1.0.0"。
 
-GitHub 仓库 `yuandd0412/olympia-ide` 同步上传同一组文件做兜底 —— 引导器在 Gitee 拉不到时
-会逐文件换站。
+**GitHub 那边不做兜底**（2026-10-21 核实）：`yuandd0412/olympia-ide` 只有源码，没有 v1.0.0 的
+发行版，`.../releases/download/v1.0.0/SHA256SUMS.txt` 取不到东西，引导器换过去也只会再失败一次。
+所以 `code-web.iss` 里的 `GITHUB_BASE` 已经删掉，引导器只对 Gitee 重试；哪天真的在 GitHub 建了
+同标签、同附件的 release，再把那一站加回去。附件目前只有一份，传 Gitee 时别漏片。
 
 ## 4. 官网
 

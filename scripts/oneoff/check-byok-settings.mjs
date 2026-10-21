@@ -110,6 +110,35 @@ function ownProperties(body) {
 	return out;
 }
 
+/** `key: {` 括号配对，返回对象正文与闭括号下标（第二路要靠下标判断文案落在哪条设置里）。 */
+function objectBodyWithEnd(text, openIdx) {
+	let depth = 0;
+	for (let i = openIdx; i < text.length; i++) {
+		const c = text[i];
+		if (c === '{') { depth++; }
+		else if (c === '}') { depth--; if (depth === 0) { return { body: text.slice(openIdx + 1, i), end: i }; } }
+		else if (c === "'" || c === '"' || c === '`') {
+			const q = c; i++;
+			while (i < text.length && text[i] !== q) { if (text[i] === '\\') { i++; } i++; }
+		}
+	}
+	return undefined;
+}
+
+/**
+ * 这条设置是不是被 included 挡掉了。两路共用同一个判据，免得第二路自己写一套、跟第一路对不上。
+ * 关键：只认「行首缩进后就是 included:」那一行（/^[ \t]+included:/m）。注释里恰好写着
+ * included: false 不算——早先那种写法把统计骗成少报过一次。假值认三种：字面 false、
+ * !product.defaultChatAgent?.byokOnly、以及 byokFlagNames 认出来的等价常量名。
+ */
+function isGatedIncluded(own, flags) {
+	const included = /^[ \t]+included:\s*([^,\n]+)/m.exec(own)?.[1]?.trim();
+	return !!included && (
+		included === 'false'
+		|| /!product\.defaultChatAgent\?\.byokOnly/.test(included)
+		|| flags.has(included));
+}
+
 const bad = [];
 let scanned = 0;
 let gated = 0;
@@ -149,13 +178,8 @@ for (const rel of FILES) {
 		scanned++;
 		// 光提 Copilot 不够：这个产品里同样不存在的是 GitHub 登录/托管账号那一整套。
 		const mentions = /copilot|github/i.test(own);
-		// 只认「行首就是 included:」那一行。注释里恰好写上 included: false 也曾把这里骗过去，
-		// 于是门把一条没挡的设置当成挡过了。
-		const included = /^[ \t]+included:\s*([^,\n]+)/m.exec(own)?.[1]?.trim();
-		const gatedHere = !!included && (
-			included === 'false'
-			|| /!product\.defaultChatAgent\?\.byokOnly/.test(included)
-			|| flags.has(included));
+		// 挡判据走两路共用的 isGatedIncluded：只认行首缩进后的真实 included: 属性，注释骗不过。
+		const gatedHere = isGatedIncluded(own, flags);
 		if (gatedHere) { gated++; }
 		if (!mentions || gatedHere) { continue; }
 		const key = Object.keys(allow).find(k => id.includes(k) || id.toLowerCase().endsWith(k.toLowerCase()));
@@ -184,12 +208,19 @@ const TEXT_SOURCES = [
 	{ rel: 'workbench/contrib/chat/browser/aiCustomization/customizationMarketplaceConfiguration.ts', name: 'customizationMarketplaceConfigurationProperties', usedBy: 'workbench/contrib/chat/browser/chat.shared.contribution.ts' },
 	{ rel: 'platform/agentHost/common/artifactToolsConfiguration.ts', name: 'artifactToolsConfigurationProperties', usedBy: 'platform/agentHost/common/agentHostStarter.config.contribution.ts' },
 	{ rel: 'workbench/contrib/chat/browser/chatProgressConfiguration.ts', name: 'chatProgressConfigurationProperties', usedBy: 'workbench/contrib/chat/browser/chat.shared.contribution.ts' },
+	// 2026-10-20 #80：这一整段属性也是被 chat.shared.contribution.ts 用 ...展开进来的，注册块里看不见。
+	// 它里面几条带 included: 假值的设置（Copilot harness 介绍、切换调查等）文案是整段英文的，
+	// 本产品渲染不出来——第二路必须认 included，把它们豁免掉，否则这个文件永远登记不进来。
+	{ rel: 'workbench/contrib/chat/browser/agentSessionsConfiguration.ts', name: 'agentsWindowHandoffConfigurationProperties', usedBy: 'workbench/contrib/chat/browser/chat.shared.contribution.ts' },
 ];
 let textChecked = 0;
+let textGated = 0;
+const gatedTextHits = [];
 for (const src of TEXT_SOURCES) {
 	const abs = path.join(srcRoot, src.rel);
 	assert.ok(fs.existsSync(abs), `文案常量来源不见了：${src.rel}`);
 	const text = fs.readFileSync(abs, 'utf8');
+	const flags = byokFlagNames(text);
 	const usesIt = fs.readFileSync(path.join(srcRoot, src.usedBy), 'utf8').includes(src.name);
 	assert.ok(usesIt, `${src.usedBy} 已经不引用 ${src.name} 了：这一路的取样范围要重新对，别留着当摆设`);
 	const from = text.indexOf(src.name);
@@ -200,6 +231,19 @@ for (const src of TEXT_SOURCES) {
 	assert.ok(ends.length > 0, `${src.name} 的块尾没找到（}; 或 } satisfies 都没有），取样范围会失控`);
 	const to = Math.min(...ends);
 	const region = text.slice(from, to);
+
+	// 先在这段展开出来的文本里，把「自带 included 假值」的设置块圈出来（按 [起,止) 下标）。
+	// 判据与第一路同一个 isGatedIncluded，同样只认行首缩进后的真实 included:，注释骗不过。
+	const gatedRanges = [];
+	for (const bm of region.matchAll(/\n\s*(?:\[([\w.]+)\]|'([\w.]+)'|"([\w.]+)")\s*:\s*\{/g)) {
+		const openIdx = bm.index + bm[0].length - 1;
+		const res = objectBodyWithEnd(region, openIdx);
+		if (!res) { continue; }
+		const own = ownProperties(res.body);
+		if (!/description/i.test(own)) { continue; }
+		if (isGatedIncluded(own, flags)) { gatedRanges.push([bm.index, res.end]); }
+	}
+
 	for (const m of region.matchAll(/localize\(\s*'([^']+)'\s*,\s*["']([^"']*)["']/g)) {
 		const str = m[2];
 		// 两类都算问题：提到 Copilot/GitHub 的必须翻过；整句还是英文的也算没汉化。
@@ -208,6 +252,15 @@ for (const src of TEXT_SOURCES) {
 		const branded = /copilot|github/i.test(str);
 		const sentenceShaped = str.replace(/[`'"]/g, '').length >= 12;
 		if (!branded && !sentenceShaped) { continue; }
+		// 文案落进某条被 included 挡掉的设置块里 → 本产品根本渲染不出来，不算待办，但单独计数打印，
+		// 好让人核对「确实是被挡掉才豁免」而不是「扫漏了」。
+		const inGatedBlock = gatedRanges.some(([s, e]) => m.index >= s && m.index < e);
+		if (inGatedBlock) {
+			textGated++;
+			const line = text.slice(0, from + m.index).split(/\r?\n/).length;
+			gatedTextHits.push(`${src.rel}:${line} 被 included 挡掉，豁免文案检查：${str.slice(0, 48)}`);
+			continue;
+		}
 		textChecked++;
 		if (!/[\u4e00-\u9fff]/.test(str)) {
 			const line = text.slice(0, from + m.index).split(/\r?\n/).length;
@@ -217,7 +270,8 @@ for (const src of TEXT_SOURCES) {
 }
 assert.ok(textChecked >= 1, `这一路只核对到 ${textChecked} 条提到 Copilot/GitHub 的常量文案：多半是正则不认现在的引号写法，别把空转当成通过`);
 
-console.log(`扫了 ${scanned} 条设置，其中 ${gated} 条带 included 开关；另核对 ${textChecked} 条借常量渲染的设置页文案`);
+console.log(`扫了 ${scanned} 条设置，其中 ${gated} 条带 included 开关；另核对 ${textChecked} 条借常量渲染的设置页文案，其中 ${textGated} 条因所属设置被 included 挡掉而豁免`);
+for (const g of gatedTextHits) { console.log(`GATED ${g}`); }
 for (const b of bad) { console.log(`FAIL ${b}`); }
 assert.ok(scanned >= 120, `只扫到 ${scanned} 条设置，取样塌了：检查 blocks 正则还认不认现在的写法`);
 assert.ok(gated >= 3, `只有 ${gated} 条被挡掉，要么是真被上游同步冲掉了，要么是正则不认新的挡法`);

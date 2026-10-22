@@ -28,6 +28,18 @@ function report(ok, msg) {
 
 const norm = p => p.replace(/\\/g, '/').toLowerCase();
 
+// build/ 的类型检查依赖一个**生成文件**：build/lib/policies/policyDto.ts 由
+// build/lib/policies/copyPolicyDto.ts 生成（build/package.json 的 pretypecheck 跑的就是它）。
+// 干净 checkout 下这个文件不存在，typecheck 会凭空多出 16 条 TS2307 —— 那是生成步骤
+// 没跑，不是代码坏了。基线数字要可比，预检就必须先跑生成，不然每次 clean 后都误判。
+const gen = spawnSync(process.execPath,
+	[path.join(oss, 'build', 'lib', 'policies', 'copyPolicyDto.ts')],
+	{ cwd: oss, encoding: 'utf8' });
+if (gen.status !== 0) {
+	console.error(`policyDto.ts 生成失败（退出码 ${gen.status}）：\n${gen.error ?? gen.stderr}`);
+	process.exit(1);
+}
+
 const run = spawnSync(process.execPath,
 	[tsc, '--project', 'build/tsconfig.json', '--noEmit', '--skipLibCheck', '--listFiles'],
 	{ cwd: oss, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });

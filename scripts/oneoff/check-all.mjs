@@ -21,6 +21,8 @@ const GATES = [
 	{ file: 'scripts/oneoff/check-l10n-fragments.mjs', 保证: '汉化没把“个相似命令”这类量词碎片当整句灌进 localize，数字不被吃掉' },
 	{ file: 'scripts/oneoff/check-version-mirrors.mjs', 保证: '抄来的版本字面量等于真源' },
 	{ file: 'scripts/oneoff/check-olympia-command-ids.mjs', 保证: '三个扩展的命令 id 引用=声明=注册' },
+	{ file: 'scripts/oneoff/test-timeouts.mjs', 保证: '三个编译超时各不相干（语法自检最快、编译最慢），且没有裸字面量绕过常量' },
+	{ file: 'scripts/oneoff/test-reveal-once.mjs', 保证: '首启只把竞赛工具面板带出来一次（标记读写同一个 key、失败不炸启动、不依赖文件夹）' },
 	{ file: 'scripts/oneoff/check-keybinding-mirrors.mjs', 保证: '文案里写的组合键与真实注册表一致' },
 	{ file: 'scripts/oneoff/check-keybinding-tokens.mjs', 保证: '扩展声明的键位 VS Code 真能解析（ctrl+alt+comma 那种写法按了没反应）' },
 	{ file: 'scripts/oneoff/check-problems-dir.mjs', 保证: '题面目录只有一个真源' },

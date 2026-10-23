@@ -2881,6 +2881,406 @@ check('Z3', `stripTsComments 的词法器自检（字符串 / 正则 / 注释三
 });
 
 // ===========================================================================
+// T37~T49 —— 「进入动画」的时间序接缝
+//
+// 这一批来自 T-030 的六问复核（Qoder 只读审计）。逐条核实后落地，
+// 钉的是**行为不变式**，不是写法：
+//
+//   Q3 粒子起飞必须晚于卡片消散结束 —— 两者重叠就是重影：
+//       卡片半透明地漂着，星光又从同一个位置冒出来。
+//   Q2 粒子窗口必须盖住最晚粒子，且必须早于 overlay 被移除。
+//   Q1 洞必须晚于首帧兜底层淡出结束才能开始擦；配置阶段极光必须不透明。
+//   Q5 rAF 链只能有一条，句柄必须写回；收场必须先撤销定时器再摘 DOM。
+//   Q6 进入动画起跑后卡片一律不再吃指针事件，轨道也不再许动。
+// ===========================================================================
+
+/** 解析一个（可能引用另一个常量的）数值常量。解析不出来返回 null。 */
+function constValue(code, name, depth = 0) {
+	if (depth > 8) {
+		return null;
+	}
+	const m = new RegExp(`(?:export\\s+)?const\\s+${name}\\s*=\\s*([^;]+);`).exec(code);
+	if (!m) {
+		return null;
+	}
+	const rhs = m[1].trim();
+	if (rhs === '') {
+		return null;
+	}
+	const num = Number(rhs);
+	if (Number.isFinite(num)) {
+		return num;
+	}
+	const ref = /^([A-Z][A-Z0-9_]*)$/.exec(rhs);
+	return ref ? constValue(code, ref[1], depth + 1) : null;
+}
+
+/** 取一行里最后一个 / 第一个数字字面量。 */
+function lastNumber(line) {
+	const m = [...line.matchAll(/([0-9]*\.?[0-9]+)/g)];
+	return m.length ? Number(m[m.length - 1][1]) : null;
+}
+function firstNumber(line) {
+	const m = [...line.matchAll(/([0-9]*\.?[0-9]+)/g)];
+	return m.length ? Number(m[0][1]) : null;
+}
+
+check('T37', `星光粒子的起飞时刻必须晚于卡片消散结束（两者重叠就是重影：卡片半透明地漂着，星光又从同一位置冒出来）`, () => {
+	const tl = load(F_ONB_TIMELINE);
+	if (tl === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	const code = stripTsComments(tl);
+	const start = constValue(code, 'OLYMPIA_ONBOARDING_PARTICLE_START');
+	const dissolve = constValue(code, 'OLYMPIA_ONBOARDING_DISSOLVE_END');
+	if (start === null) return `时间线里找不到 OLYMPIA_ONBOARDING_PARTICLE_START`;
+	if (dissolve === null) return `时间线里找不到 OLYMPIA_ONBOARDING_DISSOLVE_END`;
+	if (start < dissolve) {
+		return `粒子起飞时刻 ${start}s 早于卡片消散结束时刻 ${dissolve}s —— 这段时间里卡片还看得见，粒子又从同一个位置飞出来，两层叠在一起就是重影`;
+	}
+	const delayLine = code.split('\n').find(l => /^\s*delay\s*:/.test(l));
+	if (!delayLine) return `找不到粒子的 delay 赋值`;
+	if (!/OLYMPIA_ONBOARDING_PARTICLE_START/.test(delayLine)) {
+		return `粒子的 delay 是「${shorten(delayLine.trim(), 90)}」—— 没带上 OLYMPIA_ONBOARDING_PARTICLE_START，改常量并不会真的推迟起飞`;
+	}
+	return null;
+});
+
+check('T38', `星光粒子的飞行窗口必须盖住最晚一颗粒子的结束时刻（盖不住的话尾部粒子会在半空中被时间轴掐断，像凭空消失）`, () => {
+	const tl = load(F_ONB_TIMELINE);
+	if (tl === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	const code = stripTsComments(tl);
+	const win = constValue(code, 'OLYMPIA_ONBOARDING_PARTICLE_WINDOW');
+	const start = constValue(code, 'OLYMPIA_ONBOARDING_PARTICLE_START');
+	if (win === null) return `时间线里找不到 OLYMPIA_ONBOARDING_PARTICLE_WINDOW`;
+	if (start === null) return `时间线里找不到 OLYMPIA_ONBOARDING_PARTICLE_START`;
+	const delayLine = code.split('\n').find(l => /^\s*delay\s*:/.test(l));
+	const durLine = code.split('\n').find(l => /^\s*duration\s*:/.test(l));
+	if (!delayLine || !durLine) return `找不到粒子的 delay / duration 赋值`;
+	const delaySpread = lastNumber(delayLine);
+	const durBase = firstNumber(durLine);
+	const durSpread = lastNumber(durLine);
+	if (delaySpread === null || durBase === null || durSpread === null) {
+		return `解析不出粒子的时间参数（delay 行 / duration 行）`;
+	}
+	// 粒子分两批：晚的那一批必须算进「最晚结束时刻」，否则这条断言只管早批，
+	// 晚批被掐在半空它照样绿。
+	const late = constValue(code, 'OLYMPIA_ONBOARDING_PARTICLE_LATE_OFFSET');
+	if (late === null) return `时间线里找不到 OLYMPIA_ONBOARDING_PARTICLE_LATE_OFFSET`;
+	if (!/OLYMPIA_ONBOARDING_PARTICLE_LATE_OFFSET/.test(delayLine)) {
+		return `粒子的 delay 是「${shorten(delayLine.trim(), 110)}」—— 没带上 OLYMPIA_ONBOARDING_PARTICLE_LATE_OFFSET，晚批根本没被推迟`;
+	}
+	const last = start + late + delaySpread + durBase + durSpread;
+	if (!(win > last)) {
+		return `飞行窗口 ${win}s 盖不住最晚粒子（起飞 ${start}s + 晚批推迟 ${late}s + 延迟抖动 ${delaySpread}s + 时长 ${durBase}~${(durBase + durSpread).toFixed(2)}s = ${last.toFixed(2)}s）—— 尾部粒子会在半空中被时间轴掐掉`;
+	}
+	return null;
+});
+
+check('T39', `星光粒子的飞行窗口必须早于进入动画总时长（晚于的话粒子还在飞，overlay 就已经被摘了）`, () => {
+	const tl = load(F_ONB_TIMELINE);
+	if (tl === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	const code = stripTsComments(tl);
+	const win = constValue(code, 'OLYMPIA_ONBOARDING_PARTICLE_WINDOW');
+	const dur = constValue(code, 'OLYMPIA_ONBOARDING_ENTER_DURATION');
+	if (win === null) return `时间线里找不到 OLYMPIA_ONBOARDING_PARTICLE_WINDOW`;
+	if (dur === null) return `时间线里找不到 OLYMPIA_ONBOARDING_ENTER_DURATION`;
+	if (!(win < dur)) {
+		return `粒子窗口 ${win}s 不早于进入动画时长 ${dur}s —— overlay 被移除时粒子还在半空`;
+	}
+	return null;
+});
+
+check('T40', `进入动画起跑的那一刻就必须断掉卡片的指针事件（起跑那一帧 dissolve 还是 1，卡片是看得见、点得动的）`, () => {
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	const begin = methodBody(code, /beginEnterAnimation\s*\(\s*\)\s*:\s*void\s*\{/);
+	if (!begin) return `卡片层没有 beginEnterAnimation()`;
+	const setAt = begin.search(/this\.entering\s*=\s*true\s*;/);
+	if (setAt < 0) return `beginEnterAnimation() 没有把 entering 置为 true`;
+	const peAt = begin.search(/pointerEvents\s*=\s*'none'/);
+	if (peAt < 0) {
+		return `beginEnterAnimation() 里没有立刻把卡片的 pointerEvents 置为 none —— 起跑那一帧 dissolve 还是 1、interactive 还是 true，用户正好按住卡片的话，拖拽（挂在 window 上）会跟着手指继续跑，把正在化掉的卡片拖偏`;
+	}
+	if (peAt < setAt) {
+		return `beginEnterAnimation() 里断指针排在「entering = true」之前 —— 顺序反了`;
+	}
+	return null;
+});
+
+check('T41', `逐帧写回卡片 pointerEvents 时必须考虑「进入动画中」（只看 interactive 不够：起跑那一帧 interactive 还是 true）`, () => {
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	const body = methodBody(code, /render\s*\(\s*now\s*:\s*number\s*,\s*dissolve\s*:\s*number\s*\)\s*:\s*void\s*\{/);
+	if (!body) return `卡片层没有 render(now, dissolve)`;
+	const assign = /pointerEvents\s*=\s*([^;]+);/.exec(body);
+	if (!assign) return `render() 里没有写 pointerEvents`;
+	const rhs = assign[1];
+	// 判据是**语义**的，不是拼写的：写回 pointerEvents 的那个值，必须建立在
+	// 「entering 为假」这个前提上。只看赋值表达式本身不够 —— 实现允许把条件
+	// 拆到局部变量里（`const clickable = !this.entering && layout.interactive`），
+	// 所以这里顺着局部变量的定义链追一层。
+	const negatesEntering = (expr) => /!\s*(?:this\.)?entering\b/.test(expr) || /entering\s*===\s*false/.test(expr);
+	if (negatesEntering(rhs)) return null;
+	for (const ref of rhs.match(/[A-Za-z_$][A-Za-z0-9_$]*/g) || []) {
+		const decl = new RegExp(`(?:const|let|var)\\s+${ref}\\s*=\\s*([^;]+);`).exec(body);
+		if (decl && negatesEntering(decl[1])) return null;
+	}
+	return `render() 写回 pointerEvents 的值是「${shorten(rhs, 90)}」—— 追不到「entering 为假」这个前提，起跑那一帧 interactive 还是 true，卡片照样吃点击`;
+});
+
+check('T42', `进入动画期间轨道不许再动（正在化掉的卡片突然跳位就是断点）`, () => {
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	const body = methodBody(code, /goto\s*\(\s*index\s*:\s*number\s*\)\s*:\s*void\s*\{/);
+	if (!body) return `卡片层没有 goto()`;
+	const guardAt = body.search(/if\s*\(\s*this\.entering\s*\)/);
+	if (guardAt < 0) {
+		return `goto() 里没有「进入动画中」的早退闸门 —— 滚轮、翻页按钮、拖拽惯性都会把正在化掉的卡片拖走`;
+	}
+	const guardBody = blockRange(body, /if\s*\(\s*this\.entering\s*\)/);
+	if (!guardBody || !/\breturn\b/.test(guardBody.text)) {
+		return `goto() 的闸门里没有 return —— 闸门形同虚设`;
+	}
+	return null;
+});
+
+check('T43', `进入动画起跑后不得再接受按压与拖拽（pointerdown 挂在轨道上，pointermove 挂在 window 上）`, () => {
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	const handlers = [
+		['pointerdown', /addDisposableListener\(\s*track\s*,\s*'pointerdown'/],
+		['pointermove', /addDisposableListener\(\s*mainWindow\s*,\s*'pointermove'/],
+	];
+	for (const [label, sig] of handlers) {
+		const m = sig.exec(code);
+		if (!m) return `找不到 ${label} 监听`;
+		const start = code.indexOf('{', m.index);
+		const body = balanced(code, start, '{', '}');
+		if (!body) return `解析不出 ${label} 处理器的函数体`;
+		if (!/this\.entering/.test(body)) {
+			return `${label} 处理器里没有「进入动画中」的早退 —— 起跑后按下轨道会重新置上 dragging，拖拽跟着 window 级 pointermove 继续跑`;
+		}
+	}
+	return null;
+});
+
+check('T44', `动画只能有一条 rAF 链，且句柄必须写回（漏一次写回，链就静默分裂成两条，旧句柄再也撤不掉）`, () => {
+	const onb = load(F_ONB);
+	if (onb === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const code = stripTsComments(onb);
+	const rafAll = [...code.matchAll(/requestAnimationFrame\s*\(/g)];
+	const rafWrite = [...code.matchAll(/this\.animationFrame\s*=\s*mainWindow\.requestAnimationFrame\s*\(/g)];
+	if (rafAll.length !== rafWrite.length) {
+		return `requestAnimationFrame 出现 ${rafAll.length} 次，但只有 ${rafWrite.length} 次写回了 this.animationFrame —— 有一处没写回，那条链就撤不掉了`;
+	}
+	if (rafWrite.length !== 2) {
+		return `rAF 链的起点与续接应当恰好两处，实际 ${rafWrite.length} 处`;
+	}
+	const frame = methodBody(code, /private\s+readonly\s+onFrame\s*=\s*\(\s*timestamp\s*:\s*number\s*\)\s*:\s*void\s*=>\s*\{/);
+	if (!frame) return `找不到 onFrame`;
+	const first = frame.slice(frame.indexOf('{') + 1).trimStart();
+	if (!/^this\.animationFrame\s*=\s*null\s*;/.test(first)) {
+		return `onFrame 的第一条语句不是「句柄作废」—— 句柄生命周期必须是「帧首作废 → 帧尾重发」`;
+	}
+	return null;
+});
+
+check('T45', `收场必须先撤销所有定时器再摘 DOM（反过来就留下一条还在跑的链）`, () => {
+	const onb = load(F_ONB);
+	if (onb === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const code = stripTsComments(onb);
+	const body = methodBody(code, /dispose\s*\(\s*\)\s*:\s*void\s*\{/);
+	if (!body) return `找不到 dispose()`;
+	const cancelAt = body.search(/cancelAnimationFrame\s*\(/);
+	const clearAt = body.search(/clearTimeout\s*\(/);
+	const removeAt = body.search(/rootElement\.remove\s*\(\s*\)/);
+	if (cancelAt < 0) return `dispose() 里没有 cancelAnimationFrame`;
+	if (clearAt < 0) return `dispose() 里没有 clearTimeout`;
+	if (removeAt < 0) return `dispose() 里没有 rootElement.remove()`;
+	if (!(cancelAt < removeAt && clearAt < removeAt)) {
+		return `dispose() 里的撤销排在 rootElement.remove() 之后 —— DOM 已经摘了，链还在跑`;
+	}
+	const intervals = [...code.matchAll(/setInterval\s*\(/g)];
+	if (intervals.length) {
+		return `文件里有 ${intervals.length} 处 setInterval —— 每一条 setInterval 都是一条独立时钟，不可能随 overlay 一起消失`;
+	}
+	return null;
+});
+
+check('T46', `洞必须晚于首帧兜底层淡出结束才能开始擦（兜底层淡出期间，底下必须已经是不透明的极光，不能露出未开洞的工作台）`, () => {
+	const tl = load(F_ONB_TIMELINE);
+	const css = load(F_ONB_CSS);
+	if (tl === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	if (css === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const tlCode = stripTsComments(tl);
+	const cssCode = stripTsComments(css);
+	const revealStart = constValue(tlCode, 'OLYMPIA_ONBOARDING_REVEAL_START');
+	if (revealStart === null) return `时间线里找不到 OLYMPIA_ONBOARDING_REVEAL_START`;
+	const splash = cssRule(cssCode, '.olympia-onboarding-splash');
+	if (!splash) return `CSS 里找不到 .olympia-onboarding-splash 规则`;
+	const tr = /transition\s*:\s*opacity\s+([0-9.]+)ms/.exec(splash);
+	if (!tr) return `首帧兜底层没有可解析的 opacity 过渡时长`;
+	const fade = Number(tr[1]) / 1000;
+	if (!(revealStart >= fade)) {
+		return `洞在 ${revealStart}s 就开始擦，而兜底层 ${(fade * 1000)}ms 就淡完了 —— 中间有一段「兜底没了、洞还没开」的窗口，极光那时若不是不透明的，工作台就裸奔出来了`;
+	}
+	return null;
+});
+
+check('T47', `配置阶段极光必须完全不透明（洞没开的时候，挡住工作台的只能是极光本身）`, () => {
+	const tl = load(F_ONB_TIMELINE);
+	if (tl === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	const code = stripTsComments(tl);
+	const geom = methodBody(code, /olympiaOnboardingRevealGeometry\s*\(\s*enterTime\s*:\s*number\s*,\s*viewportWidth\s*:\s*number\s*\)\s*:\s*[^)]*\{/);
+	if (!geom) return `时间线里找不到 olympiaOnboardingRevealGeometry()`;
+	if (!/OLYMPIA_ONBOARDING_REVEAL_START/.test(geom)) {
+		return `洞的起点没有绑定 OLYMPIA_ONBOARDING_REVEAL_START —— 改常量不会推迟开洞`;
+	}
+	if (!/return\s+undefined\s*;/.test(geom)) {
+		return `洞的几何函数没有「还没到开洞时刻就不擦」的早退 —— 配置阶段就开始擦的话，用户还没点开始，工作台就露出来了`;
+	}
+	return null;
+});
+
+check('T48', `越界粒子必须跳过，不能夹到 [0,1]（夹住的话窗口一关，粒子就永远停在起点）`, () => {
+	const onb = load(F_ONB);
+	if (onb === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const code = stripTsComments(onb);
+	const body = methodBody(code, /renderParticles\s*\(\s*progress\s*:\s*number\s*\)\s*:\s*void\s*\{/);
+	if (!body) return `找不到 renderParticles()`;
+	const guard = blockRange(body, /if\s*\(\s*local\s*<=\s*0\s*\|\|\s*local\s*>=\s*1\s*\)/);
+	if (!guard) return `renderParticles() 里找不到「越界」判定（local <= 0 || local >= 1）`;
+	if (!/\bcontinue\b/.test(guard.text)) {
+		return `越界分支里没有 continue —— 越界粒子会被继续画出来，窗口结束后留下一帧永不消亡的尾影`;
+	}
+	if (/olympiaOnboardingClamp\s*\(\s*local\s*,/.test(body)) {
+		return `renderParticles() 把 local 夹进了 [0,1] —— 那是把「飞完了」伪装成「刚开始」，窗口一关粒子就永远停在起点`;
+	}
+	return null;
+});
+
+check('T49', `overlay 只能被摘一次，且必须等到进入动画走完（提前摘 = 硬切）`, () => {
+	const onb = load(F_ONB);
+	if (onb === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const code = stripTsComments(onb);
+	const removes = [...code.matchAll(/rootElement\.remove\s*\(\s*\)/g)];
+	if (removes.length !== 1) {
+		return `rootElement.remove() 出现了 ${removes.length} 次 —— 必须恰好一处，多一处就有一处提前摘层`;
+	}
+	const frame = methodBody(code, /renderFrame\s*\(\s*timestamp\s*:\s*number\s*\)\s*:\s*void\s*\{/);
+	if (!frame) return `找不到 renderFrame()`;
+	if (!/elapsed\s*>=\s*OLYMPIA_ONBOARDING_ENTER_DURATION/.test(frame)) {
+		return `renderFrame() 里没有「elapsed 到达总时长才收场」的判定 —— 提前收场就是硬切`;
+	}
+	return null;
+});
+
+check('T50', `背景时钟必须单调递增、永不归零（时钟一重置，极光形态瞬间跳回初始帧 —— 这在像素上几乎看不出来，只能靠代码钉死）`, () => {
+	const onb = load(F_ONB);
+	if (onb === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const code = stripTsComments(onb);
+
+	// ① backdropTime 的声明恰好一处，初值为 0
+	//    允许显式标注类型（private backdropTime: number = 0;）—— 判据钉行为，不钉写法。
+	const decl = [...code.matchAll(/private\s+backdropTime\s*(?::\s*number\s*)?=\s*0\s*;/g)];
+	if (decl.length !== 1) {
+		return `backdropTime 的声明应恰好一处（private backdropTime = 0; 或 private backdropTime: number = 0;），实际 ${decl.length} 处`;
+	}
+
+	// ② 除声明外，对 backdropTime 的写入必须是单调的
+	//    += 可以；等价的 `= this.backdropTime + delta` 也可以（delta 已由 ③ 证明非负）。
+	//    其余任何直接赋值都可能把时钟拽回 0。
+	const writes = [...code.matchAll(/backdropTime\s*(\+?=)(?!=)/g)];
+	for (const w of writes) {
+		const before = code.slice(Math.max(0, w.index - 40), w.index);
+		if (/private\s+$/.test(before)) { continue; }
+		if (w[1] === '+=') { continue; }
+		const lineEnd = code.indexOf(';', w.index);
+		const stmt = code.slice(w.index, lineEnd >= 0 ? lineEnd + 1 : w.index + 60).trim();
+		// stmt 是从标识符本身切出来的，不含 `this.` 前缀 —— 等价式也要按这个口径比。
+		const equiv = /^backdropTime\s*=\s*this\.backdropTime\s*\+\s*(\S+?)\s*;$/.exec(stmt);
+		if (equiv && (equiv[1] === 'delta' || /Math\.max\s*\(\s*0\s*,/.test(equiv[1]))) { continue; }
+		return `backdropTime 存在直接赋值（"${stmt}"）—— 时钟一旦被赋值就可能归零，极光形态瞬间跳回初始帧`;
+	}
+
+	// ③ delta 必须有非负下限：rAF 时间戳一旦倒退，背景时钟就会往回走
+	const frame = methodBody(code, /renderFrame\s*\(\s*timestamp\s*:\s*number\s*\)\s*:\s*void\s*\{/);
+	if (!frame) return `找不到 renderFrame()`;
+	//    允许 const / let / 显式标注类型 —— 判据钉「算出来的 delta 必须非负」，不钉写法。
+	const deltaDecl = /(?:const|let)\s+delta\s*(?::\s*number\s*)?=\s*([^;]+);/.exec(frame);
+	if (!deltaDecl) return `renderFrame() 里找不到 delta 的定义`;
+	if (!/Math\.max\s*\(\s*0\s*,/.test(deltaDecl[1])) {
+		return `delta 的计算没有非负下限（"${deltaDecl[1].trim()}"）—— rAF 时间戳一旦倒退，背景时钟就会往回走`;
+	}
+
+	// ③b delta 只能被赋值一次：中途改写的话，前面算好的非负下限形同虚设
+	const deltaWrites = [...frame.matchAll(/\bdelta\b\s*(\+\+|--|[+\-*/]?=(?!=))/g)];
+	if (deltaWrites.length !== 1) {
+		return `renderFrame() 里 delta 被赋值 ${deltaWrites.length} 次（应恰好 1 次：定义处）—— delta 一旦被中途改写，前面算好的非负下限就失效了`;
+	}
+
+	// ④ 累加必须发生在 renderFrame 里，且用的是 delta
+	//    允许 `+= delta`，也允许等价的 `= this.backdropTime + delta`（M27 记录的等价写法）。
+	const accumulated =
+		/this\.backdropTime\s*\+=\s*delta\s*;/.test(frame) ||
+		/this\.backdropTime\s*=\s*this\.backdropTime\s*\+\s*delta\s*;/.test(frame);
+	if (!accumulated) {
+		return `renderFrame() 里没有用 delta 累加背景时钟（this.backdropTime += delta;）—— 背景时钟不是靠累加推进的`;
+	}
+
+	// ⑤ 渲染必须真的用这个时钟：累加了却不交给背景，等于时钟白加
+	if (!/this\.backdrop\.render\s*\(\s*this\.backdropTime\s*,/.test(frame)) {
+		return `renderFrame() 里没有把 this.backdropTime 交给背景渲染（this.backdrop.render(this.backdropTime, ...)）—— 时钟累加了却不用，背景仍被别的时间源驱动`;
+	}
+	return null;
+});
+
+check('T51', `星光必须压住开洞：晚批粒子的起飞时刻要落在开洞窗口里（否则工作台透出来时星尘早已散尽，前后两段接不上）`, () => {
+	const tl = load(F_ONB_TIMELINE);
+	if (tl === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	const code = stripTsComments(tl);
+	const start = constValue(code, 'OLYMPIA_ONBOARDING_PARTICLE_START');
+	const late = constValue(code, 'OLYMPIA_ONBOARDING_PARTICLE_LATE_OFFSET');
+	const revealStart = constValue(code, 'OLYMPIA_ONBOARDING_REVEAL_START');
+	const revealEnd = constValue(code, 'OLYMPIA_ONBOARDING_REVEAL_END');
+	if (start === null) return `时间线里找不到 OLYMPIA_ONBOARDING_PARTICLE_START`;
+	if (late === null) return `时间线里找不到 OLYMPIA_ONBOARDING_PARTICLE_LATE_OFFSET`;
+	if (revealStart === null) return `时间线里找不到 OLYMPIA_ONBOARDING_REVEAL_START`;
+	if (revealEnd === null) return `时间线里找不到 OLYMPIA_ONBOARDING_REVEAL_END`;
+
+	// ① 晚批必须真的晚于早批
+	if (!(late > 0)) {
+		return `第二批推迟量 ${late}s 不大于 0 —— 晚批和早批同时起飞，等于只有一批，开洞时依旧没有星尘`;
+	}
+
+	// ② 晚批的起飞时刻必须早于「洞完全打开」
+	const lateStart = start + late;
+	if (!(lateStart < revealEnd)) {
+		return `第二批粒子 ${lateStart}s 才起飞，而洞 ${revealEnd}s 就完全打开了 —— 洞打开时一颗星尘都没有`;
+	}
+
+	// ③ 晚批里最早起飞的那颗必须活到开洞开始
+	const durLine = code.split('\n').find(l => /^\s*duration\s*:/.test(l));
+	if (!durLine) return `找不到粒子的 duration 赋值`;
+	const durBase = firstNumber(durLine);
+	if (durBase === null) return `解析不出粒子的时长`;
+	if (!((lateStart + durBase) > revealStart)) {
+		return `第二批最早起飞的那颗粒子 ${(lateStart + durBase).toFixed(2)}s 就结束了，而洞 ${revealStart}s 才开始擦 —— 开洞前半段仍然没有星尘`;
+	}
+
+	// ④ delay 里必须真的有批次判定（三元），常量写在旁边没人用等于没分批
+	const delayLine = code.split('\n').find(l => /^\s*delay\s*:/.test(l));
+	if (!delayLine) return `找不到粒子的 delay 赋值`;
+	if (!/\?/.test(delayLine)) {
+		return `粒子的 delay 是「${shorten(delayLine.trim(), 110)}」—— 没有批次判定（看不到三元），晚批推迟量根本没用上`;
+	}
+	return null;
+});
+
+// ===========================================================================
 // 汇总
 // ===========================================================================
 const failed = results.filter(r => !r.ok);

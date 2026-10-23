@@ -250,7 +250,7 @@ const MUTATIONS = [
 		mutate: t => t.replace('if (this.lastFrameTime < 0) {', 'if (false) {')
 	},
 	{
-		id: 'M27', expectGreen: ['H6', 'H36'],
+		id: 'M27', expectGreen: ['H6', 'H36', 'T50'],
 		desc: '背景时钟换成等价的 `= this.backdropTime + delta` 写法（同样单调，不该被判红）',
 		file: OL + 'olympiaOnboarding.ts',
 		mutate: t => t.replace('this.backdropTime += delta;', 'this.backdropTime = this.backdropTime + delta;')
@@ -706,6 +706,217 @@ const MUTATIONS = [
 		mutate: t => t.replace(
 			"\t\tthis.writingKeys.delete(key);\n\t\tthis.refreshRowStates();",
 			"\t\tthis.writingKeys.delete(key);\n\t\tthis.rowArea.innerHTML = '';\n\t\tthis.refreshRowStates();")
+	},
+	{
+		// T-030 Q3：粒子起飞必须晚于卡片消散结束 —— 两者重叠就是重影。
+		id: 'M84', expect: 'T37',
+		desc: '粒子起飞时刻被拉到卡片消散结束之前（0.60s 之前）',
+		file: OL + 'olympiaOnboardingTimeline.ts',
+		mutate: t => t.replace(
+			'export const OLYMPIA_ONBOARDING_PARTICLE_START = OLYMPIA_ONBOARDING_DISSOLVE_END;',
+			'export const OLYMPIA_ONBOARDING_PARTICLE_START = 0.10;')
+	},
+	{
+		// T-030 Q2：粒子窗口必须盖住最晚一颗粒子的结束时刻。
+		id: 'M85', expect: 'T38',
+		desc: '粒子飞行窗口缩到盖不住最晚一颗粒子',
+		file: OL + 'olympiaOnboardingTimeline.ts',
+		mutate: t => t.replace(
+			'export const OLYMPIA_ONBOARDING_PARTICLE_WINDOW = 2.75;',
+			'export const OLYMPIA_ONBOARDING_PARTICLE_WINDOW = 2.00;')
+	},
+	{
+		id: 'M86', expect: 'T39',
+		desc: '粒子飞行窗口拖到进入动画结束之后（overlay 摘了粒子还在半空）',
+		file: OL + 'olympiaOnboardingTimeline.ts',
+		mutate: t => t.replace(
+			'export const OLYMPIA_ONBOARDING_PARTICLE_WINDOW = 2.75;',
+			'export const OLYMPIA_ONBOARDING_PARTICLE_WINDOW = 5.50;')
+	},
+	{
+		// T-030 Q6：起跑那一帧 dissolve 还是 1，卡片看得见也点得动。
+		id: 'M87', expect: 'T40',
+		desc: 'beginEnterAnimation() 不再当场掐断卡片的指针事件',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			"\t\tfor (const element of this.cardElements) {\n\t\t\telement.style.pointerEvents = 'none';\n\t\t}",
+			'')
+	},
+	{
+		id: 'M88', expect: 'T41',
+		desc: '逐帧写回 pointerEvents 时不再看「进入动画中」',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'const clickable = !this.entering && layout.interactive;',
+			'const clickable = layout.interactive;')
+	},
+	{
+		id: 'M89', expect: 'T42',
+		desc: 'goto() 的「进入动画中」闸门被拆掉（滚轮/翻页/惯性会拖走正在化掉的卡片）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			"\t\tif (this.entering) {\n\t\t\treturn;\n\t\t}\n\t\tconst target = olympiaOnboardingClamp(index, 0, this.cardElements.length - 1);",
+			'\t\tconst target = olympiaOnboardingClamp(index, 0, this.cardElements.length - 1);')
+	},
+	{
+		id: 'M90', expect: 'T43',
+		desc: 'window 级 pointermove 不再检查「进入动画中」（拖拽会跟着手指继续跑）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'\t\t\tif (!this.dragging || this.entering) {',
+			'\t\t\tif (!this.dragging) {')
+	},
+	{
+		// T-030 Q5：rAF 链只能有一条，句柄必须帧首作废。
+		id: 'M91', expect: 'T44',
+		desc: 'onFrame 的第一条语句不再是「句柄作废」',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			"\t\tthis.animationFrame = null;\n\t\tif (this.disposed) {",
+			'\t\tif (this.disposed) {')
+	},
+	{
+		id: 'M92', expect: 'T45',
+		desc: 'dispose() 先摘 DOM 再撤销定时器（链还在跑）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t
+			.replace(
+				"\tdispose(): void {\n\t\tthis.disposed = true;\n\t\tif (this.animationFrame !== null) {",
+				"\tdispose(): void {\n\t\tthis.disposed = true;\n\t\tthis.rootElement.remove();\n\t\tif (this.animationFrame !== null) {")
+			.replace(
+				"\t\tthis.cards.dispose();\n\t\tthis.backdrop.dispose();\n\t\tthis.rootElement.remove();",
+				"\t\tthis.cards.dispose();\n\t\tthis.backdrop.dispose();")
+	},
+	{
+		// T-030 Q1：洞必须晚于首帧兜底层淡出结束。
+		id: 'M93', expect: 'T46',
+		desc: '首帧兜底层淡出拖长到 1.4s（洞在 1.35s 就开，中间那段工作台裸奔）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace(
+			'transition: opacity 240ms ease-out;',
+			'transition: opacity 1400ms ease-out;')
+	},
+	{
+		id: 'M94', expect: 'T47',
+		desc: '洞的起点不再绑定 OLYMPIA_ONBOARDING_REVEAL_START（配置阶段就开始擦）',
+		file: OL + 'olympiaOnboardingTimeline.ts',
+		mutate: t => t.replace(
+			'olympiaOnboardingSegment(enterTime, OLYMPIA_ONBOARDING_REVEAL_START, OLYMPIA_ONBOARDING_REVEAL_END)',
+			'olympiaOnboardingSegment(enterTime, 0, OLYMPIA_ONBOARDING_REVEAL_END)')
+	},
+	{
+		id: 'M95', expect: 'T48',
+		desc: '越界粒子的 local 被夹进 [0,1]（窗口一关粒子永远停在起点）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			'\t\t\tconst eased = olympiaOnboardingEaseOutCubic(local);',
+			'\t\t\tconst clamped = olympiaOnboardingClamp(local, 0, 1);\n\t\t\tconst eased = olympiaOnboardingEaseOutCubic(clamped);')
+	},
+	{
+		id: 'M96', expect: 'T49',
+		desc: '收场不再等进入动画走完（提前摘层 = 硬切）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			"\t\tif (elapsed >= OLYMPIA_ONBOARDING_ENTER_DURATION) {\n\t\t\tthis.finish();\n\t\t}",
+			'\t\tthis.finish();')
+	},
+	{
+		// 补两条：钉住 T37 的第二个子判据（delay 必须真的引用起飞常量），
+		// 以及 T41 的「取反」写法（写 `entering` 而不是 `!entering` 同样不算数）。
+		id: 'M97', expect: 'T37',
+		desc: '粒子的 delay 不再引用 OLYMPIA_ONBOARDING_PARTICLE_START（改常量不推迟起飞）',
+		file: OL + 'olympiaOnboardingTimeline.ts',
+		mutate: t => t.replace(
+			'delay: OLYMPIA_ONBOARDING_PARTICLE_START + (index % 2 === 0 ? 0 : OLYMPIA_ONBOARDING_PARTICLE_LATE_OFFSET) + olympiaOnboardingHash2(k * 4.7) * 0.42,',
+			'delay: olympiaOnboardingHash2(k * 4.7) * 0.42,')
+	},
+	{
+		id: 'M98', expect: 'T41',
+		desc: '写回 pointerEvents 的条件把 entering 取反了（进入动画中反而可点）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'const clickable = !this.entering && layout.interactive;',
+			'const clickable = this.entering && layout.interactive;')
+	},
+	{
+		id: 'M99', expect: 'T50',
+		desc: 'delta 去掉了非负下限（rAF 时间戳倒退时背景时钟会往回走）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			'Math.min(0.05, Math.max(0, (timestamp - this.lastTimestamp) / 1000))',
+			'Math.min(0.05, (timestamp - this.lastTimestamp) / 1000)')
+	},
+	{
+		id: 'M100', expect: 'T50',
+		desc: '背景时钟被直接赋值成 0（时钟归零 → 极光形态瞬间跳回初始帧）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			'this.backdropTime += delta;',
+			'this.backdropTime = 0;')
+	},
+	{
+		id: 'M101', expect: 'T38',
+		desc: '粒子不再分批（delay 去掉晚批推迟 → 开洞时星尘散尽，且窗口判据不再覆盖晚批）',
+		file: OL + 'olympiaOnboardingTimeline.ts',
+		mutate: t => t.replace(
+			'delay: OLYMPIA_ONBOARDING_PARTICLE_START + (index % 2 === 0 ? 0 : OLYMPIA_ONBOARDING_PARTICLE_LATE_OFFSET) + olympiaOnboardingHash2(k * 4.7) * 0.42,',
+			'delay: OLYMPIA_ONBOARDING_PARTICLE_START + olympiaOnboardingHash2(k * 4.7) * 0.42,')
+	},
+	{
+		id: 'M102', expect: 'T51',
+		desc: '第二批推迟量归零（晚批和早批同时起飞 → 等于只有一批，开洞时没有星尘）',
+		file: OL + 'olympiaOnboardingTimeline.ts',
+		mutate: t => t.replace(
+			'export const OLYMPIA_ONBOARDING_PARTICLE_LATE_OFFSET = 0.45;',
+			'export const OLYMPIA_ONBOARDING_PARTICLE_LATE_OFFSET = 0.00;')
+	},
+	{
+		id: 'M103', expect: 'T51',
+		desc: '第二批推迟量过大（晚批在洞完全打开之后才起飞 → 洞开时一颗星尘都没有）',
+		file: OL + 'olympiaOnboardingTimeline.ts',
+		mutate: t => t.replace(
+			'export const OLYMPIA_ONBOARDING_PARTICLE_LATE_OFFSET = 0.45;',
+			'export const OLYMPIA_ONBOARDING_PARTICLE_LATE_OFFSET = 2.00;')
+	},
+	{
+		id: 'M104', expect: 'T51',
+		desc: '粒子时长基准被压短（晚批最早起飞的那颗活不到开洞开始 → 开洞前半段没星尘）',
+		file: OL + 'olympiaOnboardingTimeline.ts',
+		mutate: t => t.replace(
+			'duration: 0.62 + olympiaOnboardingHash2(k * 5.3) * 0.55,',
+			'duration: 0.10 + olympiaOnboardingHash2(k * 5.3) * 0.55,')
+	},
+	{
+		id: 'M105', expect: 'T50',
+		desc: '背景渲染不用累加出来的时钟（this.backdrop.render(0, ...)）—— 时钟白加，背景仍被别的时间源驱动',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			'this.backdrop.render(this.backdropTime, frame.reveal);',
+			'this.backdrop.render(0, frame.reveal);')
+	},
+	{
+		id: 'M106', expectGreen: ['T50'],
+		desc: 'delta 从 const 改成 let（写法变了，行为一样）—— T50 不该判红',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			'const delta = this.lastTimestamp === 0 ? 0 :',
+			'let delta = this.lastTimestamp === 0 ? 0 :')
+	},
+	{
+		id: 'M107', expectGreen: ['T50'],
+		desc: 'backdropTime 显式标注类型（private backdropTime: number = 0;）—— 写法变了，行为一样，T50 不该判红',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			'private backdropTime = 0;',
+			'private backdropTime: number = 0;')
+	},
+	{
+		id: 'M108', expect: 'T50',
+		desc: 'delta 在定义之后被改写成负数（非负下限被绕过 → rAF 时间戳倒退时背景时钟真的会往回走）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			'this.lastTimestamp = timestamp;',
+			'this.lastTimestamp = timestamp;\n\t\tdelta = -0.5;')
 	},
 ];
 

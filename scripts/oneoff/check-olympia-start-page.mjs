@@ -1663,6 +1663,32 @@ function methodBody(code, signature) {
 	return balanced(code, code.indexOf('{', m.index), '{', '}');
 }
 
+/**
+ * 取「某个正则命中处开始的代码块」的**区间**。
+ *
+ * 为什么要区间而不只是文本：好几条断言要问的是
+ * 「这个赋值**在不在**那个块里」—— 光看文本无法回答，
+ * 得知道它在源码里的位置范围。
+ *
+ * 返回 { start, end, text }：start 指向 `{`，end 指向 `}` 之后一位，
+ * text 是包含两端的完整块文本。
+ */
+function blockRange(code, re) {
+	const m = re.exec(code);
+	if (!m) {
+		return null;
+	}
+	const open = code.indexOf('{', m.index);
+	if (open < 0) {
+		return null;
+	}
+	const text = balanced(code, open, '{', '}');
+	if (!text) {
+		return null;
+	}
+	return { start: open, end: open + text.length, text };
+}
+
 check('T1', `等待期必须保留退路：chrome 只能在闸门放行的那一帧才让位给星光`, () => {
 	const t = load(F_ONB);
 	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
@@ -1937,11 +1963,31 @@ check('T12', `异步取值的请求在途时不得重发（扩展注册配置项
 	if (!/binding\.valuePending\s*=\s*true/.test(before)) {
 		return `发请求之前没有置 valuePending —— 闸门永远打不开，重复请求照旧`;
 	}
-	// 两个收尾分支（成功 / 失败）都得把「在途」放掉。
-	// 只放成功分支的话，取值一旦失败，这一行就永远停在「请求中」，再也拿不到值。
-	const cleared = (after.match(/binding\.valuePending\s*=\s*false/g) || []).length;
-	if (cleared < 2) {
-		return `valuePending 只被放掉 ${cleared} 次（成功 / 失败两个收尾分支都得放）—— 取值失败时这一行会永远停在「请求中」，再也拿不到值`;
+	// 「在途」标记必须在**核对身份之后**才放掉。
+	//
+	// 放早了的话，更新的一次请求就失去了保护：它还没回来的时候又来一轮
+	// refresh()，闸门已经被自己关掉了，于是又发一次请求；两次请求里
+	// 后到的那个会顶掉先到的那个，顺序一乱这一行就可能永远停在「读取中…」。
+	//
+	// 失败那一侧由 T28 守（失败分支里也得放，而且必须放在「达到上限」
+	// 或「重试任务」之内），所以这里只盯成功侧的**顺序**。
+	//
+	// 为什么不能用「count >= 2」这种计数式判据：代码形态一变它就变松 ——
+	// 终态块里多一次「放掉」就足以凑够数，真正的顺序缺陷反而被放过。
+	const success = blockRange(after, /row\.asyncValue\(\)\s*\.\s*then\s*\(\s*text\s*=>\s*\{/);
+	if (!success) {
+		return `updateRowState() 里找不到异步取值的成功处理分支（形如 row.asyncValue().then(text => {）`;
+	}
+	const identityAt = success.text.search(/binding\.valueToken\s*!==\s*token/);
+	const releaseAt = success.text.search(/binding\.valuePending\s*=\s*false\s*;/);
+	if (identityAt < 0) {
+		return `成功处理分支里没有核对 valueToken —— 旧请求回来时会把新请求的结果顶掉`;
+	}
+	if (releaseAt < 0) {
+		return `成功处理分支里一次都没放掉 valuePending —— 这一行永远停在「请求中」，再也拿不到值`;
+	}
+	if (releaseAt < identityAt) {
+		return `成功处理分支在核对身份之前就放掉了 valuePending —— 更新的一次请求失去保护，会被又一轮 refresh 顶掉`;
 	}
 	return null;
 });
@@ -2182,6 +2228,524 @@ check('T19', `被放弃的写入若迟到落地，必须把用户的选择补写
 	}
 	if (!/scheduleFlushRetry\s*\(/.test(rw)) {
 		return `rewriteIfStale() 没有安排补写 —— 重新排队了却没人去写`;
+	}
+	return null;
+});
+
+// ===========================================================================
+// T20~T25. 进入动画的「通电扫光」与暗角时机
+//
+// 这一批钉的是真机逐帧抓出来的两条**真问题**，不是审美偏好：
+//
+//   1. 第五道扫光从来没有亮过。时间线把最后一道指向底部面板（panel），
+//      而底部面板默认是收着的 → 取不到矩形 → 那道扫光被整条跳过 →
+//      时间线上留下一段「什么都没发生」的死区。
+//   2. 暗角退场太晚（3.50s→5.30s）。暗角那层 DOM 盖在画布**之上**，
+//      所以它压的不只是极光，还把已经露出来的真实工作台一起压暗 ——
+//      最高 35% 的黑一直挂到 5.30s，最重要的「揭示工作台」那一拍整个发闷。
+//
+// 这两条都属于「功能没发生 / 效果反效果」，所以必须钉成断言，
+// 不能指望下一次目视复核还记得。
+// ===========================================================================
+
+/** 从时间线源文件里解析扫光列表（必须落在**赋值语句**的数组字面量上）。 */
+function parseSweepList(code) {
+	const anchor = code.indexOf('export const OLYMPIA_ONBOARDING_SWEEPS');
+	if (anchor < 0) return null;
+	const assignIdx = code.indexOf('= [', anchor);
+	if (assignIdx < 0) return null;
+	const body = balanced(code, code.indexOf('[', assignIdx), '[', ']');
+	if (!body) return null;
+	const out = [];
+	for (const m of body.matchAll(/id:\s*'([a-z]+)'\s*,\s*start:\s*([0-9.]+)\s*,\s*end:\s*([0-9.]+)\s*,\s*axis:\s*'([xy])'/g)) {
+		out.push({ id: m[1], start: Number(m[2]), end: Number(m[3]), axis: m[4] });
+	}
+	return out;
+}
+
+check('T20', `扫光目标不得包含默认不存在的部件（底部面板默认收起，那道扫光永远不会亮）`, () => {
+	const t = load(F_ONB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const code = stripTsComments(t);
+	const anchor = code.indexOf('OLYMPIA_ONBOARDING_SWEEP_PARTS');
+	if (anchor < 0) return `未找到 OLYMPIA_ONBOARDING_SWEEP_PARTS`;
+	const assignIdx = code.indexOf('= [', anchor);
+	if (assignIdx < 0) return `OLYMPIA_ONBOARDING_SWEEP_PARTS 不是数组字面量赋值，无法解析`;
+	const body = balanced(code, code.indexOf('[', assignIdx), '[', ']');
+	if (!body) return `OLYMPIA_ONBOARDING_SWEEP_PARTS 的数组无法配对解析`;
+	const entries = [...body.matchAll(/\[\s*'([a-z]+)'\s*,\s*Parts\.([A-Z_]+)\s*\]/g)].map(m => ({ id: m[1], part: m[2] }));
+	if (!entries.length) return `OLYMPIA_ONBOARDING_SWEEP_PARTS 里没有解析出任何条目`;
+	for (const e of entries) {
+		if (e.part === 'PANEL_PART') {
+			return `「${e.id}」这道扫光指向 Parts.PANEL_PART —— 底部面板默认收起，取不到矩形，那道扫光永远不会亮，时间线上留下一段死区`;
+		}
+	}
+	if (!entries.some(e => e.id === 'statusbar' && e.part === 'STATUSBAR_PART')) {
+		return `没有指向 Parts.STATUSBAR_PART 的扫光 —— 状态栏是常驻部件，最后一道「通电」必须落在它身上`;
+	}
+	return null;
+});
+
+check('T21', `时间线的扫光列表与渲染层的部件映射必须一一对应（时间线加了目标但没建 DOM 元素 = 又一段死区）`, () => {
+	const tl = load(F_ONB_TIMELINE);
+	const onb = load(F_ONB);
+	if (tl === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	if (onb === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const tlCode = stripTsComments(tl);
+	const onbCode = stripTsComments(onb);
+	const tlIds = (parseSweepList(tlCode) || []).map(s => s.id);
+	if (!tlIds.length) return `没能从 OLYMPIA_ONBOARDING_SWEEPS 里解析出任何一道扫光`;
+	const onbAnchor = onbCode.indexOf('OLYMPIA_ONBOARDING_SWEEP_PARTS');
+	if (onbAnchor < 0) return `未找到 OLYMPIA_ONBOARDING_SWEEP_PARTS`;
+	const onbAssign = onbCode.indexOf('= [', onbAnchor);
+	if (onbAssign < 0) return `OLYMPIA_ONBOARDING_SWEEP_PARTS 不是数组字面量赋值，无法解析`;
+	const onbBody = balanced(onbCode, onbCode.indexOf('[', onbAssign), '[', ']');
+	if (!onbBody) return `OLYMPIA_ONBOARDING_SWEEP_PARTS 的数组无法配对解析`;
+	const onbIds = [...onbBody.matchAll(/\[\s*'([a-z]+)'\s*,/g)].map(m => m[1]);
+	if (tlIds.length !== onbIds.length) {
+		return `时间线有 ${tlIds.length} 道扫光（${tlIds.join('/')}），渲染层只建了 ${onbIds.length} 个（${onbIds.join('/')}）—— 时间线上多出来的那道永远没有 DOM 元素`;
+	}
+	const missing = tlIds.filter(id => !onbIds.includes(id));
+	if (missing.length) return `时间线里的「${missing.join('/')}」在渲染层没有对应部件`;
+	return null;
+});
+
+check('T22', `扫光方向必须来自时间线的 axis 字段（写死「只有标题栏是横向」会让 axis 形同虚设）`, () => {
+	const t = load(F_ONB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const code = stripTsComments(t);
+	const body = methodBody(code, /renderSweeps\s*\([^)]*\)\s*:\s*void\s*\{/);
+	if (!body) return `未找到 renderSweeps()`;
+	if (!/state\.axis/.test(body)) {
+		return `renderSweeps() 没有读 state.axis —— 扫光方向被写死了，时间线上的 axis 字段改了也不会生效`;
+	}
+	if (/state\.id\s*(?:===|!==)/.test(body)) {
+		return `renderSweeps() 里在拿 state.id 判断方向 —— 方向必须来自时间线的 axis，而不是「是哪个部件」`;
+	}
+	const tl = load(F_ONB_TIMELINE);
+	if (tl === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	const tlCode = stripTsComments(tl);
+	if (!/readonly\s+axis\s*:\s*'x'\s*\|\s*'y'\s*;/.test(tlCode)) {
+		return `时间线的扫光状态里没有 axis 字段`;
+	}
+	const mapM = /OLYMPIA_ONBOARDING_SWEEPS\.map\(/.exec(tlCode);
+	if (!mapM) return `时间线里找不到扫光状态的计算`;
+	const mapBody = balanced(tlCode, tlCode.indexOf('{', mapM.index), '{', '}');
+	if (!mapBody) return `扫光状态的 map 回调无法配对解析`;
+	const axisCount = [...mapBody.matchAll(/axis\s*:\s*sweep\.axis/g)].length;
+	if (axisCount < 2) {
+		return `扫光状态里只有 ${axisCount} 处透传 axis —— 「不激活」和「激活」两条路径都得带上 axis，否则不激活的那一帧方向是未定义的`;
+	}
+	return null;
+});
+
+check('T23', `暗角必须在洞完全打开时归零（工作台一露面就不能再被压暗）`, () => {
+	const t = load(F_ONB_TIMELINE);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	const code = stripTsComments(t);
+	const num = name => {
+		const m = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*([0-9.]+)`).exec(code);
+		return m ? Number(m[1]) : null;
+	};
+	const revealEnd = num('OLYMPIA_ONBOARDING_REVEAL_END');
+	const riseStart = num('OLYMPIA_ONBOARDING_VIGNETTE_RISE_START');
+	const riseEnd = num('OLYMPIA_ONBOARDING_VIGNETTE_RISE_END');
+	const fallStart = num('OLYMPIA_ONBOARDING_VIGNETTE_FALL_START');
+	const fallEnd = num('OLYMPIA_ONBOARDING_VIGNETTE_FALL_END');
+	const peak = num('OLYMPIA_ONBOARDING_VIGNETTE_PEAK');
+	for (const [n, v] of [['REVEAL_END', revealEnd], ['VIGNETTE_RISE_START', riseStart], ['VIGNETTE_RISE_END', riseEnd], ['VIGNETTE_FALL_START', fallStart], ['VIGNETTE_FALL_END', fallEnd]]) {
+		if (v === null) return `未找到 ${n}`;
+	}
+	if (fallEnd > revealEnd) {
+		return `暗角在 ${fallEnd}s 才归零，而洞在 ${revealEnd}s 就完全打开了 —— 中间这 ${(fallEnd - revealEnd).toFixed(2)}s 里真实工作台被压着最高 ${peak} 的黑，最重要的「揭示工作台」那一拍整个发闷`;
+	}
+	if (riseStart >= revealEnd || fallStart < riseStart || fallEnd < fallStart) {
+		return `暗角的时间窗不对（升起 ${riseStart}s→${riseEnd}s，退场 ${fallStart}s→${fallEnd}s）—— 暗角必须整个活在极光阶段内`;
+	}
+	if (riseEnd > revealEnd) {
+		return `暗角在 ${riseEnd}s 才升到峰值，而洞 ${revealEnd}s 就开了 —— 峰值那一刻工作台正从洞里冒出来，会被压暗`;
+	}
+	return null;
+});
+
+check('T24', `扫光必须从洞打开之后开始、并在总时长前收尾（中间不能留一段「什么都没发生」的死区）`, () => {
+	const t = load(F_ONB_TIMELINE);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	const code = stripTsComments(t);
+	const num = name => {
+		const m = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*([0-9.]+)`).exec(code);
+		return m ? Number(m[1]) : null;
+	};
+	const duration = num('OLYMPIA_ONBOARDING_ENTER_DURATION');
+	const revealEnd = num('OLYMPIA_ONBOARDING_REVEAL_END');
+	if (duration === null) return `未找到 OLYMPIA_ONBOARDING_ENTER_DURATION`;
+	if (revealEnd === null) return `未找到 OLYMPIA_ONBOARDING_REVEAL_END`;
+	const sweeps = parseSweepList(code);
+	if (!sweeps || !sweeps.length) return `没能从 OLYMPIA_ONBOARDING_SWEEPS 里解析出任何一道扫光`;
+	const first = Math.min(...sweeps.map(s => s.start));
+	const last = Math.max(...sweeps.map(s => s.end));
+	if (first < revealEnd) {
+		return `第一道扫光在 ${first}s 就开始了，而洞 ${revealEnd}s 才完全打开 —— 扫光打在还没露出来的极光上`;
+	}
+	if (last < duration - 0.5) {
+		return `最后一道扫光在 ${last}s 就结束了，总时长 ${duration}s —— 尾巴上有 ${(duration - last).toFixed(2)}s 什么也不发生，整段动画少了半个句号`;
+	}
+	return null;
+});
+
+check('T25', `相邻扫光必须重叠（不重叠就读成「一个亮了停一下下一个亮了」，那是一串提示音不是一次通电）`, () => {
+	const t = load(F_ONB_TIMELINE);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	const code = stripTsComments(t);
+	const sweeps = parseSweepList(code);
+	if (!sweeps || sweeps.length < 2) return `没能从 OLYMPIA_ONBOARDING_SWEEPS 里解析出足够的扫光`;
+	for (let i = 0; i + 1 < sweeps.length; i++) {
+		const a = sweeps[i];
+		const b = sweeps[i + 1];
+		if (b.start >= a.end) {
+			return `「${a.id}」(到 ${a.end}s) 和「${b.id}」(从 ${b.start}s) 之间空了 ${(b.start - a.end).toFixed(2)}s —— 中间那段什么也不发生`;
+		}
+	}
+	return null;
+});
+
+check('T26', `取不到部件矩形时必须兜底，不得直接跳过（跳过 = 时间线上留下一段死区）`, () => {
+	const t = load(F_ONB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const code = stripTsComments(t);
+	const body = methodBody(code, /updateSweepRects\s*\(\s*\)\s*:\s*void\s*\{/);
+	if (!body) return `未找到 updateSweepRects()`;
+	if (!/rect\s*=\s*viewport/.test(body)) {
+		return `updateSweepRects() 里没有兜底矩形 —— 部件在这个窗口形状下不存在时（底部面板收起、侧栏折叠、状态栏被关掉），那道扫光会被整条跳过，时间线上留下一段「什么都没发生」的死区`;
+	}
+	return null;
+});
+
+check('T27', `扫光光带必须始终在屏内（不得多走一倍 —— 多走一倍就只有中间 20% 的时间看得见光带）`, () => {
+	const tl = load(F_ONB_TIMELINE);
+	const onb = load(F_ONB);
+	if (tl === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	if (onb === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const tlCode = stripTsComments(tl);
+	const onbCode = stripTsComments(onb);
+	const compact = s => s.replace(/\s+/g, '');
+	const fn = methodBody(tlCode, /olympiaOnboardingSweepTravel\s*\(\s*offset\s*:\s*number\s*,\s*extent\s*:\s*number\s*,\s*band\s*:\s*number\s*\)\s*:\s*number\s*\{/);
+	if (!fn) return `时间线里找不到 olympiaOnboardingSweepTravel()`;
+	const canonical = compact('((offset + 1) / 2) * (extent + band) - band');
+	if (!compact(fn).includes(canonical)) {
+		return `olympiaOnboardingSweepTravel() 的走法不对 —— 光带必须从「刚好在区域外 -带宽」走到「刚好在区域外 +区域」，中点落在区域正中；走过头一倍的话，整道扫光里只有中间约 20% 的时间光带在屏上（真机表现为「扫光不可见」而 DOM 上 opacity 却是 0.9）`;
+	}
+	const calls = [...onbCode.matchAll(/olympiaOnboardingSweepTravel\s*\(/g)].length;
+	if (calls < 2) {
+		return `渲染层只调用了 ${calls} 次 olympiaOnboardingSweepTravel() —— 横向和纵向两条分支都得用它，否则其中一条还在走老的多走一倍公式`;
+	}
+	return null;
+});
+
+// ===========================================================================
+// T28~T36：Q5（异步取值失败后的「在途」标记）与 Q9（进入动画期间的结构冻结）
+//            的守卫，以及 T-027 九问里指出「代码对、但没人断言」的那几条。
+//
+// 这几条全部锚在**代码**上（load() 已经剥掉注释），并且逐条配了变异
+// M69~M79：把代码改坏，对应的断言必须变红。
+// ===========================================================================
+
+/** 取 updateRowState() 里异步取值分支的三个关键块。 */
+function asyncValueBlocks(code) {
+	const body = methodBody(code, /private\s+updateRowState\s*\(/);
+	if (!body) {
+		return { error: `未找到 updateRowState()` };
+	}
+	const failHandler = blockRange(body, /\},\s*error\s*=>\s*\{/);
+	if (!failHandler) {
+		return { error: `updateRowState() 里找不到异步取值的失败处理分支（形如 \`}, error => {\`）` };
+	}
+	const terminal = blockRange(failHandler.text, /if\s*\(\s*attempts\s*>=\s*OlympiaOnboardingCards\.VALUE_RETRY_LIMIT\s*\)\s*\{/);
+	if (!terminal) {
+		return { error: `失败处理分支里找不到「达到重试上限」的终态判定` };
+	}
+	const retry = blockRange(failHandler.text, /this\.scheduleValueRetry\s*\(\s*\(\s*\)\s*=>\s*\{/);
+	if (!retry) {
+		return { error: `失败处理分支里找不到 scheduleValueRetry() 的重试任务` };
+	}
+	return { body, failHandler, terminal, retry };
+}
+
+check('T28', `异步取值失败后不得提前放掉「在途」标记（800ms 窗口里任何一次 refresh 都会重发请求并提前烧光重试预算）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const b = asyncValueBlocks(code);
+	if (b.error) return b.error;
+	const releases = [...b.failHandler.text.matchAll(/binding\.valuePending\s*=\s*false\s*;/g)];
+	if (!releases.length) {
+		return `失败处理分支里一次都没放掉 valuePending —— 重试链再也起不了跑`;
+	}
+	for (const r of releases) {
+		const at = r.index;
+		const inTerminal = at >= b.terminal.start && at < b.terminal.end;
+		const inRetry = at >= b.retry.start && at < b.retry.end;
+		if (!inTerminal && !inRetry) {
+			return `失败处理分支在「达到上限」和「重试任务」之外还放了一次 valuePending（位置 ${at}）—— 放早了的话，从失败到重试真的起跑之间的 800ms 里，任何一次 refresh() 都会重发请求并把失败预算 +1；用户在 800ms 窗口里点一下别的选项，这一行就永久停在「读取失败」，而可存储服务其实早就好了`;
+		}
+	}
+	// 终态块里必须**两个标记一起收口**：放掉「在途」+ 置上「确认取不到」。
+	//
+	// 只断言「不许在这两块之外放」是不够的 —— 把终态块里那一次删掉，
+	// 重试块里那一次仍然落在允许范围内，T28 照样绿：那是**真空通过**。
+	// （这条是 T-029 复核 Q7 点出来的。）
+	if (!/binding\.valuePending\s*=\s*false\s*;/.test(b.terminal.text)) {
+		return `终态块里没有放掉 valuePending —— 账面上这一行永远「在途」；今天靠 valueFailed 短路兜着，那个短路哪天没了就露馅`;
+	}
+	if (!/binding\.valueFailed\s*=\s*true\s*;/.test(b.terminal.text)) {
+		return `终态块里没有置上 valueFailed —— 这一行会永远停在「读取中…」骗用户`;
+	}
+	const retryBody = b.retry.text;
+	const relAt = retryBody.search(/binding\.valuePending\s*=\s*false\s*;/);
+	const updAt = retryBody.search(/this\.updateRowState\s*\(/);
+	if (relAt < 0) {
+		return `重试任务里没有放掉 valuePending —— 上面第 ③ 道闸门会把它自己挡住，重试永远起不了跑`;
+	}
+	if (updAt < 0) {
+		return `重试任务里没有重新调用 updateRowState() —— 重试排上了也刷不出值`;
+	}
+	if (relAt > updAt) {
+		return `重试任务里放掉 valuePending 的时机排在 updateRowState() 之后 —— 闸门会先把自己挡住`;
+	}
+	return null;
+});
+
+check('T29', `重试任务必须核对代号（更新的请求接管之后，旧的重试不得再动这一行）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const b = asyncValueBlocks(code);
+	if (b.error) return b.error;
+	// 结构化比对：两个操作数**任意顺序**都算。
+	// 只认 `binding.valueToken !== token` 这个字面的话，
+	// 把等价写法 `token !== binding.valueToken` 判红就是在管写法不管行为。
+	// （T-029 复核 Q7 点的第二处。）
+	const cmp = /(?:binding\.valueToken\s*!==\s*token|token\s*!==\s*binding\.valueToken)/;
+	if (!cmp.test(b.retry.text)) {
+		return `重试任务里没有核对 valueToken（两个操作数任意顺序都算）—— 更新的请求已经接管这一行时，旧的重试会把这一行一起刷掉`;
+	}
+	return null;
+});
+
+check('T30', `进入动画期间卡片区结构必须冻结（行区与预览区都不得整片重建）`, () => {
+	const cards = load(F_ONB_CARDS);
+	const onb = load(F_ONB);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	if (onb === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const code = stripTsComments(cards);
+	const onbCode = stripTsComments(onb);
+	if (!/private\s+entering\s*=\s*false\s*;/.test(code)) {
+		return `卡片层没有「进入动画中」的标志 —— 没有它就没法冻结卡片区`;
+	}
+	const begin = methodBody(code, /beginEnterAnimation\s*\(\s*\)\s*:\s*void\s*\{/);
+	if (!begin) {
+		return `卡片层没有 beginEnterAnimation()`;
+	}
+	if (!/this\.entering\s*=\s*true\s*;/.test(begin)) {
+		return `beginEnterAnimation() 没有把 entering 置为 true`;
+	}
+	for (const [label, sig] of [['refreshPreview', /private\s+refreshPreview\s*\(/], ['rebuildRows', /private\s+rebuildRows\s*\(/]]) {
+		const body = methodBody(code, sig);
+		if (!body) return `未找到 ${label}()`;
+		const guardAt = body.search(/if\s*\(\s*this\.entering\s*\)/);
+		const replaceAt = body.search(/replaceChildren\s*\(/);
+		if (guardAt < 0) {
+			return `${label}() 里没有「进入动画中」的早退闸门 —— 动画期间它会整片重建 DOM，那一帧就是硬切`;
+		}
+		if (replaceAt < 0) {
+			return `${label}() 里找不到 replaceChildren()`;
+		}
+		if (guardAt > replaceAt) {
+			return `${label}() 的冻结闸门排在 replaceChildren 之后 —— 等于没有`;
+		}
+		const guardBody = blockRange(body, /if\s*\(\s*this\.entering\s*\)/);
+		if (!guardBody || !/\breturn\b/.test(guardBody.text)) {
+			return `${label}() 的冻结闸门里没有 return —— 闸门形同虚设`;
+		}
+	}
+	if (!onbCode.includes('this.cards.beginEnterAnimation()')) {
+		return `父层没有调用 beginEnterAnimation() —— 冻结永远不会被打开`;
+	}
+	return null;
+});
+
+check('T31', `放弃写入的收场路径不得递归触发写入（只刷状态，不重跑整轮写入）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const body = methodBody(code, /private\s+abandonWriteIfExhausted\s*\(/);
+	if (!body) return `未找到 abandonWriteIfExhausted()`;
+	// 黑名单是「**整片重建**」的语义并集，不是某几个 API 名字。
+	// 只列 replaceChildren/innerHTML 这几个固定名字的话，
+	// 将来有人改用 appendChild / replaceWith / insertAdjacentHTML 就漏掉了。
+	// （T-029 复核 Q7 点的第三处。）
+	const REBUILD_PATTERNS = [
+		{ re: /\bthis\.refresh\s*\(/, name: 'this.refresh()' },
+		{ re: /\brebuildRows\s*\(/, name: 'rebuildRows()' },
+		{ re: /\bupdateRows\s*\(/, name: 'updateRows()' },
+		{ re: /\.replaceChildren\s*\(/, name: 'replaceChildren()' },
+		{ re: /\.innerHTML\s*=/, name: 'innerHTML =' },
+		{ re: /\.outerHTML\s*=/, name: 'outerHTML =' },
+		{ re: /\.insertAdjacentHTML\s*\(/, name: 'insertAdjacentHTML()' },
+		{ re: /\.appendChild\s*\(/, name: 'appendChild()' },
+		{ re: /\.insertBefore\s*\(/, name: 'insertBefore()' },
+		{ re: /\.removeChild\s*\(/, name: 'removeChild()' },
+		{ re: /\.replaceWith\s*\(/, name: 'replaceWith()' },
+		{ re: /\.append\s*\(/, name: 'append()' },
+		{ re: /\.prepend\s*\(/, name: 'prepend()' },
+		{ re: /\.after\s*\(/, name: 'after()' },
+		{ re: /\.before\s*\(/, name: 'before()' }
+	];
+	for (const p of REBUILD_PATTERNS) {
+		if (p.re.test(body)) {
+			return `放弃写入的路径里出现了 ${p.name} —— 它会再触发一轮写入/整片重建，形成递归`;
+		}
+	}
+	if (!body.includes('this.refreshRowStates(')) {
+		return `放弃写入后没有刷行状态 —— chip 的高亮会继续停在用户点的那个选项上，界面在撒谎`;
+	}
+	if (!body.includes('this.refreshPreview(')) {
+		return `放弃写入后没有刷预览区 —— 预览会继续显示没生效的选择`;
+	}
+	return null;
+});
+
+check('T32', `重试额度必须按「还没用光」比较（方向反了会第一轮就放弃）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const body = methodBody(code, /private\s+abandonWriteIfExhausted\s*\(/);
+	if (!body) return `未找到 abandonWriteIfExhausted()`;
+	if (!/rounds\s*<\s*OlympiaOnboardingCards\.FLUSH_RETRY_LIMIT/.test(body)) {
+		return `额度判定不是「rounds < FLUSH_RETRY_LIMIT」—— 额度是「还能等几轮」，用光之前都该继续`;
+	}
+	if (/rounds\s*(>=|>)\s*OlympiaOnboardingCards\.FLUSH_RETRY_LIMIT/.test(body)) {
+		return `额度判定用了 >= 或 > —— 比较方向反了`;
+	}
+	return null;
+});
+
+check('T33', `被放弃的写入若迟到落地，必须先过两道早退再补写（并给新尝试一份完整预算）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const body = methodBody(code, /private\s+rewriteIfStale\s*\(/);
+	if (!body) return `未找到 rewriteIfStale()`;
+	const setAt = body.search(/this\.pendingWrites\.set\s*\(\s*key\s*,\s*intended\s*\)/);
+	if (setAt < 0) {
+		return `rewriteIfStale() 没有把用户的选择补写回待写队列`;
+	}
+	const guards = [
+		[/if\s*\(\s*intended\s*===\s*undefined\s*\|\|\s*intended\s*===\s*writtenValue\s*\)\s*\{/, '「用户没有新意图，或意图与已写值相同」'],
+		[/if\s*\(\s*this\.configurationService\.getValue\s*\(\s*key\s*\)\s*===\s*intended\s*\)\s*\{/, '「配置里已经是用户想要的值」']
+	];
+	for (const [re, label] of guards) {
+		const blk = blockRange(body, re);
+		if (!blk) {
+			return `rewriteIfStale() 里找不到${label}这道早退`;
+		}
+		if (!/\breturn\b/.test(blk.text)) {
+			return `rewriteIfStale() 的${label}早退里没有 return —— 会把一个不需要补写的值也排进队列`;
+		}
+		if (blk.start > setAt) {
+			return `rewriteIfStale() 的${label}早退排在补写之后 —— 顺序反了`;
+		}
+	}
+	if (!/this\.pendingWriteRounds\.delete\s*\(\s*key\s*\)/.test(body)) {
+		return `rewriteIfStale() 没有清掉这个键的轮次计数 —— 补写回去的值一出生就只剩最后一轮额度`;
+	}
+	if (!body.includes('this.scheduleFlushRetry()')) {
+		return `rewriteIfStale() 没有安排下一次补写 —— 补写回队列也没人写`;
+	}
+	return null;
+});
+
+check('T34', `放弃写入时必须同时摘掉「用户意图」（否则迟到的旧写入会把用户已经不想要的值又补写回去）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const body = methodBody(code, /private\s+abandonWriteIfExhausted\s*\(/);
+	if (!body) return `未找到 abandonWriteIfExhausted()`;
+	const blk = blockRange(body, /if\s*\(\s*this\.pendingWrites\.get\s*\(\s*key\s*\)\s*===\s*attemptedValue\s*\)\s*\{/);
+	if (!blk) {
+		return `放弃写入的路径里找不到「用户还没改过这个值」的守卫`;
+	}
+	if (!blk.text.includes('this.pendingWrites.delete(key)')) {
+		return `守卫块里没有摘掉待写值 —— 被放弃的值会留在队列里，下一轮又被写一次`;
+	}
+	if (!blk.text.includes('this.lastIntended.delete(key)')) {
+		return `守卫块里没有摘掉用户意图 —— 迟到的写入会拿这个意图当「用户还想要」，把一个用户已经不想要的旧值补写回去`;
+	}
+	return null;
+});
+
+check('T35', `三条清理路径的职责必须分清（待写值 / 轮次 / 用户意图各自成套，不能顺手多删）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const body = methodBody(code, /private\s+async\s+flushPendingWrites\s*\(/);
+	if (!body) return `未找到 flushPendingWrites()`;
+	const undef = blockRange(body, /if\s*\(\s*value\s*===\s*undefined\s*\)\s*\{/);
+	if (!undef) return `flushPendingWrites() 里找不到「没有值可写」的分支`;
+	if (!undef.text.includes('this.pendingWrites.delete(key)')) {
+		return `「没有值可写」的分支里没有摘掉待写值 —— 重试定时器永远停不下来`;
+	}
+	if (!undef.text.includes('this.pendingWriteRounds.delete(key)')) {
+		return `「没有值可写」的分支里没有摘掉轮次计数 —— 这个键会带着上一轮的账继续算`;
+	}
+	if (undef.text.includes('this.lastIntended.delete(')) {
+		return `「没有值可写」的分支里把用户意图也删了 —— 意图是「用户还想要什么」的记录，删了它，迟到的写入就再也补写不回去`;
+	}
+	const guard = blockRange(body, /if\s*\(\s*this\.pendingWrites\.get\s*\(\s*key\s*\)\s*===\s*value\s*\)\s*\{/);
+	if (!guard) {
+		return `flushPendingWrites() 里找不到「这次写的还是不是用户当前那个值」的守卫`;
+	}
+	if (!guard.text.includes('this.pendingWrites.delete(key)')) {
+		return `守卫块里没有摘掉待写值`;
+	}
+	const writeAt = body.search(/await\s+this\.configurationService\.updateValue\s*\(/);
+	if (writeAt < 0) {
+		return `flushPendingWrites() 里找不到真正的写入`;
+	}
+	const roundsAt = body.indexOf('this.pendingWriteRounds.delete(key)', writeAt);
+	if (roundsAt < 0) {
+		return `写入成功之后没有清掉轮次计数`;
+	}
+	if (roundsAt < guard.end) {
+		return `轮次计数在守卫块里面被清 —— 用户在写入期间又改了值的话，新值一出生就继承了旧值剩下的额度`;
+	}
+	return null;
+});
+
+check('T36', `异步取值的重试队列必须先入队再判定时器，且定时器必须先清空句柄再取队列（否则新排上的重试没人触发）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const body = methodBody(code, /private\s+scheduleValueRetry\s*\(/);
+	if (!body) return `未找到 scheduleValueRetry()`;
+	const pushAt = body.search(/this\.valueRetryQueue\.push\s*\(/);
+	const guardAt = body.search(/this\.valueRetryTimer\s*!==\s*null/);
+	if (pushAt < 0) return `scheduleValueRetry() 没有把任务放进队列`;
+	if (guardAt < 0) return `scheduleValueRetry() 没有判断定时器是否已经在跑`;
+	if (pushAt > guardAt) {
+		return `scheduleValueRetry() 先判定时器再入队 —— 定时器已经在跑的时候，任务会被挂进队列却没人触发`;
+	}
+	const clearAt = body.search(/this\.valueRetryTimer\s*=\s*null\s*;/);
+	const spliceAt = body.search(/this\.valueRetryQueue\.splice\s*\(/);
+	if (clearAt < 0) return `scheduleValueRetry() 里没有清掉定时器句柄 —— 之后排上的重试永远不会触发`;
+	if (spliceAt < 0) return `scheduleValueRetry() 里没有取走队列`;
+	if (clearAt > spliceAt) {
+		return `定时器句柄在取队列之后才清空 —— 队列里的任务想再排一次重试时会看到一个还活着的句柄，从而不再新建定时器，那条重试链就断了`;
+	}
+	const callAt = body.search(/\bitem\s*\(\s*\)/);
+	if (callAt < 0) return `scheduleValueRetry() 里没有执行队列里的任务`;
+	if (clearAt > callAt) {
+		return `定时器句柄在执行任务之后才清空 —— 任务里再排一次重试时看不到空句柄，那条链就断了`;
 	}
 	return null;
 });

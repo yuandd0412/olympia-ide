@@ -206,7 +206,7 @@ const MUTATIONS = [
 		id: 'M20', expect: 'H11',
 		desc: '暗角退场时间超过总时长',
 		file: OL + 'olympiaOnboardingTimeline.ts',
-		mutate: t => t.replace('OLYMPIA_ONBOARDING_VIGNETTE_FALL_END = 5.30', 'OLYMPIA_ONBOARDING_VIGNETTE_FALL_END = 5.90')
+		mutate: t => t.replace('OLYMPIA_ONBOARDING_VIGNETTE_FALL_END = 2.25', 'OLYMPIA_ONBOARDING_VIGNETTE_FALL_END = 5.90')
 	},
 	{
 		id: 'M21', expect: 'H30',
@@ -369,11 +369,11 @@ const MUTATIONS = [
 	},
 	{
 		id: 'M42', expect: 'T12',
-		desc: '取值失败时不放掉「在途」标记（这一行永远停在「请求中」，再也拿不到值）',
+		desc: '取值成功后先放掉「在途」标记再核对身份（更新的那次请求失去保护，会被又一轮 refresh 顶掉）',
 		file: OL + 'olympiaOnboardingCards.ts',
 		mutate: t => t.replace(
-			'}, error => {\n\t\t\t\t\t\tbinding.valuePending = false;',
-			'}, error => {')
+			'\t\t\t\t\t\tif (binding.valueToken !== token || binding.valueElement !== value) {\n\t\t\t\t\t\t\treturn;\n\t\t\t\t\t\t}\n\t\t\t\t\t\tbinding.valuePending = false;',
+			'\t\t\t\t\t\tbinding.valuePending = false;\n\t\t\t\t\t\tif (binding.valueToken !== token || binding.valueElement !== value) {\n\t\t\t\t\t\t\treturn;\n\t\t\t\t\t\t}')
 	},
 	{
 		id: 'M43', expect: 'T12',
@@ -516,7 +516,197 @@ const MUTATIONS = [
 		mutate: t => t.replace(
 			'this.lastIntended.set(key, value);',
 			'// (不记意图)')
-	}
+	},
+	{
+		id: 'M61', expect: 'T20',
+		desc: '最后一道扫光改回底部面板（默认收起 → 取不到矩形 → 那道扫光永远不亮）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			"['statusbar', Parts.STATUSBAR_PART],",
+			"['panel', Parts.PANEL_PART],")
+	},
+	{
+		id: 'M62', expect: 'T21',
+		desc: '时间线里的扫光目标与渲染层的部件映射对不上（时间线多出来的那道没有 DOM 元素）',
+		file: OL + 'olympiaOnboardingTimeline.ts',
+		mutate: t => t.replace(
+			"{ id: 'statusbar', start: 4.30, end: 5.25, axis: 'x' },",
+			"{ id: 'auxbar', start: 4.30, end: 5.25, axis: 'x' },")
+	},
+	{
+		id: 'M63', expect: 'T22',
+		desc: '扫光方向改回写死「只有标题栏是横向」（时间线的 axis 字段形同虚设）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			"const horizontal = state.axis === 'x';",
+			"const horizontal = state.id === 'titlebar';")
+	},
+	{
+		id: 'M64', expect: 'T23',
+		desc: '暗角退场改回 3.50s→5.30s（真实工作台被压暗到动画最后）',
+		file: OL + 'olympiaOnboardingTimeline.ts',
+		mutate: t => t.replace(
+			'export const OLYMPIA_ONBOARDING_VIGNETTE_FALL_END = 2.25;',
+			'export const OLYMPIA_ONBOARDING_VIGNETTE_FALL_END = 5.30;')
+	},
+	{
+		id: 'M65', expect: 'T24',
+		desc: '最后一道扫光提前收尾（尾巴上留一段什么也不发生的死区）',
+		file: OL + 'olympiaOnboardingTimeline.ts',
+		mutate: t => t.replace(
+			"{ id: 'statusbar', start: 4.30, end: 5.25, axis: 'x' },",
+			"{ id: 'statusbar', start: 4.30, end: 4.60, axis: 'x' },")
+	},
+	{
+		id: 'M66', expect: 'T25',
+		desc: '相邻扫光之间留一段空隙（读成「一个亮了停一下下一个亮了」）',
+		file: OL + 'olympiaOnboardingTimeline.ts',
+		mutate: t => t.replace(
+			"{ id: 'sidebar', start: 3.80, end: 4.75, axis: 'y' },",
+			"{ id: 'sidebar', start: 4.30, end: 4.75, axis: 'y' },")
+	},
+	{
+		id: 'M67', expect: 'T26',
+		desc: '取不到部件矩形时直接跳过、不留兜底（那道扫光永远不亮 → 死区）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			'rect = viewport;',
+			'rect = undefined;')
+	},
+	{
+		id: 'M68', expect: 'T27',
+		desc: '光带位移改回「多走一倍」的旧公式（整道扫光里只有中间 20% 的时间光带在屏上）',
+		file: OL + 'olympiaOnboardingTimeline.ts',
+		mutate: t => t.replace(
+			'return ((offset + 1) / 2) * (extent + band) - band;',
+			'return offset * (extent + band) + extent / 2 - band / 2;')
+	},
+	{
+		id: 'M69', expect: 'T28',
+		desc: '异步取值失败后立刻放掉「在途」标记（800ms 窗口里任何一次 refresh 都会重发请求并提前烧光重试预算）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'if (attempts >= OlympiaOnboardingCards.VALUE_RETRY_LIMIT) {',
+			'binding.valuePending = false;\n\t\t\t\t\t\tif (attempts >= OlympiaOnboardingCards.VALUE_RETRY_LIMIT) {')
+	},
+	{
+		id: 'M70', expect: 'T28',
+		desc: '重试任务里不放掉「在途」标记（第 ③ 道闸门把自己挡住，重试永远起不了跑）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'binding.valuePending = false;\n\t\t\t\t\t\t\tthis.updateRowState(row, binding);',
+			'this.updateRowState(row, binding);')
+	},
+	{
+		id: 'M71', expect: 'T29',
+		desc: '重试任务不再核对代号（更新的请求接管之后，旧的重试会把这一行一起刷掉）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'if (binding.valueToken !== token) {',
+			'if (false) {')
+	},
+	{
+		id: 'M72', expect: 'T30',
+		desc: '预览区在进入动画期间不再冻结（动画中整片 replaceChildren = 一帧硬切）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'private refreshPreview(): void {\n\t\tif (this.entering) {',
+			'private refreshPreview(): void {\n\t\tif (false) {')
+	},
+	{
+		id: 'M73', expect: 'T30',
+		desc: '父层不再通知卡片层「进入动画开始」（冻结闸门永远不会被打开）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			'\n\t\tthis.cards.beginEnterAnimation();\n',
+			'')
+	},
+	{
+		id: 'M74', expect: 'T31',
+		desc: '放弃写入时改成重建行区（触发递归写入，动画期还是一帧硬切）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'this.writingKeys.delete(key);\n\t\tthis.refreshRowStates();',
+			'this.writingKeys.delete(key);\n\t\tthis.rebuildRows(0, [], "");')
+	},
+	{
+		id: 'M75', expect: 'T32',
+		desc: '重试额度的比较方向反了（第一轮就放弃写入）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'if (rounds < OlympiaOnboardingCards.FLUSH_RETRY_LIMIT) {',
+			'if (rounds > OlympiaOnboardingCards.FLUSH_RETRY_LIMIT) {')
+	},
+	{
+		id: 'M76', expect: 'T33',
+		desc: 'rewriteIfStale 的第一道早退不 return（不需要补写的值也被排进队列）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'if (intended === undefined || intended === writtenValue) {\n\t\t\treturn;\n\t\t}',
+			'if (intended === undefined || intended === writtenValue) {\n\t\t}')
+	},
+	{
+		id: 'M77', expect: 'T34',
+		desc: '放弃写入时不摘用户意图（迟到的旧写入会把用户已经不想要的值补写回去）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'this.lastIntended.delete(key);',
+			'// (意图留着)')
+	},
+	{
+		id: 'M78', expect: 'T35',
+		desc: '「没有值可写」的分支顺手把用户意图也删了（迟到的写入再也补写不回去）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'this.pendingWrites.delete(key);\n\t\t\t\tthis.pendingWriteRounds.delete(key);',
+			'this.pendingWrites.delete(key);\n\t\t\t\tthis.lastIntended.delete(key);\n\t\t\t\tthis.pendingWriteRounds.delete(key);')
+	},
+	{
+		id: 'M79', expect: 'T36',
+		desc: '定时器句柄在执行队列任务之后才清空（任务里再排一次重试时没人触发，那条链断了）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'this.valueRetryTimer = null;\n\t\t\tconst queue = this.valueRetryQueue.splice(0, this.valueRetryQueue.length);\n\t\t\tfor (const item of queue) {\n\t\t\t\titem();\n\t\t\t}',
+			'const queue = this.valueRetryQueue.splice(0, this.valueRetryQueue.length);\n\t\t\tfor (const item of queue) {\n\t\t\t\titem();\n\t\t\t}\n\t\t\tthis.valueRetryTimer = null;')
+	},
+	{
+		// T-029 Q7：T28 原来只断言「不许在终态/重试之外放标记」，
+		// 把终态里那一次删掉它照样绿 —— 真空通过。这条补上那个缺口。
+		id: 'M80', expect: 'T28',
+		desc: '终态只置上 valueFailed 却没放掉「在途」标记（账面上这一行永远是在途；今天靠 valueFailed 短路兜着，那个短路哪天没了就露馅）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'\t\t\t\t\t\t\tbinding.valuePending = false;\n\t\t\t\t\t\t\tbinding.valueFailed = true;',
+			'\t\t\t\t\t\t\tbinding.valueFailed = true;')
+	},
+	{
+		// 「不该变红」型变异：证明 T29 判的是**语义**（有没有核对代号），
+		// 而不是某一种写法（两个操作数的顺序）。
+		id: 'M81', expectGreen: ['T29'],
+		desc: '重试任务的代号核对换成等价写法 token !== binding.valueToken —— T29 不该判红',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'\t\t\t\t\t\t\tif (binding.valueToken !== token) {\n\t\t\t\t\t\t\t\t// 已经有更新的一次请求接管了这一行',
+			'\t\t\t\t\t\t\tif (token !== binding.valueToken) {\n\t\t\t\t\t\t\t\t// 已经有更新的一次请求接管了这一行')
+	},
+	{
+		id: 'M82', expect: 'T29',
+		desc: '重试任务的代号核对把「不等」写成「相等」（更新的请求接管之后，旧的重试照样会动这一行）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'\t\t\t\t\t\t\tif (binding.valueToken !== token) {\n\t\t\t\t\t\t\t\t// 已经有更新的一次请求接管了这一行',
+			'\t\t\t\t\t\t\tif (binding.valueToken === token) {\n\t\t\t\t\t\t\t\t// 已经有更新的一次请求接管了这一行')
+	},
+	{
+		// T-029 Q7：T31 原来只黑名单几个固定 API 名，
+		// 换用别的整片重建 API 就漏掉了。这条用 innerHTML 赋值来证明扩表有牙。
+		id: 'M83', expect: 'T31',
+		desc: '放弃写入的收场路径改成整片清空行区（innerHTML 赋值也是整片重建 —— 只列固定 API 名的黑名单会漏掉它）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			"\t\tthis.writingKeys.delete(key);\n\t\tthis.refreshRowStates();",
+			"\t\tthis.writingKeys.delete(key);\n\t\tthis.rowArea.innerHTML = '';\n\t\tthis.refreshRowStates();")
+	},
 ];
 
 function buildTree(dest) {

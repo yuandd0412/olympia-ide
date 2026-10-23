@@ -93,6 +93,21 @@ const GATES = [
 		// 门禁自己打印「真实数据 → 判红，被 C1 抓住」才算数，退出码仍是 0。
 		args: (productDir) => ['--product', productDir, '--port', '9241', '--inject-canvas-swap']
 	},
+	{
+		file: 'scripts/oneoff/verify-onboarding-geometry.mjs',
+		name: '窗口几何判据自检',
+		保证: '几何判据自己有牙：正常曲线必须绿，没开满 / 四角没盖住 / 改尺寸后回退 / 一步跳到位 / 透出太晚 必须分别判红',
+		args: () => ['--selftest']
+	},
+	{
+		file: 'scripts/oneoff/verify-onboarding-geometry.mjs',
+		name: '窗口几何真机门',
+		保证: '真机证明揭示洞在各种窗口形状下都开得满：窄窗 480×900 / 扁窗 1400×300 / dpr=2 / 洞开一半时改尺寸 / 洞开满后改尺寸 —— 四角必须全透明、覆盖率不许回退、不许跳变',
+		needsBuild: true,
+		// 这个门自己认 --product；它会起 5 个真窗口（每个独立 profile + 独立 CDP 端口），
+		// 端口从 9251 连号排开（9251~9255），不能和 9223 / 9241 / 9225 撞。
+		args: (productDir) => ['--product', productDir, '--port', '9251']
+	},
 	// build/verify-product-keybindings.mjs 先不登记：全新 profile 下首启界面会吃掉键盘输入，
 	// 命令面板一次都打不开（2026-10-18 实测 0/17），而它必须"每次都能跑"才有意义。
 	// 结论目前靠 .scratch/ui/kb-sweep.mjs 在已走完首启的 profile 上手工跑（17/17 一致）。

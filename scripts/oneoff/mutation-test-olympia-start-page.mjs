@@ -33,6 +33,8 @@ import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import { stripComments, stripTsComments } from './lib/ts-lexer.mjs';
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(here, '..', '..');
 const CHECK_SCRIPT = path.join(REPO, 'scripts', 'oneoff', 'check-olympia-start-page.mjs');
@@ -50,6 +52,7 @@ const NEEDED = [
 	'oss/src/vs/workbench/contrib/olympia/browser/olympiaOnboardingBackdrop.ts',
 	'oss/src/vs/workbench/contrib/olympia/browser/olympiaOnboardingConfig.ts',
 	'oss/src/vs/workbench/contrib/olympia/browser/olympiaJudgeTargets.ts',
+	'oss/src/vs/workbench/contrib/olympia/browser/olympiaWelcomeReady.ts',
 	'oss/src/vs/workbench/contrib/olympia/browser/media/olympiaOnboarding.css',
 	'oss/src/vs/workbench/workbench.common.main.ts',
 	'oss/src/vs/workbench/contrib/welcomeGettingStarted/browser/startupPage.ts',
@@ -127,7 +130,14 @@ const MUTATIONS = [
 		id: 'M9', expect: 'H13',
 		desc: '不等 Restored 就起跑',
 		file: OL + 'olympiaOnboarding.ts',
-		mutate: t => t.replace('LifecyclePhase.Restored', 'LifecyclePhase.Ready')
+		// 锚点必须是**代码级**的完整表达式。
+		//
+		// 踩过的坑：早先这里写的是 `t.replace('LifecyclePhase.Restored', ...)`，
+		// 命中的是文件里**第一处**出现 —— 而那处是文档注释（在代码前面）。
+		// 结果变异只改掉了注释，代码一行没动，H13 自然不红 → 这条变异白做，
+		// 还会给人「H13 抓不住回归」的错觉。
+		mutate: t => t.replace('this.lifecycleService.phase >= LifecyclePhase.Restored',
+			'this.lifecycleService.phase >= LifecyclePhase.Ready')
 	},
 	{
 		id: 'M10', expect: 'H16',
@@ -197,6 +207,109 @@ const MUTATIONS = [
 		desc: '暗角退场时间超过总时长',
 		file: OL + 'olympiaOnboardingTimeline.ts',
 		mutate: t => t.replace('OLYMPIA_ONBOARDING_VIGNETTE_FALL_END = 5.30', 'OLYMPIA_ONBOARDING_VIGNETTE_FALL_END = 5.90')
+	},
+	{
+		id: 'M21', expect: 'H30',
+		desc: 'refresh 改回「每次都重建行区」',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('this.updateRows(index, descriptor.rows);', "this.rebuildRows(index, descriptor.rows, '');")
+	},
+	{
+		id: 'M22', expect: 'H31',
+		desc: '起跑闸门不再要求「开始页已就位」',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace('const welcomeReady = olympiaWelcomeReady.isReady;', 'const welcomeReady = true;')
+	},
+	{
+		id: 'M23', expect: 'H32',
+		desc: 'openEditor 不再 await（信号早于开始页画出来）',
+		file: 'oss/src/vs/workbench/contrib/welcomeGettingStarted/browser/startupPage.ts',
+		mutate: t => t.replace('await this.editorService.openEditor({', 'this.editorService.openEditor({')
+	},
+	{
+		id: 'M24', expect: 'H33',
+		desc: '写入失败不留痕（console.warn 降级成 console.log）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('console.warn(', 'console.log(')
+	},
+	{
+		id: 'M25', expect: 'H34',
+		desc: '把配置键改回标量父键的子键（olympia.startPage.showIntroAnimation）',
+		file: OL + 'olympiaWelcome.contribution.ts',
+		mutate: t => t.replace("'olympia.startPageIntroAnimation'", "'olympia.startPage.showIntroAnimation'")
+	},
+	{
+		id: 'M26', expect: 'H35',
+		desc: '首帧前的切卡保护被去掉（补间起点是 0 → 卡片瞬移）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('if (this.lastFrameTime < 0) {', 'if (false) {')
+	},
+	{
+		id: 'M27', expectGreen: ['H6', 'H36'],
+		desc: '背景时钟换成等价的 `= this.backdropTime + delta` 写法（同样单调，不该被判红）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace('this.backdropTime += delta;', 'this.backdropTime = this.backdropTime + delta;')
+	},
+	{
+		id: 'M28', expectGuardHit: true,
+		desc: '元变异：锚点故意落在文档注释上（复刻 M9 当年的错法）—— 必须被「只打到注释」守卫拦住',
+		file: OL + 'olympiaOnboarding.ts',
+		// 这条复刻的是 M9 当年的写法：锚点 `LifecyclePhase.Restored` 在文件里
+		// **第一处**出现是在文档注释（在代码前面），替换只会改到注释。
+		mutate: t => t.replace('LifecyclePhase.Restored', 'LifecyclePhase.Ready')
+	},
+	// ---------------------------------------------------------------------------
+	// T-024 审计之后新增的变异。
+	//
+	// 每一���都对应那轮修的一个**真实缺陷**。新加的断言（T1~T6）如果抓不住
+	// 自己的变异，那就是假断言 —— 和当初 M9 打在注释上导致 H13 假绿是同一类错误。
+	// ---------------------------------------------------------------------------
+	{
+		id: 'M29', expect: 'T1',
+		desc: 'chrome 让位提前到 requestEnter()（等待期就摘掉「跳过」和翻页，用户只剩一颗药丸）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t
+			.replace("this.cards.element.classList.add('olympia-onboarding-entering');", '')
+			.replace('this.enterRequestedAt = -1;',
+				"this.enterRequestedAt = -1;\n\t\tthis.cards.element.classList.add('olympia-onboarding-entering');")
+	},
+	{
+		id: 'M30', expect: 'T2',
+		desc: '开始页打开失败被报成「已就位」（恢复成 finally { markReady() } 的老写法）',
+		file: 'oss/src/vs/workbench/contrib/welcomeGettingStarted/browser/startupPage.ts',
+		mutate: t => t.replace(
+			/await this\.openOlympiaWelcome\(\);[\s\S]*?\} catch \(error\) \{/,
+			'await this.openOlympiaWelcome();\n\t\t\t} finally {\n\t\t\t\tolympiaWelcomeReady.markReady();\n\t\t\t} catch (error) {')
+	},
+	{
+		id: 'M31', expect: 'T3',
+		desc: '引导侧不再判 isFailed（开始页永远不会有时仍去擦洞，洞里是空的）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace('olympiaWelcomeReady.isFailed', 'olympiaWelcomeReady.isReady')
+	},
+	{
+		id: 'M32', expect: 'T4',
+		desc: '点击后只刷预览块（派生值行停在旧文本上：预览新、卡片旧）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('\n\t\t\t\t\t\t\tthis.refresh();', '\n\t\t\t\t\t\t\tthis.refreshPreview();')
+	},
+	{
+		id: 'M33', expect: 'T5',
+		desc: '重试额度退回全局计数（一个写不进去的键带着别的键一起耗光额度）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('private readonly pendingWriteAttempts = new Map<string, number>();', 'private flushRetryCount = 0;')
+	},
+	{
+		id: 'M34', expect: 'T6',
+		desc: 'enterRequestedAt 的哨兵退回 0（rAF 合法域内 → 等待时长恒为 0，硬上限永不触发）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace('private enterRequestedAt = -1;', 'private enterRequestedAt = 0;')
+	},
+	{
+		id: 'M35', expect: 'H35',
+		desc: '卡片侧 lastFrameTime 的哨兵退回 0（赌「0 永不出现」）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('private lastFrameTime = -1;', 'private lastFrameTime = 0;')
 	}
 ];
 
@@ -207,6 +320,22 @@ function buildTree(dest) {
 		fs.mkdirSync(path.dirname(dst), { recursive: true });
 		fs.copyFileSync(src, dst);
 	}
+}
+
+/**
+ * 剥掉注释（按文件类型），用来判断「变异是不是只打到了注释」。
+ *
+ * 跟体检脚本的 load() 用的是同一份实现 —— 两边算法不一致的话，
+ * 这个守卫自己就不可信了。
+ */
+function stripForFile(rel, text) {
+	if (rel.endsWith('.ts')) {
+		return stripTsComments(text);
+	}
+	if (rel.endsWith('.css')) {
+		return stripComments(text);
+	}
+	return text;
 }
 
 function runCheck(treeRoot) {
@@ -242,9 +371,52 @@ try {
 			failures++;
 			continue;
 		}
+		// 守卫：变异必须真的改到**代码**。
+		//
+		// 踩过的坑：M9 的锚点是 `LifecyclePhase.Restored`，文件里第一处出现是在
+		// 文档注释里（在代码前面）。变异把注释改了、代码一行没动 → 对应断言当然不红。
+		// 但那次的输出是「期望 H13 变红，实际红了：（一条都没红）」，
+		// 看上去像断言没用，其实是**变异没打中代码**。
+		//
+		// 所以这里在剥掉注释之后再比对：剥注释后完全相同 ⇒ 只打到了注释 ⇒ 直接判 FAIL，
+		// 不再往下跑（跑下去只会得到一条误导性的「断言抓不住」的结论）。
+		const codeBefore = stripForFile(mut.file, text);
+		const codeAfter = stripForFile(mut.file, changed);
+		if (codeBefore === codeAfter) {
+			// 元变异（expectGuardHit）：它**就该**被守卫拦住 —— 拦住了说明守卫是活的。
+			// 这类变异不是「失败」，而是「守卫自检通过」。
+			if (mut.expectGuardHit) {
+				console.log(`PASS ${mut.id} ${mut.desc} → 如期被「只打到注释」守卫拦下`);
+				continue;
+			}
+			console.log(`FAIL ${mut.id} 变异只打到了注释、没改到代码 —— ${mut.desc}`);
+			failures++;
+			continue;
+		}
+		if (mut.expectGuardHit) {
+			// 元变异本该只打到注释，却打到了代码 —— 说明守卫的判据失效了。
+			console.log(`FAIL ${mut.id} 元变异竟然改到了代码 —— 「只打到注释」守卫失效了`);
+			failures++;
+			continue;
+		}
 		fs.writeFileSync(abs, changed);
 		const res = runCheck(tmp);
 		fs.writeFileSync(abs, text);   // 还原
+
+		// 「不该变红」型变异：证明断言判的是**语义**，而不是某种写法。
+		// 比如 H6/H36 如果写成「必须出现 `this.backdropTime +=`」，那把等价的
+		// `= this.backdropTime + delta` 判红就说明它们在管写法而不管行为。
+		if (mut.expectGreen) {
+			const wronglyRed = mut.expectGreen.filter(id => res.failedIds.includes(id));
+			if (wronglyRed.length) {
+				console.log(`FAIL ${mut.id} ${mut.desc} → 期望 ${mut.expectGreen.join(', ')} 保持绿，实际红了：${wronglyRed.join(', ')}`);
+				failures++;
+			} else {
+				const others = res.failedIds.filter(id => !mut.expectGreen.includes(id));
+				console.log(`PASS ${mut.id} ${mut.desc} → ${mut.expectGreen.join(', ')} 如期保持绿${others.length ? `（另有 ${others.join(', ')} 变红，不影响本条判定）` : ''}`);
+			}
+			continue;
+		}
 
 		const caught = res.failedIds.includes(mut.expect);
 		if (caught) {

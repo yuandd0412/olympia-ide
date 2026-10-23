@@ -21,6 +21,9 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { stripComments, stripTsComments } from './lib/ts-lexer.mjs';
 
 const REPO = process.env.OLYMPIA_CHECK_REPO
 	? path.resolve(process.env.OLYMPIA_CHECK_REPO)
@@ -45,6 +48,25 @@ const F_GS = 'oss/src/vs/workbench/contrib/welcomeGettingStarted/browser/getting
 const missing = new Set();
 const cache = new Map();
 
+/**
+ * 读文件并**默认剥掉注释**。
+ *
+ * ## 为什么默认要剥
+ *
+ * 断言看的是**代码**，不是文档里的散文。否则文件头一句
+ * 「这里不用 Date.now()」就能把「禁止 Date.now()」这条断言自己判绿 ——
+ * 这个坑本脚本已经踩了两次：
+ *
+ *   - H2：贡献文件的头部注释里大段解释「为什么是 BlockStartup」，注释命中 → 真代码挪走照样绿。
+ *   - H13：`olympiaOnboarding.ts` 里 `LifecyclePhase.Restored` **先出现在注释里**，
+ *     注释一改，代码里那个判定被删掉，H13 照样绿。
+ *
+ * 所以这里在**读取层**就把这件事办掉，而不是指望每条断言都记得剥 ——
+ * 指望是守不住的，本脚本已经证明过。
+ *
+ * 需要看原文的极少数情况（比如要报告「是哪一行注释写了错话」）用 loadRaw()，
+ * 并且那一处必须带 `/* raw-ok: 理由 *\/` 标记 —— 见 Z2。
+ */
 function load(rel) {
 	if (cache.has(rel)) return cache.get(rel);
 	const abs = path.join(REPO, ...rel.split('/'));
@@ -60,9 +82,25 @@ function load(rel) {
 			missing.add(rel);
 			console.log(`MISSING ${rel}`);
 		}
+	} else if (rel.endsWith('.ts')) {
+		text = stripTsComments(text);
+	} else if (rel.endsWith('.css')) {
+		text = stripComments(text);
 	}
 	cache.set(rel, text);
 	return text;
+}
+
+/** 读**未经处理**的原文。只在确实要看注释内容时用（见 Z2）。 */
+function loadRaw(rel) {
+	const abs = path.join(REPO, ...rel.split('/'));
+	try {
+		const st = fs.statSync(abs);
+		if (st.isFile()) return fs.readFileSync(abs, 'utf8');
+	} catch {
+		return null;
+	}
+	return null;
 }
 
 function listTsUnder(dirRel) {
@@ -79,7 +117,7 @@ function listTsUnder(dirRel) {
 			const childAbs = path.join(a, e.name);
 			const childRel = `${relFromRepo}/${e.name}`;
 			if (e.isDirectory()) walk(childAbs, childRel);
-			else if (e.isFile() && e.name.endsWith('.ts')) out.push({ rel: childRel, text: fs.readFileSync(childAbs, 'utf8') });
+			else if (e.isFile() && e.name.endsWith('.ts')) out.push({ rel: childRel, text: stripTsComments(fs.readFileSync(childAbs, 'utf8')) });
 		}
 	};
 	walk(abs, dirRel);
@@ -105,8 +143,126 @@ function balanced(text, openIdx, open, close) {
 	return null;
 }
 
-function stripComments(css) {
-	return css.replace(/\/\*[\s\S]*?\*\//g, '');
+/**
+ * 检查「时间戳哨兵」用得对不对。
+ *
+ * ## 为什么这是一类独立的错误
+ *
+ * rAF 的帧时间戳是**非负**的单调时钟（performance.now() 基准）。
+ * 拿 0 当「还没设置过」的哨兵，等于赌「0 永不出现」——
+ * 一旦真的取到 0，「等待了多久」恒为 0，硬上限永远不触发，闸门无限等待；
+ * 或者「补间起点」落在 0 时刻，进度一步冲到 1，卡片瞬移。
+ *
+ * 正确的哨兵必须**落在合法域之外**（负数）。
+ *
+ * ## 判据
+ *
+ * 1. 变量的初值必须是负数；
+ * 2. 使用处的比较必须和这个初值**一致**（同一个哨兵），
+ *    否则判定永远不成立；
+ * 3. 比较的**方向**必须正确：
+ *    - `===` 且右值 === 初值 → 对；
+ *    - `<` 且右值 === 0 → 对（负数区间）；
+ *    - 其余（`> / >= / <= / !=`）→ 语义反了。
+ *
+ * @param code 已剥注释的源码
+ * @param varName 变量名
+ * @param useScope 要检查的比较所在作用域文本（通常是某个函数体）
+ * @returns {string|null} 出错原因；通过返回 null
+ */
+function checkSentinel(code, varName, useScope) {
+	const init = new RegExp(`(?:private|public|protected|readonly|\\s)*${varName}\\s*=\\s*(-?\\d+)`).exec(code);
+	if (!init) {
+		return `找不到 ${varName} 的初值声明`;
+	}
+	const sentinel = Number(init[1]);
+	if (sentinel >= 0) {
+		return `${varName} 的初值是 ${sentinel} —— rAF 时间戳是非负的单调时钟，${sentinel} 也是它的合法取值，拿它当「还没设置过」的哨兵等于赌「这个值永不出现」`;
+	}
+	const cmp = new RegExp(`${varName}\\s*(===|!==|==|!=|<=|>=|<|>)\\s*(-?\\d+)`).exec(useScope);
+	if (!cmp) {
+		return `${varName} 没有被拿来判断「还没设置过」`;
+	}
+	const op = cmp[1];
+	const right = Number(cmp[2]);
+	if (op === '===') {
+		if (right !== sentinel) {
+			return `${varName} 的比较用的是 ${op} ${right}，而它的初值是 ${sentinel} —— 两者不一致，这个判定永远不成立`;
+		}
+		return null;
+	}
+	if (op === '<') {
+		if (right !== 0) {
+			return `${varName} 的比较用的是 < ${right}，判不了「初值 ${sentinel}」（负数区间）这条状态`;
+		}
+		return null;
+	}
+	return `${varName} 的比较用的是 ${op} ${right} —— 对一个初值为 ${sentinel} 的「还没设置过」哨兵来说，这个方向判反了`;
+}
+
+/**
+ * 逐字符算括号深度（跳过字符串字面量里的括号）。
+ *
+ * `depths[i]` 是第 i 个字符**之前**的深度。用来区分「对象里的顶层键」和
+ * 「嵌套对象里的键」—— 配置属性的定义体是 `{ scope, type, default, description }`，
+ * 不看深度的话 `type:` / `default:` 会被当成属性键。
+ */
+function braceDepths(text) {
+	const depths = new Array(text.length);
+	let d = 0;
+	let i = 0;
+	while (i < text.length) {
+		const c = text[i];
+		depths[i] = d;
+		if (c === '"' || c === "'" || c === '`') {
+			const quote = c;
+			i++;
+			while (i < text.length) {
+				depths[i] = d;
+				if (text[i] === '\\') {
+					if (i + 1 < text.length) {
+						depths[i + 1] = d;
+						i += 2;
+						continue;
+					}
+					i++;
+					continue;
+				}
+				if (text[i] === quote) {
+					i++;
+					break;
+				}
+				i++;
+			}
+			continue;
+		}
+		if (c === '{' || c === '[' || c === '(') {
+			d++;
+		} else if (c === '}' || c === ']' || c === ')') {
+			d--;
+		}
+		i++;
+	}
+	return depths;
+}
+
+/**
+ * 找出所有对 `this.backdropTime` 的赋值。
+ *
+ * 返回 [{ op, rhs }]，op ∈ { '+=', '-=', '++', '--', '=' }。
+ *
+ * 为什么不用「必须写成 `+=`」当判据：那是一种**写法**而不是**语义**。
+ * `this.backdropTime = this.backdropTime + delta;` 同样单调，
+ * 把它判红只会逼着大家保留一种写法，并不能真的防住「时钟被重置」。
+ */
+function findBackdropTimeAssignments(code) {
+	const out = [];
+	const re = /this\.backdropTime\s*(\+\+|--|\+=|-=|(?<![=!<>])=(?!=))\s*([^;]*);/g;
+	let m;
+	while ((m = re.exec(code))) {
+		out.push({ op: m[1], rhs: (m[2] || '').trim() });
+	}
+	return out;
 }
 
 function shorten(s, n = 160) {
@@ -117,18 +273,6 @@ function shorten(s, n = 160) {
 // ---------------------------------------------------------------------------
 // 辅助：TS 注释剥离 / CSS 规则块 / 配置常量与默认值 / 扩展 schema
 // ---------------------------------------------------------------------------
-
-/**
- * 剥掉 TS 的块注释与行注释。
- *
- * 断言要看的是**代码**，不是文档里的散文 —— 否则文件头里一句
- * 「这里不使用 Date.now()」就会把「禁止 Date.now()」这条断言自己判红。
- */
-function stripTsComments(text) {
-	return text
-		.replace(/\/\*[\s\S]*?\*\//g, '')
-		.replace(/(^|[^:'"`])\/\/[^\n]*/g, (m, p1) => p1);
-}
 
 /**
  * 取某个 CSS 选择器对应的规则体（花括号内部，不含大括号）。找不到返回 null。
@@ -257,8 +401,7 @@ function rowBlockFor(text, constantName) {
 	const idx = text.indexOf(`configurationKey: ${constantName}`);
 	if (idx < 0) {
 		return null;
-	}
-	const braceIdx = text.lastIndexOf('{', idx);
+	}	const braceIdx = text.lastIndexOf('{', idx);
 	if (braceIdx < 0) {
 		return null;
 	}
@@ -293,7 +436,8 @@ const NEW_FILES = [
 
 for (const { id, rel } of NEW_FILES) {
 	check(id, `开始页新增文件存在：${rel}`, () => {
-		const t = load(rel);
+		/* raw-ok: 这一条判的是「文件存不存在、有没有内容」，原文才有意义 */
+		const t = loadRaw(rel);
 		if (t === null) return `文件不存在（见上面的 MISSING ${rel}）`;
 		if (t.trim().length === 0) return `文件为空`;
 		return null;
@@ -309,7 +453,8 @@ const COPYRIGHT_ID = { [F_INPUT]: 'A6', [F_PAGE]: 'A8', [F_CONTRIB]: 'A10' };
 
 for (const { id, rel } of TS_FILES_FOR_HEADER) {
 	check(id, `${rel} 第 1 行是 Microsoft 版权头起始行`, () => {
-		const t = load(rel);
+		/* raw-ok: 版权头本身就是块注释，剥掉注释就看不见头了 */
+		const t = loadRaw(rel);
 		if (t === null) return `文件不存在（见上面的 MISSING ${rel}）`;
 		// 注意：上游真实头文件第 1 行是「一个空格 + /*---…」，必须容忍前导空格，
 		// 否则已验收的 olympiaWelcomeInput.ts 会被误判成红色。
@@ -318,7 +463,8 @@ for (const { id, rel } of TS_FILES_FOR_HEADER) {
 		return null;
 	});
 	check(COPYRIGHT_ID[rel], `${rel} 前 4 行包含 Copyright (c) Microsoft Corporation 与 Licensed under the MIT License`, () => {
-		const t = load(rel);
+		/* raw-ok: 版权头本身就是块注释，剥掉注释就看不见头了 */
+		const t = loadRaw(rel);
 		if (t === null) return `文件不存在（见上面的 MISSING ${rel}）`;
 		const head = t.split(/\r?\n/).slice(0, 4).join('\n');
 		const lack = [];
@@ -476,7 +622,7 @@ check('E2', `startupPage.ts 有 openOlympia* 形式的打开方法`, () => {
 // 那份定义（gettingStarted.contribution.ts:309 就是 ...workbenchConfigurationNodeBase 的例子）。
 // 所以 Olympia 自己的键必须挂在独立的节点 id 'olympia' 下。
 // ===========================================================================
-const OLYMPIA_KEYS = ['olympia.startPage', 'olympia.startPage.showIntroAnimation'];
+const OLYMPIA_KEYS = ['olympia.startPage', 'olympia.startPageIntroAnimation'];
 const registrationScope = listTsUnder(OLYMPIA_BROWSER_DIR);
 const configBlocks = [];
 for (const f of registrationScope) {
@@ -490,22 +636,132 @@ for (const f of registrationScope) {
 }
 const scopeDesc = `已扫描 ${OLYMPIA_BROWSER_DIR} 下 ${registrationScope.length} 个 .ts、${configBlocks.length} 个 registerConfiguration 块`;
 
+/**
+ * 全目录收集 `const NAME = '字面量'` 常量表。
+ *
+ * ## 为什么需要它
+ *
+ * 配置属性键用的是**计算属性名**：
+ *
+ * ```ts
+ * properties: {
+ *     [OLYMPIA_START_PAGE_CONFIGURATION_KEY]: { type: 'boolean', ... },
+ * }
+ * ```
+ *
+ * 如果只扫 `'olympia.xxx'` 字面量，命中的是 `localize('olympia.startPage', ...)` 的
+ * **本地化 key** —— 两者碰巧长得一样，于是断言「看起来过了」，实际上它对
+ * 「注册的属性键到底是什么」一无所知。键一改（改成子键、拼错、漏注册），断言不会红。
+ *
+ * 所以这里先把常量表建出来，再把计算属性名还原成真实键名。
+ */
+const configConstValues = new Map();
+for (const f of registrationScope) {
+	const code = stripTsComments(f.text);
+	const re = /(?:export\s+)?const\s+([A-Z][A-Z0-9_]*)\s*=\s*'([^']*)'/g;
+	let m;
+	while ((m = re.exec(code))) {
+		if (!configConstValues.has(m[1])) {
+			configConstValues.set(m[1], m[2]);
+		}
+	}
+}
+
+/**
+ * 解析一个 registerConfiguration 块里 `properties` 的顶层条目。
+ *
+ * 返回 [{ key, type, constName }]：
+ *   - `key`       还原后的真实属性键（计算属性名用常量表还原；还原不了就是 null）
+ *   - `type`      声明的 schema 类型（没声明就是 null）
+ *   - `constName` 用的是哪个常量（字面量键为 null）
+ *
+ * 只取**深度 0** 的键 —— 嵌套对象里的 `scope:` / `type:` / `description:` 会被排除。
+ * 另外还要求键的值是对象（`{`），因为配置属性的定义体一定是对象。
+ */
+function parseRegisteredProperties(blockBody) {
+	const out = [];
+	const m = /(?:^|[,{])\s*properties\s*:\s*\{/.exec(blockBody);
+	if (!m) {
+		return out;
+	}
+	const openIdx = blockBody.indexOf('{', m.index + m[0].length - 1);
+	const inner = balanced(blockBody, openIdx, '{', '}');
+	if (!inner) {
+		return out;
+	}
+	const body = inner.slice(1, -1);
+	const depths = braceDepths(body);
+	const keyRe = /(?:\[([A-Za-z_$][\w$]*)\s*\]|(['"])((?:[^'"\\]|\\.)*)\2|([A-Za-z_$][\w$]*))\s*:/g;
+	let km;
+	while ((km = keyRe.exec(body))) {
+		if (depths[km.index] !== 0) {
+			continue;
+		}
+		const valueStart = body.indexOf('{', km.index + km[0].length);
+		if (valueStart < 0 || !/^\s*\{/.test(body.slice(km.index + km[0].length, valueStart + 1))) {
+			continue;
+		}
+		let key = null;
+		let constName = null;
+		if (km[1]) {
+			constName = km[1];
+			key = configConstValues.has(constName) ? configConstValues.get(constName) : null;
+		} else if (km[2]) {
+			key = km[3];
+		} else {
+			key = km[4];
+		}
+		let type = null;
+		const obj = balanced(body, valueStart, '{', '}');
+		if (obj) {
+			const tm = /(?:^|[,{])\s*type\s*:\s*['"]([^'"]+)['"]/.exec(obj);
+			if (tm) {
+				type = tm[1];
+			}
+		}
+		out.push({ key, type, constName });
+	}
+	return out;
+}
+
+/** 所有 registerConfiguration 块里真实注册的属性条目（附文件与节点 id）。 */
+const registeredProps = [];
+for (const b of configBlocks) {
+	for (const p of parseRegisteredProperties(b.body)) {
+		registeredProps.push({ file: b.file, id: b.id, key: p.key, type: p.type, constName: p.constName });
+	}
+}
+
 for (const key of OLYMPIA_KEYS) {
-	check(`F${OLYMPIA_KEYS.indexOf(key) + 1}`, `配置键 '${key}' 已注册（${scopeDesc}）`, () => {
+	check(`F${OLYMPIA_KEYS.indexOf(key) + 1}`, `配置键 '${key}' 已注册为配置属性（${scopeDesc}）`, () => {
 		if (!registrationScope.length) return `${OLYMPIA_BROWSER_DIR} 下没有任何 .ts 文件`;
-		const hit = configBlocks.some(b => b.body.includes(`'${key}'`) || b.body.includes(`"${key}"`));
-		if (!hit) return `没有任何 registerConfiguration 块注册 '${key}'`;
+		const hits = registeredProps.filter(p => p.key === key);
+		if (!hits.length) {
+			const unresolved = [...new Set(registeredProps.filter(p => !p.key && p.constName).map(p => p.constName))];
+			const extra = unresolved.length ? `（未解析的计算属性名：${unresolved.join('，')}）` : '';
+			return `没有任何 registerConfiguration 块把 '${key}' 注册成属性${extra}`;
+		}
 		return null;
 	});
 }
 
 check('F3', `olympia.startPage* 所在配置节点 id 是 'olympia'（不能是 'workbench'）`, () => {
 	if (!registrationScope.length) return `${OLYMPIA_BROWSER_DIR} 下没有任何 .ts 文件`;
-	const owners = configBlocks.filter(b => OLYMPIA_KEYS.some(k => b.body.includes(`'${k}'`) || b.body.includes(`"${k}"`)));
-	if (!owners.length) return `没有承载 olympia.startPage* 的 registerConfiguration 块，无法判定节点 id（${scopeDesc}）`;
-	const bad = owners.filter(b => b.id !== 'olympia');
+	const owners = registeredProps.filter(p => p.key && OLYMPIA_KEYS.includes(p.key));
+	if (!owners.length) return `没有承载 olympia.startPage* 的属性条目，无法判定节点 id（${scopeDesc}）`;
+	const bad = owners.filter(p => p.id !== 'olympia');
 	if (bad.length) {
-		return `节点 id 应为 'olympia'，实际 ${bad.map(b => `${b.file} → '${b.id}'`).join('，')}；挂在 'workbench' 节点会覆盖上游同名属性定义`;
+		return `节点 id 应为 'olympia'，实际 ${bad.map(p => `${p.file} → '${p.id}'`).join('，')}；挂在 'workbench' 节点会覆盖上游同名属性定义`;
+	}
+	return null;
+});
+
+check('F4', `注册的属性键必须能被静态解析（计算属性名的常量必须找得到）`, () => {
+	// 还原不了的计算属性名 = 这条属性对静态断言完全不可见。
+	// 与其假装它不存在，不如直接判红：逼着配置键保持可静态核对。
+	const unresolved = registeredProps.filter(p => !p.key && p.constName);
+	if (unresolved.length) {
+		return `以下属性用了计算属性名，但常量表里找不到对应常量：${[...new Set(unresolved.map(p => `${p.constName}（${p.file}）`))].join('，')} —— 静态断言对这些键无能为力`;
 	}
 	return null;
 });
@@ -586,6 +842,7 @@ const F_ONB_BACKDROP = `${OLYMPIA_BROWSER_DIR}/olympiaOnboardingBackdrop.ts`;
 const F_ONB_CONFIG = `${OLYMPIA_BROWSER_DIR}/olympiaOnboardingConfig.ts`;
 const F_ONB_JUDGE = `${OLYMPIA_BROWSER_DIR}/olympiaJudgeTargets.ts`;
 const F_ONB_CSS = `${OLYMPIA_BROWSER_DIR}/media/olympiaOnboarding.css`;
+const F_ONB_READY = `${OLYMPIA_BROWSER_DIR}/olympiaWelcomeReady.ts`;
 
 check('H1', `引导 overlay 挂在 layoutService.getContainer(mainWindow)，不挂 document.body`, () => {
 	const t = load(F_ONB);
@@ -654,12 +911,18 @@ check('H5', `擦洞用 destination-out（在背景上擦穿），不是隐藏或
 	return null;
 });
 
-check('H6', `背景时钟只累加、永不重置（重置会让极光相位跳一下 = 断点）`, () => {
+check('H6', `背景时钟只增不减（重置会让极光相位跳一下 = 断点）`, () => {
 	const t = load(F_ONB);
 	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
-	if (!/this\.backdropTime\s*\+=/.test(t)) return `没有 backdropTime += ...`;
-	if (/this\.backdropTime\s*=\s*0\b/.test(t)) {
-		return `backdropTime 被重置为 0 —— 极光相位会跳一下`;
+	const assigns = findBackdropTimeAssignments(stripTsComments(t));
+	if (!assigns.length) return `没有找到 backdropTime 的赋值`;
+	for (const a of assigns) {
+		if (a.op === '--' || a.op === '-=') {
+			return `backdropTime 被递减（${a.op} ${a.rhs}）—— 背景时钟必须单调`;
+		}
+		if (a.op === '=' && !a.rhs.includes('this.backdropTime')) {
+			return `backdropTime 被重新赋值（= ${shorten(a.rhs, 80)}）—— 极光相位会跳一下`;
+		}
 	}
 	return null;
 });
@@ -787,19 +1050,30 @@ check('H12', `揭示几何按 W/√2 算圆空间角距（洞必须盖住画布�
 check('H13', `进入动画必须等 LifecyclePhase.Restored（否则擦洞时工作台还没渲染完 = 二次断点）`, () => {
 	const t = load(F_ONB);
 	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
-	if (!/LifecyclePhase\.Restored/.test(t)) {
-		return `没有 Restored 判定 —— 露出来的会是半成品工作台`;
+	// 必须落在**起跑闸门函数体**上，而不是「文件里某处出现过」。
+	//
+	// 踩过的坑：这句判定原先写在文件顶部的文档注释里（说明为什么要等 Restored），
+	// 而断言只扫全文 —— 于是把代码里那个判定删掉，断言照样绿。
+	// 现在锚在 maybeStartEnter() 的函数体上：注释进不来。
+	const m = /private\s+maybeStartEnter\s*\([^)]*\)\s*:\s*void\s*\{/.exec(t);
+	if (!m) return `未找到 maybeStartEnter()`;
+	const body = balanced(t, t.indexOf('{', m.index), '{', '}');
+	if (!body) return `maybeStartEnter() 的函数体无法配对解析`;
+	if (!/LifecyclePhase\.Restored/.test(body)) {
+		return `起跑闸门里没有 Restored 判定 —— 露出来的会是半成品工作台`;
 	}
 	return null;
 });
 
-check('H14', `等恢复有上限（不会永久卡住）`, () => {
+check('H14', `等「工作台恢复 + 开始页就位」有硬上限（不会永久卡住）`, () => {
 	const t = load(F_ONB);
 	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
-	const m = /RESTORE_WAIT_LIMIT\s*=\s*([0-9.]+)/.exec(t);
-	if (!m) return `未找到 RESTORE_WAIT_LIMIT`;
+	const m = /ENTER_GATE_WAIT_LIMIT\s*=\s*([0-9.]+)/.exec(t);
+	if (!m) return `未找到 ENTER_GATE_WAIT_LIMIT`;
 	const v = Number(m[1]);
-	if (!(v > 0 && v <= 5)) return `兜底 ${v}s 不合理（应在 0~5 秒之间）`;
+	// 硬上限的作用是「万一工作台真的卡住了，别把用户永远吊在引导里」。
+	// 它不能太短 —— 短了就等于「到点就擦洞」，擦出来的是半成品工作台，那本身就是断点。
+	if (!(v >= 5 && v <= 30)) return `硬上限 ${v}s 不合理（应在 5~30 秒之间）`;
 	return null;
 });
 
@@ -1098,6 +1372,353 @@ check('H29', `卡片层的本地状态要跟着写入走：pendingWrites 是「�
 });
 
 // ===========================================================================
+// H30~H36：本轮（T-024）新增的「无断点」硬约束
+//
+// 这一批来自 Qoder 对 core 引导实现的静态审计（T-023）与随后的实机验证：
+//   - 配置一变就整片重建卡片行区 → 用户手指下的按钮被换掉（硬切）
+//   - 首帧之前切卡 → 补间起点是 0 → 卡片瞬移
+//   - 只等 LifecyclePhase.Restored 不够 → 上游 openEditor 不 await，
+//     开始页比 Restored 晚到，洞擦开时露出来的是空编辑器区
+//   - 配置写入失败被静默吞掉、且重试跟着 overlay 一起消失 → 用户的选择存不下来
+//   - `olympia.startPage.showIntroAnimation` 的父键 `olympia.startPage` 是布尔
+//     → 子键写不进去，那个开关从来没生效过
+// ===========================================================================
+
+check('H30', `配置变化不得整片重建卡片行区（会把用户正按着的按钮换掉 = 硬切）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const rm = /(?:private\s+|public\s+|protected\s+)?refresh\s*\(\s*\)\s*:\s*void\s*\{/.exec(code);
+	if (!rm) return `未找到 refresh()`;
+	const rbody = balanced(code, code.indexOf('{', rm.index), '{', '}');
+	if (!rbody) return `refresh() 的函数体无法配对解析`;
+	if (/bodyElements\[[^\]]*\]\s*\.replaceChildren/.test(rbody)) {
+		return `refresh() 仍在整片重建行区 —— 配置一变就把 4 张卡的 DOM 全换掉，用户手指下的按钮会被换掉`;
+	}
+	if (/footerElements\[[^\]]*\]\s*\.replaceChildren/.test(rbody)) {
+		return `refresh() 仍在重建页脚 —— 页脚只跟卡片序号有关，重建它只会换掉用户正按着的 CTA`;
+	}
+	if (/\brebuildRows\s*\(/.test(rbody)) {
+		return `refresh() 直接调用 rebuildRows() —— 配置一变就把 4 张卡的 DOM 全换掉，用户手指下的按钮会被换掉`;
+	}
+	if (!/rowsSignature/.test(code)) return `没有结构签名（rowsSignature）—— 每次刷新都会重建 DOM`;
+	if (!/updateRowState/.test(code)) return `没有就地更新状态的路径（updateRowState）—— 选中态/开关状态只能靠重建来刷`;
+
+	// 结构/状态两层分离必须在 updateRows 里真的成立：
+	// 先比结构签名，**变了**才重建；没变就地刷状态。
+	const um = /private\s+updateRows\s*\([^)]*\)\s*:\s*void\s*\{/.exec(code);
+	if (!um) return `未找到 updateRows()`;
+	const ubody = balanced(code, code.indexOf('{', um.index), '{', '}');
+	if (!ubody) return `updateRows() 的函数体无法配对解析`;
+	if (!/rowSignatures\s*\[[^\]]*\]\s*!==\s*signature/.test(ubody)) {
+		return `updateRows() 没有比较结构签名 —— 每次刷新都会重建 DOM`;
+	}
+	if (!/\brebuildRows\s*\(/.test(ubody)) {
+		return `updateRows() 里没有重建分支 —— 结构真变了也不会更新`;
+	}
+	if (!/\bupdateRowState\s*\(/.test(ubody)) {
+		return `updateRows() 没有就地更新状态的路径 —— 选中态/开关状态只能靠重建来刷`;
+	}
+	return null;
+});
+
+check('H31', `起跑闸门必须同时要求「工作台已恢复」和「开始页已就位」`, () => {
+	const t = load(F_ONB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const ready = load(F_ONB_READY);
+	if (ready === null) return `文件不存在（见上面的 MISSING ${F_ONB_READY}）`;
+	const code = stripTsComments(t);
+	const m = /private\s+maybeStartEnter\s*\([^)]*\)\s*:\s*void\s*\{/.exec(code);
+	if (!m) return `未找到 maybeStartEnter()`;
+	const body = balanced(code, code.indexOf('{', m.index), '{', '}');
+	if (!body) return `maybeStartEnter() 的函数体无法配对解析`;
+	if (!/LifecyclePhase\.Restored/.test(body)) {
+		return `maybeStartEnter() 没有要求 LifecyclePhase.Restored —— 洞擦开时工作台可能还没成形`;
+	}
+	if (!/olympiaWelcomeReady\.isReady/.test(body)) {
+		return `maybeStartEnter() 没有要求「开始页已就位」—— 上游 openEditor 不 await，Restored 会先到、开始页后到，洞擦开就是空编辑器区`;
+	}
+	return null;
+});
+
+check('H32', `startupPage 打开开始页必须 await，并把「已就位」信号发出来`, () => {
+	const t = load(F_STARTUP);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_STARTUP}）`;
+	const code = stripTsComments(t);
+	if (!/olympiaWelcomeReady\.markOpening\s*\(\s*\)/.test(code)) {
+		return `startupPage 没有发 markOpening() —— 引导侧不知道开始页正在打开`;
+	}
+	if (!/olympiaWelcomeReady\.markReady\s*\(\s*\)/.test(code)) {
+		return `startupPage 没有发 markReady() —— 开始页打开完后，引导侧会一直等`;
+	}
+	const m = /private\s+async\s+openOlympia\w*\s*\(\s*\)\s*\{/.exec(code);
+	if (!m) return `未找到 openOlympia* 的异步打开方法`;
+	const body = balanced(code, code.indexOf('{', m.index), '{', '}');
+	if (!body) return `openOlympia* 的函数体无法配对解析`;
+	if (!/await\s+this\.editorService\.openEditor/.test(body)) {
+		return `openEditor 没有被 await —— 信号会早于开始页真正画出来的时刻`;
+	}
+	return null;
+});
+
+check('H33', `配置写入失败不能静默吞掉；重试也不能随 overlay 消失而取消`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const m = /private\s+async\s+flushPendingWrites\s*\(\s*\)\s*:\s*Promise<void>\s*\{/.exec(code);
+	if (!m) return `未找到 flushPendingWrites()`;
+	const body = balanced(code, code.indexOf('{', m.index), '{', '}');
+	if (!body) return `flushPendingWrites() 的函数体无法配对解析`;
+	const catchM = /catch\s*(\([^)]*\))?\s*\{/.exec(body);
+	if (!catchM) return `flushPendingWrites() 没有 catch —— 写入失败会把整条链掐断`;
+	const catchBody = balanced(body, body.indexOf('{', catchM.index), '{', '}');
+	if (!catchBody) return `flushPendingWrites() 的 catch 块无法配对解析`;
+	// 判据落在**catch 块**里，而且要求的是 `console.warn`（单次失败的留痕）。
+	//
+	// 之前这里判的是「函数体里有 warn 或 error 就行」—— 太松了：
+	// 额度耗尽分支里的 `console.error` 会把它喂饱，于是把 catch 里的
+	// `console.warn` 降级成 `console.log`（等于静默吞掉）它照样绿。
+	// 单次失败用 warn、额度耗尽用 error，两条各归各的断言（H33 / T5）。
+	if (!/console\.warn/.test(catchBody)) {
+		return `写入失败的 catch 块里没有 console.warn 留痕 —— 用户点了「开始」发现设置没变，而我们连原因都不知道`;
+	}
+	if (!/scheduleFlushRetry/.test(body)) {
+		return `写入失败后没有安排重试 —— 内置扩展注册完之前的选择会永远存不下来`;
+	}
+	if (/disposables\.push\([^)]*flushRetryTimer/.test(code)) {
+		return `重试定时器被放进了 disposables —— overlay 一消失重试就停了，用户的选择会丢`;
+	}
+	return null;
+});
+
+check('H34', `同一配置节点下不得出现「标量父键 + 子键」（父节点是标量时子键写不进去）`, () => {
+	// 上游 configuration.ts 的 addToValueTree：父节点一旦是标量，子键会被直接忽略，
+	// 控制台刷 `Ignoring X as Y is true`，而且那个开关**从来没生效过**。
+	//
+	// 比的是**真实注册的属性键**（计算属性名已还原成字面量）+ 父键声明的类型，
+	// 不是 localize 的 key —— 后者只是碰巧长得一样，扫它等于没查。
+	const SCALAR = new Set(['boolean', 'string', 'number', 'integer', 'enum', 'array']);
+	const byNode = new Map();
+	for (const p of registeredProps) {
+		if (!p.key) {
+			continue;
+		}
+		if (!byNode.has(p.id)) {
+			byNode.set(p.id, []);
+		}
+		byNode.get(p.id).push(p);
+	}
+	for (const [nodeId, props] of byNode) {
+		for (const parent of props) {
+			if (!parent.type || !SCALAR.has(parent.type)) {
+				continue;   // 父节点是对象（或没声明类型）时容得下子键
+			}
+			for (const child of props) {
+				if (child === parent || !child.key) {
+					continue;
+				}
+				if (child.key.startsWith(parent.key + '.')) {
+					return `节点 '${nodeId}' 下 '${child.key}' 是 '${parent.key}' 的子键，而 '${parent.key}' 声明的类型是 '${parent.type}'（标量）—— 父节点一旦是标量，子键会被直接忽略（控制台报 Ignoring ... as ... is ...），那个开关等于没有`;
+				}
+			}
+		}
+	}
+	return null;
+});
+
+check('H35', `首帧之前就切卡时不得起补间（起点是 0 会让进度一步冲到 1，卡片瞬移）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const m = /goto\s*\(\s*index\s*:\s*number\s*\)\s*:\s*void\s*\{/.exec(code);
+	if (!m) return `未找到 goto(index)`;
+	const body = balanced(code, code.indexOf('{', m.index), '{', '}');
+	if (!body) return `goto() 的函数体无法配对解析`;
+	// 判据是**语义**的：哨兵必须落在 rAF 合法域（非负）之外，且比较方向正确。
+	// 写死 `=== 0` 是不行的 —— 那等于把「0 永不出现」这个赌注钉死在代码里。
+	const sentinelProblem = checkSentinel(code, 'lastFrameTime', body);
+	if (sentinelProblem) {
+		return sentinelProblem;
+	}
+	if (!/tween\s*=\s*null/.test(body)) {
+		return `goto() 的首帧分支没有清掉补间 —— 补间仍会从哨兵时刻起算`;
+	}
+	return null;
+});
+
+check('H36', `背景时钟必须单调且永不重置（进入动画期间极光要一直在流动）`, () => {
+	// 裁决记录：背景是**连续流动层**，不参与时间线的重放，所以允许由真实时长驱动；
+	// 但它一旦被重置，进入动画期间极光会「重新开始」，那是一次肉眼可见的跳变。
+	//
+	// 判据是**语义**的，不是「必须写成 +=」：
+	//   this.backdropTime += delta              → 单调，OK
+	//   this.backdropTime = this.backdropTime + delta → 同样单调，OK
+	//   this.backdropTime = 0 / = elapsed       → 重置，红
+	const t = load(F_ONB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const assigns = findBackdropTimeAssignments(stripTsComments(t));
+	if (!assigns.length) return `没有找到 backdropTime 的赋值`;
+	for (const a of assigns) {
+		if (a.op === '++') {
+			continue;
+		}
+		if (a.op === '--' || a.op === '-=') {
+			return `backdropTime 被递减（${a.op} ${a.rhs}）—— 背景时钟必须单调`;
+		}
+		if (a.op === '+=') {
+			continue;
+		}
+		if (!a.rhs.includes('this.backdropTime')) {
+			return `backdropTime 被重新赋值（= ${shorten(a.rhs, 80)}）—— 背景时钟一旦被重置就是一次肉眼可见的跳变`;
+		}
+	}
+	return null;
+});
+
+// ===========================================================================
+// T. 本轮（T-024 审计后）新增的不变量
+//
+// 这一组每一条都对应一个**真实存在的缺陷**，不是「理论上不好」：
+//   T1 等待期摘掉退路   —— 用户点了「开始」，闸门没过，期间「跳过」和翻页全被
+//                          CSS 关掉，只剩一颗药丸；出了岔子连退路都没有。
+//   T2 打开失败报成就位 —— `finally { markReady() }` 不看结果，打开失败也被报成
+//                          「已就位」，于是擦开一个洞，洞里是空的。
+//   T3 失败态没有退路   —— 开始页永远不会有时，还去擦洞，露出来的是空编辑器区。
+//   T4 派生值行滞留     —— 值行由别的配置项派生，只刷预览块的话预览新、卡片旧。
+//   T5 静默丢设置       —— 重试额度耗尽直接 return，用户的选择无声消失。
+//   T6 时间戳哨兵       —— 拿 rAF 合法域里的 0 当「未设置」，等于赌它永不出现。
+// ===========================================================================
+
+/** 取出一个具名函数（或方法）的函数体文本。 */
+function methodBody(code, signature) {
+	const m = signature.exec(code);
+	if (!m) {
+		return null;
+	}
+	return balanced(code, code.indexOf('{', m.index), '{', '}');
+}
+
+check('T1', `等待期必须保留退路：chrome 只能在闸门放行的那一帧才让位给星光`, () => {
+	const t = load(F_ONB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const code = stripTsComments(t);
+	const requestBody = methodBody(code, /requestEnter\s*\(\s*\)\s*:\s*void\s*\{/);
+	if (!requestBody) return `未找到 requestEnter()`;
+	const gateBody = methodBody(code, /maybeStartEnter\s*\(\s*timestamp\s*:\s*number\s*\)\s*:\s*void\s*\{/);
+	if (!gateBody) return `未找到 maybeStartEnter()`;
+	if (requestBody.includes('olympia-onboarding-entering')) {
+		return `requestEnter() 里就摘掉了 chrome —— 闸门还没放行，用户就只剩一颗药丸：「跳过」和翻页全都没了，等待期间连退路都没有`;
+	}
+	if (!gateBody.includes('olympia-onboarding-entering')) {
+		return `闸门放行时没有摘掉 chrome —— 星光起来时品牌/跳过/圆点/翻页/提示还杵在画面上`;
+	}
+	return null;
+});
+
+check('T2', `开始页打开失败必须单独报出来，不能被报成「已就位」`, () => {
+	const ready = load(F_ONB_READY);
+	if (ready === null) return `文件不存在（见上面的 MISSING ${F_ONB_READY}）`;
+	const readyCode = stripTsComments(ready);
+	if (!/markFailed\s*\(\s*\)\s*:\s*void/.test(readyCode)) {
+		return `olympiaWelcomeReady 没有 markFailed() —— 打开失败无法和「已就位」区分开`;
+	}
+	if (!/get\s+isFailed\s*\(\s*\)\s*:\s*boolean/.test(readyCode)) {
+		return `olympiaWelcomeReady 没有 isFailed —— 引导侧无从知道开始页永远不会出现`;
+	}
+	const st = load(F_STARTUP);
+	if (st === null) return `文件不存在（见上面的 MISSING ${F_STARTUP}）`;
+	const stCode = stripTsComments(st);
+	const fin = /finally\s*\{/.exec(stCode);
+	if (fin) {
+		const finBody = balanced(stCode, stCode.indexOf('{', fin.index), '{', '}');
+		if (finBody && /markReady\s*\(/.test(finBody)) {
+			return `startupPage 在 finally 里调 markReady() —— finally 不看结果，打开失败也会被报成「已就位」`;
+		}
+	}
+	if (!/catch\s*\(/.test(stCode) || !/markFailed\s*\(/.test(stCode)) {
+		return `startupPage 没有把打开失败 catch 住并报成 markFailed()`;
+	}
+	return null;
+});
+
+check('T3', `开始页永远不会出现时必须改走「不擦洞」的收场`, () => {
+	const t = load(F_ONB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const code = stripTsComments(t);
+	if (!/olympiaWelcomeReady\.isFailed/.test(code)) {
+		return `引导侧没有判 isFailed —— 开始页打不开时仍会擦洞，洞里只能是空的编辑器区`;
+	}
+	const abortBody = methodBody(code, /abortEnter\s*\(\s*\)\s*:\s*void\s*\{/);
+	if (!abortBody) return `未找到 abortEnter() —— 失败时没有「不擦洞」的退路`;
+	if (!/olympia-onboarding-fading/.test(abortBody)) {
+		return `abortEnter() 没有走淡出收场 —— 直接删掉整层极光是硬切，那也是断点`;
+	}
+	const css = load(F_ONB_CSS);
+	if (css === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	if (!/\.olympia-onboarding-fading\s*\{/.test(stripComments(css))) {
+		return `CSS 里没有 .olympia-onboarding-fading 规则 —— 收场淡出没有样式支撑`;
+	}
+	return null;
+});
+
+check('T4', `值行可能由别的配置项派生：点击后必须刷新整卡，不能只刷预览块`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	for (const [label, sig] of [
+		['选项 chip', /chip\.addEventListener\(\s*'click'/],
+		['开关 toggle', /toggle\.addEventListener\(\s*'click'/],
+	]) {
+		const body = methodBody(code, sig);
+		if (!body) return `未找到 ${label} 的点击处理器`;
+		if (!/this\.refresh\s*\(/.test(body)) {
+			return `${label} 的点击处理器没有调 refresh() —— 只刷预览块的话，派生出来的值行会停在旧文本上（预览新、卡片旧），直到扩展注册完触发配置事件才跳变`;
+		}
+	}
+	return null;
+});
+
+check('T5', `写入重试的额度必须按键独立算，耗尽时必须明确留痕`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	if (/flushRetryCount|flushFailureCount/.test(code)) {
+		return `还有全局重试计数（flushRetryCount / flushFailureCount）—— 一个永远写不进去的键会带着别的键一起把额度耗光，而它自己失败多少次全被别的键的成功掩盖`;
+	}
+	if (!/pendingWriteAttempts/.test(code)) {
+		return `没有按键计数的重试额度（pendingWriteAttempts）`;
+	}
+	const flushBody = methodBody(code, /flushPendingWrites\s*\(\s*\)\s*:\s*Promise<void>\s*\{/);
+	if (!flushBody) return `未找到 flushPendingWrites()`;
+	if (!/console\.error\s*\(/.test(flushBody)) {
+		return `重试额度耗尽时没有 console.error —— 用户的选择会无声消失，控制台外没有任何痕迹`;
+	}
+	return null;
+});
+
+check('T6', `时间戳哨兵必须落在 rAF 合法域（非负）之外`, () => {
+	const onb = load(F_ONB);
+	if (onb === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const onbCode = stripTsComments(onb);
+	const gateBody = methodBody(onbCode, /maybeStartEnter\s*\(\s*timestamp\s*:\s*number\s*\)\s*:\s*void\s*\{/);
+	if (!gateBody) return `未找到 maybeStartEnter()`;
+	const onbProblem = checkSentinel(onbCode, 'enterRequestedAt', gateBody);
+	if (onbProblem) {
+		return onbProblem;
+	}
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const cardsCode = stripTsComments(cards);
+	const gotoBody = methodBody(cardsCode, /goto\s*\(\s*index\s*:\s*number\s*\)\s*:\s*void\s*\{/);
+	if (!gotoBody) return `未找到 goto()`;
+	const cardsProblem = checkSentinel(cardsCode, 'lastFrameTime', gotoBody);
+	if (cardsProblem) {
+		return cardsProblem;
+	}
+	return null;
+});
+
+// ===========================================================================
 // Z. 断言编号唯一
 //
 // 踩过的坑：新增一条断言时顺手用了已被占用的编号（D3），输出里出现两条 D3，
@@ -1112,6 +1733,118 @@ check('Z1', `断言编号唯一`, () => {
 		else seen.add(r.id);
 	}
 	if (dup.length) return `编号重复：${[...new Set(dup)].join(', ')}`;
+	return null;
+});
+
+// ===========================================================================
+// Z2. 断言脚本的自我约束
+//
+// 「拿含注释的原文做模式测试」是本脚本最大的假绿来源，已经咬过两次
+// （H2、H13）。做法是把这件事**在读取层**堵死：`load()` 默认剥注释，
+// 只有极少数地方需要原文，走 `loadRaw()`。
+//
+// 那条路不能封死 —— 版权头检查就必须看原文（版权头本身就是块注释）。
+// 所以要求：每次用 loadRaw 都得在旁边写清楚为什么。
+//
+// 这条断言就是来盯这个标记的 —— 免得「大家都这么写」变成「谁都不写」。
+// ===========================================================================
+check('Z2', `断言里用到 loadRaw 的地方必须带 raw-ok 理由标记`, () => {
+	// 找**代码里**的调用点：先剥掉本脚本自己的注释，再找。
+	// 注释里提到 loadRaw（比如「需要原文时用 loadRaw()」）不算调用点。
+	let self = '';
+	try {
+		self = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
+	} catch {
+		return `读不到本脚本自身源码 —— 无法自检`;
+	}
+	const rawLines = self.split(/\r?\n/);
+	const codeLines = stripTsComments(self).split(/\r?\n/);
+	if (codeLines.length !== rawLines.length) {
+		return `剥注释后行数对不上（${codeLines.length} vs ${rawLines.length}）—— 自检本身不可靠`;
+	}
+	const bad = [];
+	for (let i = 0; i < codeLines.length; i++) {
+		if (!/\bloadRaw\s*\(/.test(codeLines[i])) {
+			continue;
+		}
+		if (/^\s*(?:async\s+)?function\s+loadRaw\b/.test(codeLines[i])) {
+			continue;   // 函数定义本身
+		}
+		const ctx = rawLines.slice(Math.max(0, i - 8), i + 1).join('\n');
+		if (!/raw-ok\s*:/.test(ctx)) {
+			bad.push(`第 ${i + 1} 行：${shorten(codeLines[i].trim(), 100)}`);
+		}
+	}
+	if (bad.length) {
+		return `以下 loadRaw 调用没有登记理由：${bad.join('；')} —— 拿含注释的原文做模式测试很容易被文档注释骗过（H13 就是这么假绿的）`;
+	}
+	return null;
+});
+
+// ===========================================================================
+// Z3. 词法器自检
+//
+// stripTsComments 是所有断言的地基。它一旦飘移，后面每一条断言都会「扫不到
+// 任何东西」—— 那不是断言通过，是断言瞎了。
+//
+// 已知它咬过两次：
+//   - 被字符串字面量里的斜杠星号骗（吃掉 7578 字符真实代码）；
+//   - 被正则字面量里的引号骗（`(['"])` 里的单引号被当成字符串开头，后面几百行
+//     全被当成字符串，断言扫了个空）。
+//
+// 所以这里把这两类坑各钉成一条自检 —— 词法器自己坏了要立刻红，而不是让别的
+// 断言替它背锅。
+// ===========================================================================
+check('Z3', `stripTsComments 的词法器自检（字符串 / 正则 / 注释三类都不能带偏它）`, () => {
+	const cases = [
+		{
+			name: '正则字面量里的引号不能被当成字符串开头',
+			in: "const keyRe = /(?:['\"])(x)\\2/g;\n// 行注释\nconst y = 1;",
+			mustKeep: ["const keyRe = /(?:['\"])(x)\\2/g;", 'const y = 1;'],
+			mustDrop: ['行注释'],
+		},
+		{
+			name: '字符串字面量里的斜杠星号不是注释',
+			in: "const s = '/*';\nconst t = 1;",
+			mustKeep: ["const s = '/*';", 'const t = 1;'],
+			mustDrop: [],
+		},
+		{
+			name: '除法不是正则字面量',
+			in: 'const v = a / b / c;\nconst w = 2;',
+			mustKeep: ['const v = a / b / c;', 'const w = 2;'],
+			mustDrop: [],
+		},
+		{
+			name: '块注释被剥掉但行号保留',
+			in: 'const a = 1;\n/* 块\n注释 */\nconst b = 2;',
+			mustKeep: ['const a = 1;', 'const b = 2;'],
+			mustDrop: ['块'],
+			mustKeepLines: 4,
+		},
+		{
+			name: '模板字符串里的反引号不闭合词法器',
+			in: 'const m = `a ${1 + 2} b`;\nconst n = 3;',
+			mustKeep: ['const m = `a ${1 + 2} b`;', 'const n = 3;'],
+			mustDrop: [],
+		},
+	];
+	for (const c of cases) {
+		const out = stripTsComments(c.in);
+		for (const keep of c.mustKeep) {
+			if (!out.includes(keep)) {
+				return `用例「${c.name}」：剥完之后丢了「${shorten(keep, 80)}」`;
+			}
+		}
+		for (const drop of c.mustDrop) {
+			if (out.includes(drop)) {
+				return `用例「${c.name}」：剥完之后仍然留着「${shorten(drop, 80)}」`;
+			}
+		}
+		if (typeof c.mustKeepLines === 'number' && out.split('\n').length !== c.mustKeepLines) {
+			return `用例「${c.name}」：行数从 ${c.in.split('\n').length} 变成了 ${out.split('\n').length} —— 行号对不上源码，报错会指错地方`;
+		}
+	}
 	return null;
 });
 

@@ -31,6 +31,26 @@ function newest(dir, exts) {
 }
 
 /**
+ * 结构化比较两个 JSON 值。数组按顺序比（贡献点数组的顺序有意义）。
+ */
+function deepEqual(a, b) {
+	if (a === b) { return true; }
+	if (typeof a !== typeof b) { return false; }
+	if (a === null || b === null) { return false; }
+	if (Array.isArray(a) || Array.isArray(b)) {
+		if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) { return false; }
+		return a.every((v, i) => deepEqual(v, b[i]));
+	}
+	if (typeof a === 'object') {
+		const ka = Object.keys(a).sort();
+		const kb = Object.keys(b).sort();
+		if (ka.length !== kb.length || ka.some((k, i) => k !== kb[i])) { return false; }
+		return ka.every(k => deepEqual(a[k], b[k]));
+	}
+	return false;
+}
+
+/**
  * 每个扩展挑一条“只有当前源码才会写出来”的字符串。它同时是本脚本的自检：
  * 谁把这几处改掉，这里就得跟着改，否则会红——而不是悄悄放行。
  * 扩展的 out/ 不做中文转义（`oss/out` 那套 workbench 包才会写成 \uXXXX），所以中文可以直接当线索。
@@ -50,6 +70,41 @@ for (const name of ['olympia-coach', 'olympia-contest', 'olympia-onboarding']) {
 	if (srcNewest > treeNewest) {
 		problems.push(`${name}：源码最新 ${new Date(srcNewest).toLocaleString('sv-SE')} 比产物最新 ${new Date(treeNewest).toLocaleString('sv-SE')} 新——`
 			+ `产物里是上一次的编译。先在 oss/extensions/${name} 跑 npm run compile，再重出包。`);
+	}
+	// package.json 也得比一比 —— 而且要比**语义**，不能比字节、也不能比 mtime。
+	//
+	// 上面那条只比 `src/**/*.ts` 与 `out/**/*.js`，漏掉了**贡献点**：
+	// package.json 里的 commands / menus / configuration 不经过 tsc，
+	// 它是原样拷进产物的（只是被压成单行）。改了它而只重编 .ts，
+	// 产物里的贡献点就是旧的。
+	//
+	// 实测踩到（2026-10-23）：olympia-contest 的 package.json 补了
+	// `olympia.problem.receiveHandoff` 的命令声明，源码里已修好控制台报错，
+	// 但出包用了 `-SkipExtensions`（复用 .build/extensions），产物里的
+	// package.json 还是前一天的 ⇒ 真机跑起来控制台照样报那条错。
+	// 而上面那条新鲜度检查当时是「ok」的 —— 因为 .ts 一行没改。
+	//
+	// 比 mtime 也不行：打包会把文件**拷贝**一遍，拷完 mtime 就是「现在」，
+	// 但内容可能是旧的（实测正是如此：产物 mtime 比源码新，内容却缺那条命令）。
+	// 比字节也不行：构建会把 manifest 压成单行 JSON，格式本来就不同。
+	// 所以这里解析成对象再比 —— 只有贡献点真的不一样才算问题。
+	const srcManifest = path.join(extSrcRoot, name, 'package.json');
+	const treeManifest = path.join(dist, 'resources', 'app', 'extensions', name, 'package.json');
+	if (!fs.existsSync(treeManifest)) {
+		problems.push(`${name}：产品目录里没有 ${treeManifest}`);
+	} else if (fs.existsSync(srcManifest)) {
+		let srcJson, treeJson;
+		try {
+			srcJson = JSON.parse(fs.readFileSync(srcManifest, 'utf8'));
+			treeJson = JSON.parse(fs.readFileSync(treeManifest, 'utf8'));
+		} catch (e) {
+			problems.push(`${name}：package.json 解析失败 —— ${e.message}`);
+			continue;
+		}
+		if (!deepEqual(srcJson, treeJson)) {
+			problems.push(`${name}：产物里的 package.json 与源码不一致 —— `
+				+ `产物里的贡献点（命令 / 菜单 / 配置）是旧的。重新出包时不要带 -SkipExtensions。`);
+		}
 	}
 	// 只比时间还不够：拷过去但内容没变也是同一件事。coach 那次两个字节数一模一样，
 	// 所以再挑一条“只有新版才有”的线索，直接读产物确认改动真在里面。

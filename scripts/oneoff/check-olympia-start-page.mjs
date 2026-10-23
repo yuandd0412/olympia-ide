@@ -3327,21 +3327,39 @@ check('T51', `星光必须压住开洞：晚批粒子的起飞时刻要落在开
 // 静态断言只钉**结构**；像素级结论由真机门 verify-onboarding-geometry.mjs 量。
 // ===========================================================================
 
-/** 取出 CSS 里所有 `@media (max-height: Npx)` 块。 */
+/**
+ * 取出 CSS 里所有 `@media (max-height: Npx)` 块。
+ *
+ * 为什么不能只写一条正则（2026-10-23，ZCode / GLM-5.3-Flash 的 T-035 审计揪出来的）：
+ * 原来那条 `/@media\s*\(\s*max-height\s*:\s*(\d+(?:\.\d+)?)px\s*\)/g` 只认
+ * 「`@media` 紧跟一个只含 max-height 的括号」这一种写法，于是
+ *   · `@media screen and (max-height: 400px)` → 漏检
+ *   · `@media (MAX-HEIGHT: 400px)`            → 漏检（大小写敏感）
+ *   · `@media (max-height: 400PX)`            → 漏检（单位大小写敏感）
+ * 漏检的后果不是报红，而是**整套紧凑档断言（T57 / T69~T75）静默失效**：
+ * 以后有人加一档紧凑模式，所有断言照样全绿，真机行为却已经变了 —— 典型的假绿。
+ * 现在改成：先按 `@media` 切出条件文本，再在条件里找 max-height 阈值。
+ * 非 max-height 的媒体块（prefers-* / max-width …）不参与紧凑档断言，直接跳过。
+ */
 function cssMaxHeightMediaBlocks(css) {
 	const out = [];
-	const re = /@media\s*\(\s*max-height\s*:\s*(\d+(?:\.\d+)?)px\s*\)/g;
+	const re = /@media\b/gi;
 	let m;
 	while ((m = re.exec(css))) {
 		const braceIdx = css.indexOf('{', m.index + m[0].length);
 		if (braceIdx < 0) {
 			continue;
 		}
+		const cond = css.slice(m.index + m[0].length, braceIdx);
+		const th = /\bmax-height\s*:\s*(\d+(?:\.\d+)?)px\b/i.exec(cond);
+		if (!th) {
+			continue;
+		}
 		const body = balanced(css, braceIdx, '{', '}');
 		if (body === null) {
 			continue;
 		}
-		out.push({ maxHeight: Number(m[1]), body });
+		out.push({ maxHeight: Number(th[1]), body });
 	}
 	return out;
 }
@@ -4025,6 +4043,46 @@ check('T75', `紧凑档的断点不许低于产品允许的最小窗高 270px（
 	return null;
 });
 
+check('T82', `所有含 max-height 的 @media 块都必须被紧凑档提取器认出来（认不出来 = 整套紧凑档断言静默失效）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const css = stripComments(raw);
+	const blocks = cssMaxHeightMediaBlocks(css);
+	// 独立统计：有多少个 @media 块的条件里写了 max-height。
+	// 这一侧只做「条件文本里有没有 max-height」的字面判断，**不解析阈值** ——
+	// 解析阈值的那一侧在提取器里，两边口径不同才有意义：差出来的数量
+	// 正是「提取器认不出来、于是对断言完全不可见」的档。
+	const condRe = /@media\b/gi;
+	const conds = [];
+	let m;
+	while ((m = condRe.exec(css))) {
+		const b = css.indexOf('{', m.index + m[0].length);
+		if (b < 0) continue;
+		conds.push(css.slice(m.index + m[0].length, b));
+	}
+	const withMax = conds.filter(c => /max-height/i.test(c));
+	if (withMax.length !== blocks.length) {
+		return `CSS 里有 ${withMax.length} 个条件含 max-height 的 @media 块，提取器只认出 ${blocks.length} 个 —— 认不出来的那几档对 T57/T69~T75 完全不可见：加了紧凑档断言也照样全绿，而真机行为已经变了`;
+	}
+	// 内置写法探针：提取器必须认得这些等价写法，否则将来有人换写法就会静默漏检。
+	const probes = [
+		['@media (max-height: 400px){.a{color:red}}', 400],
+		['@media screen and (max-height: 400px){.a{color:red}}', 400],
+		['@media (MAX-HEIGHT: 400px){.a{color:red}}', 400],
+		['@media (max-height: 400PX){.a{color:red}}', 400]
+	];
+	for (const [sample, want] of probes) {
+		const got = cssMaxHeightMediaBlocks(sample);
+		if (got.length !== 1 || got[0].maxHeight !== want) {
+			return `提取器认不出写法 \`${sample.slice(0, 40)}…\`（期望阈值 ${want}，实得 ${got.map(b => b.maxHeight).join('/') || '无'}）—— 这种写法一旦出现在真 CSS 里，那一档对所有紧凑档断言都是隐形的`;
+		}
+	}
+	const skipped = cssMaxHeightMediaBlocks('@media (prefers-reduced-motion: reduce){.a{animation:none}}');
+	if (skipped.length !== 0) {
+		return `提取器把非 max-height 的媒体块也收进来了（${skipped.length} 个）—— 紧凑档断言会拿错档体的声明`;
+	}
+	return null;
+});
 // ===========================================================================
 // 汇总
 // ===========================================================================

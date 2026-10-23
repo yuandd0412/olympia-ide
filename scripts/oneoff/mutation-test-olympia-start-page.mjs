@@ -1187,6 +1187,38 @@ const MUTATIONS = [
 		file: OL + 'media/olympiaOnboarding.css',
 		mutate: t => t.replace('@media (max-height: 320px)', '@media (max-height: 500px)')
 	},
+	{
+		// 有牙：加一档**提取器认不出来**的紧凑模式。
+		//
+		// 用 rem 而不是「400 px」是有讲究的：
+		//   · `max-height: 400 px`（数字和单位之间有空格）在 CSS 里是**非法**的 ——
+		//     浏览器会直接丢掉这条声明，等于这个块根本不存在，模拟不出真实风险；
+		//   · `max-height: 26rem` 是**合法**的（媒体查询支持 em/rem 长度），
+		//     浏览器会照常应用它 —— 于是这一档在真机上真的生效，
+		//     而只认 px 的提取器对它**完全失明**：T57/T69~T75 照样全绿。
+		// 这正是 T82 要堵的洞：紧凑档必须用 px，否则它对断言隐形。
+		//
+		// 判定只看 T82 变红 —— T74/T75 仍绿（提取器看不到这一档，所以档位序列没变），
+		// 正好说明「别的断言看不出来，只有 T82 看出来了」。
+		id: 'M143', expect: 'T82',
+		desc: '新增一档用 rem 单位的紧凑模式（@media (max-height: 26rem)）—— 提取器只认 px，于是这一档对 T57/T69~T75 完全隐形',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace(
+			'@media (max-height: 320px) {',
+			'@media (max-height: 26rem) {\n\t.olympia-onboarding-card-body {\n\t\tpadding: 0;\n\t}\n}\n\n@media (max-height: 320px) {')
+	},
+	{
+		// 不误伤：把窄档换成**语义等价**的写法（多了 `screen and`），
+		// 提取器必须照样认出来 —— 否则「换个写法」就会让整套紧凑档断言集体失效。
+		//
+		// 这条同时是加固提取器的存在理由：老提取器只认 `@media (` 紧跟 max-height，
+		// 遇到 `@media screen and (...)` 会漏检 → T82 会红 → 逼着人把提取器修好。
+		id: 'M144',
+		expectGreen: ['T57', 'T69', 'T70', 'T71', 'T72', 'T73', 'T74', 'T75', 'T82'],
+		desc: '最窄档换成等价写法 @media screen and (max-height: 320px) —— 紧凑档断言判的是语义，不该因为换个写法就变红',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace('@media (max-height: 320px) {', '@media screen and (max-height: 320px) {')
+	},
 ];
 
 function buildTree(dest) {

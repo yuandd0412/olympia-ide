@@ -3315,8 +3315,418 @@ check('T51', `星光必须压住开洞：晚批粒子的起飞时刻要落在开
 });
 
 // ===========================================================================
+// T52~T60：卡片布局
+//
+// 这一批钉的是「卡片为什么对不上」。真机量出来的五处缺陷：
+//   F1 卡片不居中   —— content-box 让外框比轨道大 50×42，视觉中心右偏 25px、下偏 21px。
+//   F2 相邻卡贴死   —— TS 的 CARD_WIDTH 与 CSS 的轨道宽度上限必须一致（间隙 = 两者之差）。
+//   F3 最小窗裁切   —— 轨道必须用 min() 夹在视口内，且必须有矮窗口紧凑模式。
+//   F4 代码样例被裁 —— 代码盒子自己裁切 + 底部渐隐，光标落在还看得见的最后一行。
+//   F5 预览空盒     —— 预览面板是 flex 纵向列，内容撑满或在剩余空间里居中，不顶对齐。
+//
+// 静态断言只钉**结构**；像素级结论由真机门 verify-onboarding-geometry.mjs 量。
+// ===========================================================================
+
+/** 取出 CSS 里所有 `@media (max-height: Npx)` 块。 */
+function cssMaxHeightMediaBlocks(css) {
+	const out = [];
+	const re = /@media\s*\(\s*max-height\s*:\s*(\d+(?:\.\d+)?)px\s*\)/g;
+	let m;
+	while ((m = re.exec(css))) {
+		const braceIdx = css.indexOf('{', m.index + m[0].length);
+		if (braceIdx < 0) {
+			continue;
+		}
+		const body = balanced(css, braceIdx, '{', '}');
+		if (body === null) {
+			continue;
+		}
+		out.push({ maxHeight: Number(m[1]), body });
+	}
+	return out;
+}
+
+/**
+	* 取某个属性上的 min(...) 参数，按**顶层逗号**切分。
+	*
+	* 为什么不能直接正则 `min\(([\)]*)\)`：那个写法会在 calc() 的右括号处截断 ——
+	* `min(calc(100vw - 16px), 402px)` 会被读成「只有一个参数 calc(100vw - 16px」，
+	* 于是「上限是不是 402px」永远读不出来，参数顺序一换断言就误判。
+	* 参数顺序本来就不该影响语义（min(a, b) === min(b, a)）。
+	*
+	* 返回 null = 该属性不是 min() 形式。
+	*/
+function cssMinArgs(body, prop) {
+	const m = new RegExp(`(?:\|[;\\s])${prop}\\s*:\\s*min\\s*\\(`).exec(body);
+	if (!m) {
+		return null;
+	}
+	const openIdx = body.indexOf('(', m.index + m[0].length - 1);
+	const call = balanced(body, openIdx, '(', ')');
+	if (!call) {
+		return null;
+	}
+	const inner = call.slice(1, -1);
+	const args = [];
+	let depth = 0;
+	let cur = '';
+	for (const ch of inner) {
+		if (ch === '(') {
+			depth++;
+		} else if (ch === ')') {
+			depth--;
+		}
+		if (ch === ',' && depth === 0) {
+			args.push(cur);
+			cur = '';
+			continue;
+		}
+		cur += ch;
+	}
+	args.push(cur);
+	return args;
+}
+
+/**
+	* 取 min() 参数里「像固定像素上限」的那些值。
+	* calc() 里的数字不是上限（calc(100vw - 16px) 里的 16 是边距，不是卡宽）。
+	*/
+function cssMinPixelCaps(args) {
+	const caps = [];
+	for (const arg of args) {
+		if (/calc\s*\(/i.test(arg)) {
+			continue;
+		}
+		for (const mm of arg.matchAll(/(\d+(?:\\.\d+)?)px/g)) {
+			caps.push(Number(mm[1]));
+		}
+	}
+	return caps;
+}
+
+check('T52', `卡片必须用 border-box（否则外框比轨道大 50×42，视觉中心就偏了）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const body = cssRule(stripComments(raw), '.olympia-onboarding-card');
+	if (body === null) return `未找到 .olympia-onboarding-card 规则块`;
+	if (!/box-sizing\s*:\s*border-box/.test(body)) {
+		return `卡片规则里没有 box-sizing: border-box —— 默认的 content-box 会把 24px 左右内边距和 1px 边框算到轨道外面（内容 352×430 实际渲染成 402×472），卡片比轨道大 50×42，视觉中心右偏 25px、下偏 21px（圆点、品牌、跳过按钮都按视口居中，卡片却偏了，整张构图就散了）`;
+	}
+	return null;
+});
+
+check('T53', `轨道宽度上限必须等于 TS 的卡片外框宽度（不一致的话相邻卡就会贴死）`, () => {
+	const raw = load(F_ONB_CSS);
+	const tl = load(F_ONB_TIMELINE);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	if (tl === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	const body = cssRule(stripComments(raw), '.olympia-onboarding-track');
+	if (body === null) return `未找到 .olympia-onboarding-track 规则块`;
+	const width = constValue(stripTsComments(tl), 'OLYMPIA_ONBOARDING_CARD_WIDTH');
+	const gap = constValue(stripTsComments(tl), 'OLYMPIA_ONBOARDING_CARD_GAP');
+	if (width === null) return `时间线里找不到 OLYMPIA_ONBOARDING_CARD_WIDTH`;
+	if (gap === null) return `时间线里找不到 OLYMPIA_ONBOARDING_CARD_GAP`;
+	const args = cssMinArgs(body, 'width');
+	if (!args) {
+		return `轨道宽度不是 min(...) 形式 —— 窗口再窄卡片就顶出视口了（400px 宽的窗口里，402px 的卡右侧直接被裁 26px，「下一步」按钮点不到）`;
+	}
+	// 参数顺序不重要（min(a, b) 与 min(b, a) 等价），calc() 里的数字也不算「上限」。
+	const literals = cssMinPixelCaps(args);
+	if (!literals.includes(width)) {
+		return `轨道宽度的 min() 里没有 ${width}px（实际是 ${literals.join(' / ') || '一个都没有'}）—— 轨道步距是按 TS 那个值算的，两边不一致时相邻卡的实际间隙就不是设计的 ${gap}px（曾经 352 对 402，差 50px，两张卡直接贴死）`;
+	}
+	if (!(gap > 0)) {
+		return `卡片间隙 ${gap}px 不大于 0 —— 相邻卡会重叠`;
+	}
+	return null;
+});
+
+check('T54', `卡片不许写死宽高（必须跟着轨道走，否则窗口一小就顶出视口）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const body = cssRule(stripComments(raw), '.olympia-onboarding-card');
+	if (body === null) return `未找到 .olympia-onboarding-card 规则块`;
+	const w = /width\s*:\s*(\d+(?:\.\d+)?px)/.exec(body);
+	if (w) {
+		return `卡片写死了宽度 ${w[1]} —— 卡片必须跟着轨道走（轨道被 min() 夹小之后卡片还是原尺寸，又会顶出视口）`;
+	}
+	const h = /height\s*:\s*(\d+(?:\.\d+)?px)/.exec(body);
+	if (h) {
+		return `卡片写死了高度 ${h[1]} —— 轨道在矮窗口里被压扁了，卡片却还按固定高度渲染，上下都会被裁`;
+	}
+	return null;
+});
+
+check('T55', `轨道居中必须靠 transform（min() 生效后负 margin 会算错）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const body = cssRule(stripComments(raw), '.olympia-onboarding-track');
+	if (body === null) return `未找到 .olympia-onboarding-track 规则块`;
+	if (!/transform\s*:\s*translate\(\s*-50%\s*,\s*-50%\s*\)/.test(body)) {
+		return `轨道没有 transform: translate(-50%, -50%) —— 用负 margin 居中的话，轨道尺寸一变（min() 生效后就是会变）居中值就错，卡片会偏`;
+	}
+	if (/margin-(left|top)\s*:/.test(body)) {
+		return `轨道里还有 margin-left / margin-top —— 和 transform 居中同时用会叠加偏移`;
+	}
+	return null;
+});
+
+check('T56', `轨道高度也必须用 min() 夹在视口内（最小窗口 400×270 比卡片矮）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const body = cssRule(stripComments(raw), '.olympia-onboarding-track');
+	if (body === null) return `未找到 .olympia-onboarding-track 规则块`;
+	const args = cssMinArgs(body, 'height');
+	if (!args) {
+		return `轨道高度不是 min(...) 形式 —— 窗口一矮卡片就顶出视口（300px 高的窗口里，472px 的卡上下各被裁 65px / 107px，标题和主按钮全没了）`;
+	}
+	if (!args.some(a => /100vh/.test(a))) {
+		return `轨道高度的 min() 里没有 100vh —— 那就不是「按视口夹住」，卡片会直接顶出矮窗口`;
+	}
+	if (!cssMinPixelCaps(args).length) {
+		return `轨道高度的 min() 里没有 px 上限 —— 卡片高度不受约束`;
+	}
+	return null;
+});
+
+check('T57', `必须有矮窗口紧凑模式（预览让位 + 主按钮贴底，且必须覆盖产品最小窗高 270px）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const blocks = cssMaxHeightMediaBlocks(stripComments(raw));
+	if (!blocks.length) {
+		return `CSS 里没有任何 @media (max-height: ...) 规则 —— 窗口一矮卡片就装不下（产品允许的最小窗口是 400×270）`;
+	}
+	const hit = blocks.find(b => b.maxHeight >= 270 && /display\s*:\s*none/.test(b.body) && /margin-top\s*:\s*auto/.test(b.body));
+	if (!hit) {
+		return `没有一档覆盖到产品最小窗高（270px）的矮窗口规则同时做到「预览块 display:none」+「页脚 margin-top:auto」—— 预览块在极矮窗口里必须整块让位（主按钮被裁掉比预览没了严重得多）；断点必须 ≥ 270px，否则 270px 高的窗口里主按钮直接被裁掉`;
+	}
+	return null;
+});
+
+check('T58', `代码样例必须自己裁切并做底部渐隐（硬切会像代码断在一半）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const body = cssRule(stripComments(raw), '.olympia-onboarding-code');
+	if (body === null) return `未找到 .olympia-onboarding-code 规则块`;
+	if (!/overflow\s*:\s*hidden/.test(body)) {
+		return `代码盒子没有 overflow: hidden —— 溢出的代码会直接压到面板外面`;
+	}
+	if (!/min-height\s*:\s*0/.test(body)) {
+		return `代码盒子没有 min-height: 0 —— 它不肯收缩，flex 也压不下它，超出的部分还是会被硬切`;
+	}
+	if (!/mask-image\s*:\s*linear-gradient/.test(body)) {
+		return `代码盒子没有底部渐隐（mask-image: linear-gradient）—— 样例比可视高度长，硬切看着像代码断在一半`;
+	}
+	return null;
+});
+
+check('T59', `光标必须落在还看得见的最后一行（否则用户根本看不见光标）`, () => {
+	const cards = load(F_ONB_CARDS);
+	const onb = load(F_ONB);
+	const tl = load(F_ONB_TIMELINE);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	if (onb === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	if (tl === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	const code = stripTsComments(cards);
+	const body = methodBody(code, /private\s+placeCodeCarets\s*\(\s*\)/);
+	if (body === null) {
+		return `卡片层里没有 placeCodeCarets() —— 光标永远挂在样例最后一行，而那行在底部渐隐区里，用户看不见光标，「编辑器手感」这张卡就白做了`;
+	}
+	if (!/clientHeight/.test(code)) {
+		return `卡片层没有量可视高度（clientHeight）—— 不知道哪一行还看得见，光标就无处安放`;
+	}
+	if (!/scrollHeight/.test(code)) {
+		return `卡片层没有量内容总高（scrollHeight）—— 分不清「整体放得下」和「被裁了」，光标会落在一条早就看不见的行上`;
+	}
+	const zone = constValue(stripTsComments(tl), 'OLYMPIA_ONBOARDING_CODE_CARET_ZONE');
+	if (zone === null) {
+		return `时间线里找不到 OLYMPIA_ONBOARDING_CODE_CARET_ZONE —— 光标能停的范围必须是常量（它跟 CSS 里渐隐区的起点是一对，代码里写死就必然对不上）`;
+	}
+	if (!(zone > 0 && zone <= 1)) {
+		return `OLYMPIA_ONBOARDING_CODE_CARET_ZONE = ${zone} 不在 (0, 1] 内`;
+	}
+	const onbCode = stripTsComments(onb);
+	if (!/this\.cards\.handleViewportResize\s*\(\s*\)/.test(onbCode)) {
+		return `窗口尺寸变化时没有调用 cards.handleViewportResize() —— 窗口一变，预览块变矮，能显示的代码行数变了，光标却还停在那儿`;
+	}
+	return null;
+});
+
+check('T60', `预览面板必须能分配空间（flex 纵向列 + 三块内容各自撑开居中）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const css = stripComments(raw);
+	const preview = cssRule(css, '.olympia-onboarding-card-preview');
+	if (preview === null) return `未找到 .olympia-onboarding-card-preview 规则块`;
+	if (!/display\s*:\s*flex/.test(preview) || !/flex-direction\s*:\s*column/.test(preview)) {
+		return `预览面板不是 flex 纵向列 —— 面板里的内容没法分配剩余空间，内容短的那几张卡底部会空出小半个面板，看着像没画完`;
+	}
+	for (const selector of ['.olympia-onboarding-pipe', '.olympia-onboarding-flow', '.olympia-onboarding-directory']) {
+		const body = cssRule(css, selector);
+		if (body === null) return `未找到 ${selector} 规则块`;
+		if (!/flex\s*:\s*1\b/.test(body)) {
+			return `${selector} 没有 flex: 1 —— 它不撑开剩余空间，内容就还是吊在面板顶部，底部留白照旧`;
+		}
+	}
+	return null;
+});
+
+// ===========================================================================
+// T61~T68：Qoder T-032 复审的三条成立结论 + 一条仓库规矩
+//
+//   Q4   写入失败在界面上完全静默 —— 用户以为配置生效了
+//   Q7-2 handleViewportResize() 不看 this.entering —— 进入动画期间还在动布局
+//   Q3   「跳过引导」的中文语义与「点行即写盘」冲突
+//   规矩 卡片层不许用选择器取元素（hygiene 的 no-restricted-syntax）
+//
+// 这几条全钉**行为**：写进 map 不算（没人看得见），写在 switch 之后不算
+// （有提前 return 的行刷不到），光标挪对了但光标看不见也不算。
+// ===========================================================================
+
+check('T61', `写入失败必须有一条「说给用户听」的路径（只写 console 等于没告诉用户）`, () => {
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	const body = methodBody(code, /private\s+abandonWriteIfExhausted\s*\(/);
+	if (body === null) {
+		return `卡片层里没有 abandonWriteIfExhausted —— 写入放弃的收场路径没了`;
+	}
+	const iSet = body.indexOf('unsavedKeys.set(');
+	if (iSet < 0) {
+		return `放弃写入时没有记录「没保存上」—— 写入失败只往 console 写一句，界面上看不出任何区别，用户以为自己的选择生效了`;
+	}
+	const iDel = body.indexOf('this.pendingWrites.delete(key)');
+	const iLast = body.indexOf('this.lastIntended.delete(key)');
+	if (iDel < 0 || iLast < 0 || !(iDel < iSet && iSet < iLast)) {
+		return `「没保存上」的记录不在「用户还没改过」那个分支里 —— 用户后来又点了一次的话，新值还在写，旧值的失败不该算到新值头上`;
+	}
+	const unsaved = methodBody(code, /private\s+updateRowUnsavedState\s*\(/);
+	if (unsaved === null) {
+		return `没有把「没保存上」写到界面上的方法`;
+	}
+	const visible = /status\.textContent\s*=\s*localize\(\s*'olympia\.onboarding\.row\.unsaved'\s*,\s*"([^"]*)"\s*\)/.exec(unsaved);
+	if (!visible) {
+		return `「没保存上」没有写成行内可见文本 —— 光记在 map 里没人看得见`;
+	}
+	if (!visible[1].trim()) {
+		return `「未保存」的文案是空的 —— 界面上一个字都不显示，等于没告诉用户`;
+	}
+	return null;
+});
+
+check('T62', `未保存标记必须在 switch 之前刷（三个分支都有提前 return，放在后面就刷不到）`, () => {
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	const body = methodBody(code, /private\s+updateRowState\s*\(/);
+	if (body === null) return `没有 updateRowState`;
+	const iMark = body.indexOf('updateRowUnsavedState(');
+	const iSwitch = body.indexOf('switch (row.kind)');
+	if (iMark < 0) return `updateRowState 里没有刷「没保存上」的标记`;
+	if (iSwitch < 0) return `updateRowState 里找不到 switch (row.kind)`;
+	if (iMark > iSwitch) {
+		return `「没保存上」的标记刷在 switch 之后 —— 三个分支里都有提前 return 的写法，那些行就永远刷不到标记`;
+	}
+	return null;
+});
+
+check('T63', `进入动画期间不许再动布局（handleViewportResize 必须先看 this.entering）`, () => {
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	const body = methodBody(code, /handleViewportResize\s*\(\s*\)\s*:/);
+	if (body === null) return `没有 handleViewportResize`;
+	const iEnter = body.indexOf('this.entering');
+	const iPlace = body.indexOf('placeCodeCarets(');
+	if (iEnter < 0) {
+		return `handleViewportResize 不看 this.entering —— 进入动画正在把卡片化成粒子的时候去量高度、挪光标，就是「全程没有断点」要防的那一帧硬切`;
+	}
+	if (iPlace < 0) return `handleViewportResize 里没有 placeCodeCarets()`;
+	if (iEnter > iPlace) {
+		return `this.entering 的判断排在 placeCodeCarets 之后 —— 守卫等于没有`;
+	}
+	return null;
+});
+
+check('T64', `跳过按钮的文案必须说清是「跳过剩下的」（点行就已经写盘了）`, () => {
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	const m = /localize\(\s*'olympia\.onboarding\.skip'\s*,\s*"([^"]*)"\s*\)/.exec(code);
+	if (!m) return `找不到跳过按钮的 localize 调用`;
+	if (!m[1].includes('剩余')) {
+		return `跳过按钮的默认文案是「${m[1]}」—— 点行就已经把选择写进配置了，这个按钮只是不再往下走流程，说「跳过引导」会让人以为自己的选择被丢了`;
+	}
+	return null;
+});
+
+check('T65', `卡片层不许用选择器取元素（元素要直接持有引用）`, () => {
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	if (/querySelector(All)?\s*\(/.test(code)) {
+		return `卡片层用选择器取元素 —— 预览区是整片重建的，回头找很容易找到 detached 的旧元素；仓库规矩也不允许`;
+	}
+	return null;
+});
+
+check('T66', `未保存的行必须在界面上看得出来（标签变红 + 状态位只在有内容时占位）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const css = stripComments(raw);
+	const unsaved = cssRule(css, '.olympia-onboarding-row-unsaved .olympia-onboarding-row-label');
+	if (unsaved === null) return `CSS 里没有「未保存的行把标签变红」的规则`;
+	if (!/color\s*:\s*var\(--vscode-errorForeground\)/.test(unsaved)) {
+		return `未保存的标签没有用 errorForeground 着色 —— 只有一个不显眼的标记等于没告诉用户`;
+	}
+	const status = cssRule(css, '.olympia-onboarding-row-status');
+	if (status === null) return `CSS 里没有状态位的规则`;
+	if (!/font-style\s*:\s*normal/.test(status)) {
+		return `状态位是 <i> 元素，不把斜体关掉，字形跟正文不一致`;
+	}
+	const notEmpty = cssRule(css, '.olympia-onboarding-row-status:not(:empty)');
+	if (notEmpty === null) return `状态位没有「非空才占位」的规则 —— 空的时候也留间距，所有行标签右边都会多一截`;
+	if (!/margin-left\s*:/.test(notEmpty)) {
+		return `状态位非空时没有左间距 —— 「未保存」会紧贴标签文字`;
+	}
+	return null;
+});
+
+check('T67', `未保存的状态位必须挂在行标签里（三种行类型没有共同的「值元素」）`, () => {
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	// 构造顺序必须是「造状态位 → 挂到行标签 → 行标签挂到行容器」。
+	// 挂到行容器上的话，选项组会被挤开一截（行容器是 flex + space-between）。
+	// 这里不用 methodBody 取 buildRows 的方法体 —— 它的返回类型里带 {},
+	// methodBody 从第一个 { 开始配对，会把返回类型当成方法体。
+	if (!/status\.className\s*=\s*'olympia-onboarding-row-status';[\s\S]{0,200}?label\.appendChild\(\s*status\s*\);[\s\S]{0,200}?container\.appendChild\(\s*label\s*\);/.test(code)) {
+		return `状态位没有挂在行标签上（或者行标签没挂到行容器上）—— 挂到行容器里的话，选项组会被挤开一截`;
+	}
+	return null;
+});
+
+check('T68', `标记必须能被撤掉（重新点一次 / 写成功了都不该再显示「未保存」）`, () => {
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	const write = methodBody(code, /private\s+async\s+writeConfig\s*\(/);
+	if (write === null) return `没有 writeConfig`;
+	if (!/unsavedKeys\.delete\(/.test(write)) {
+		return `用户重新点一次时没有撤掉旧标记 —— 上一轮的「未保存」会一直挂在那一行上`;
+	}
+	const flush = methodBody(code, /private\s+async\s+flushPendingWrites\s*\(/);
+	if (flush === null) return `没有 flushPendingWrites`;
+	if (!/unsavedKeys\.delete\(/.test(flush)) {
+		return `写入成功时没有撤掉标记 —— 明明存上了，行上还写着「未保存」`;
+	}
+	return null;
+});
+
+// ===========================================================================
 // 汇总
 // ===========================================================================
+
 const failed = results.filter(r => !r.ok);
 const passed = results.filter(r => r.ok);
 if (missing.size) console.log(`MISSING 合计 ${missing.size} 个文件：${[...missing].join('，')}`);

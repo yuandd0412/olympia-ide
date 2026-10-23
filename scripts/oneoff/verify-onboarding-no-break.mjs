@@ -46,7 +46,7 @@ const STAMP = new Date().toISOString().replace(/[:.]/g, '-');
 const OUT = arg('--out', path.join(os.tmpdir(), 'olympia-verify-' + STAMP));
 const CDP_PORT = PORT;
 
-// 验证路径：normal = 走完 4 张卡再开始；skip = 直接点「跳过引导」。
+// 验证路径：normal = 走完 4 张卡再开始；skip = 直接点「跳过剩余引导」。
 // 两条路径都要跑到同一套像素判据上 —— 用户最先按的很可能就是「跳过」，
 // 而「等待期跳过按钮还能不能按」正是这轮修的东西，只测 normal 等于没测。
 //
@@ -349,7 +349,7 @@ try {
 		['编译命令 -x c++', /-x c\+\+/],
 		['编译命令 -std=c++23', /-std=c\+\+23/],
 		['编译命令 -DONLINE_JUDGE', /-DONLINE_JUDGE/],
-		['跳过引导 按钮', /跳过引导/],
+		['跳过剩余引导 按钮', /跳过剩余引导/],
 		['下一步 CTA', /下一步/]
 	];
 	console.log('\n=== 真值检查 ===');
@@ -378,10 +378,10 @@ try {
 		return dots.findIndex(d => d.classList.contains('on'));
 	})()`;
 
-	console.log('\n=== 阶段 B：' + (PATH_KIND === 'skip' ? '跳过引导' : '卡片导航') + ' ===');
+	console.log('\n=== 阶段 B：' + (PATH_KIND === 'skip' ? '跳过剩余引导' : '卡片导航') + ' ===');
 	const footers = [];
 	if (PATH_KIND === 'skip') {
-		// 「跳过引导」是用户最先可能按的按钮，也是「等待期还有没有退路」的真机证据。
+		// 「跳过剩余引导」是用户最先可能按的按钮，也是「等待期还有没有退路」的真机证据。
 		// 2026-10-22 的独立审计发现：闸门放行之前就加了 entering 类，CSS 据此把
 		// skip / nav / dots / hint 一起 opacity:0 + pointer-events:none ——
 		// 用户在等待期按不动任何东西。
@@ -403,12 +403,12 @@ try {
 		console.log('  跳过按钮:', JSON.stringify(skipProbe));
 		report.skipProbe = skipProbe;
 		if (!skipProbe.present) {
-			problems.push('找不到「跳过引导」按钮');
+			problems.push('找不到「跳过剩余引导」按钮');
 		} else {
-			if (skipProbe.pointerEvents === 'none') problems.push('「跳过引导」按钮 pointer-events:none —— 等待期没有退路（用户按不动）');
-			if (skipProbe.disabled) problems.push('「跳过引导」按钮是 disabled');
-			if (Number(skipProbe.opacity) < 0.5) problems.push('「跳过引导」按钮几乎不可见，opacity=' + skipProbe.opacity);
-			if (!skipProbe.visible) problems.push('「跳过引导」按钮尺寸为 0 —— 点不到');
+			if (skipProbe.pointerEvents === 'none') problems.push('「跳过剩余引导」按钮 pointer-events:none —— 等待期没有退路（用户按不动）');
+			if (skipProbe.disabled) problems.push('「跳过剩余引导」按钮是 disabled');
+			if (Number(skipProbe.opacity) < 0.5) problems.push('「跳过剩余引导」按钮几乎不可见，opacity=' + skipProbe.opacity);
+			if (!skipProbe.visible) problems.push('「跳过剩余引导」按钮尺寸为 0 —— 点不到');
 		}
 		const clicked = await cdp.eval(`(() => {
 			const b = document.querySelector('.olympia-onboarding-skip');
@@ -416,9 +416,9 @@ try {
 			b.click();
 			return true;
 		})()`);
-		if (!clicked) problems.push('点不到「跳过引导」按钮');
+		if (!clicked) problems.push('点不到「跳过剩余引导」按钮');
 		report.skipClickedAt = Date.now();
-		console.log('  已点击「跳过引导」');
+		console.log('  已点击「跳过剩余引导」');
 	} else {
 		for (let step = 0; step < 3; step++) {
 			const idxBefore = await cdp.eval(ACTIVE_INDEX);
@@ -457,7 +457,7 @@ try {
 	console.log('\n=== 阶段 C：进入动画逐帧抓像素 ===');
 	if (PATH_KIND === 'skip') {
 		// 跳过路径的触发动作在阶段 B 已经做完了，这里直接采样。
-		console.log('  触发: 跳过引导（阶段 B 已点击）');
+		console.log('  触发: 跳过剩余引导（阶段 B 已点击）');
 	} else {
 		const started = await cdp.eval(`(() => {
 			const card = ${ACTIVE_CARD};

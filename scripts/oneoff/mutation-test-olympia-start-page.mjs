@@ -945,6 +945,173 @@ const MUTATIONS = [
 			'const delta = this.lastTimestamp === 0 ? 0 : Math.min(0.05, Math.max(0, (timestamp - this.lastTimestamp) / 1000));',
 			'const elapsedMs = timestamp - this.lastTimestamp;\n\t\tconst delta = this.lastTimestamp === 0 ? 0 : Math.min(0.05, Math.max(0, elapsedMs * 0.001));')
 	},
+	{
+		id: 'M128', expect: 'T62',
+		desc: '把「未保存」标记的刷新挪到 switch 之后（有提前 return 的行就刷不到）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'\t\tthis.updateRowUnsavedState(row, binding);\n\t\tswitch (row.kind) {',
+			'\t\tswitch (row.kind) {')
+	},
+	{
+		id: 'M129', expect: 'T63',
+		desc: '删掉 handleViewportResize 里的 entering 守卫（进入动画期间还在动布局）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			/\t\tif \(this\.entering\) \{\n\t\t\treturn;\n\t\t\}\n(\t\tthis\.placeCodeCarets\(\);)/,
+			'$1')
+	},
+	{
+		id: 'M130', expect: 'T64',
+		desc: '跳过按钮文案改回「跳过引导」（点行就写盘了，这个说法会让人以为选择被丢了）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('"跳过剩余引导"', '"跳过引导"')
+	},
+	{
+		id: 'M131', expect: 'T65',
+		desc: '卡片层又用选择器取元素了（预览区整片重建，回头找会找到 detached 的旧元素）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'\tprivate placeCodeCarets(): void {',
+			'\tprivate placeCodeCarets(): void {\n\t\tconst stale = document.querySelector(\'.olympia-onboarding-code\');')
+	},
+	{
+		id: 'M132', expect: 'T61',
+		desc: '放弃写入时不再记录「没保存上」（界面回到完全静默）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'\t\t\tthis.unsavedKeys.set(key, reason);\n',
+			'')
+	},
+	{
+		id: 'M133', expect: 'T66',
+		desc: 'CSS 里删掉「未保存的行把标签变红」的规则（只剩一个不显眼的标记）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace(
+			/\.olympia-onboarding-row-unsaved \.olympia-onboarding-row-label \{[^}]*\}/,
+			'.olympia-onboarding-row-unsaved .olympia-onboarding-row-label { }')
+	},
+	{
+		id: 'M134', expect: 'T61',
+		desc: '「未保存」写成空字符串（记在 map 里但界面上什么都不显示）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			/ localize\('olympia\.onboarding\.row\.unsaved', "未保存"\)/,
+			' localize(\'olympia.onboarding.row.unsaved\', "")')
+	},
+	{
+		id: 'M135', expect: 'T67',
+		desc: '状态位挂到行容器上而不是行标签里（选项组会被挤开一截）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'\t\t\tlabel.appendChild(status);',
+			'\t\t\tcontainer.appendChild(status);')
+	},
+	{
+		id: 'M136', expect: 'T68',
+		desc: '写入成功时不撤标记（明明存上了，行上还写着「未保存」）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'\t\t\t\t// 写进去了，之前那句「没保存上」就不成立了。\n\t\t\t\tthis.unsavedKeys.delete(key);\n',
+			'')
+	},
+	{
+		id: 'M112', expect: 'T52',
+		desc: '卡片改回 content-box（外框比轨道大 50×42，视觉中心就偏了）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace('box-sizing: border-box;', 'box-sizing: content-box;')
+	},
+	{
+		id: 'M113', expect: 'T53',
+		desc: '轨道宽度上限改回 352px（与 TS 的外框宽度对不上，相邻两张卡贴死）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace('width: min(402px, calc(100vw - 16px));', 'width: min(352px, calc(100vw - 16px));')
+	},
+	{
+		id: 'M114', expect: 'T53',
+		desc: 'TS 的卡片外框宽度改回 352（CSS 上限还是 402，间隙算错）',
+		file: OL + 'olympiaOnboardingTimeline.ts',
+		mutate: t => t.replace('export const OLYMPIA_ONBOARDING_CARD_WIDTH = 402;', 'export const OLYMPIA_ONBOARDING_CARD_WIDTH = 352;')
+	},
+	{
+		id: 'M115', expect: 'T54',
+		desc: '卡片写死 352×430（窗口一小就顶出视口）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace(/box-sizing:\s*border-box;\s*width:\s*100%;\s*height:\s*100%;/, 'box-sizing: border-box; width: 352px; height: 430px;')
+	},
+	{
+		id: 'M116', expect: 'T55',
+		desc: '轨道改回负 margin 居中（min() 生效后居中值会算错）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace(/transform:\s*translate\(-50%,\s*-50%\s*\);/, 'margin-left: -176px; margin-top: -215px;')
+	},
+	{
+		id: 'M117', expect: 'T56',
+		desc: '轨道高度写死 472px（矮窗口里上下都被裁）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace(/height:\s*min\(472px,\s*calc\(100vh\s*-\s*16px\)\s*\);/, 'height: 472px;')
+	},
+	{
+		id: 'M118', expect: 'T57',
+		desc: '极矮档不再隐藏预览块（270px 高的窗口里主按钮会被裁）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace(/\.olympia-onboarding-card-preview\s*\{\s*display:\s*none;/, '.olympia-onboarding-card-preview { display: block;')
+	},
+	{
+		id: 'M119', expect: 'T58',
+		desc: '代码盒去掉底部渐隐（裁切处变成硬边，像代码断在一半）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace(/mask-image:\s*linear-gradient\(180deg,[^;]*\)/, '')
+	},
+	{
+		id: 'M120', expect: 'T59',
+		desc: '窗口尺寸变化时不再重算光标位置（窗口一变光标就停在看不见的行上）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace('this.cards.handleViewportResize();', '')
+	},
+	{
+		id: 'M121', expect: 'T59',
+		desc: '量可视高度改成 offsetHeight（含边框，判不准哪一行看得见）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('code.clientHeight', 'code.offsetHeight')
+	},
+	{
+		id: 'M122', expect: 'T59',
+		desc: '量内容总高改成 offsetHeight（分不清「放得下」和「被裁了」）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('code.scrollHeight', 'code.offsetHeight')
+	},
+	{
+		id: 'M123', expect: 'T60',
+		desc: '预览里的编译管道图不撑开剩余空间（内容又吊在面板顶部）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace(/\.olympia-onboarding-pipe\s*(\{[^}]*?)flex:\s*1 1 auto;/, '.olympia-onboarding-pipe $1')
+	},
+	{
+		id: 'M124', expectGreen: ['T53'],
+		desc: 'min() 两个参数换个顺序（语义等价，T53 不该判红）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace('width: min(402px, calc(100vw - 16px));', 'width: min(calc(100vw - 16px), 402px);')
+	},
+	{
+		id: 'M125', expectGreen: ['T52'],
+		desc: 'box-sizing 挪到规则末尾（语义等价，T52 不该判红）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace(/box-sizing:\s*border-box;\s*width:\s*100%;\s*height:\s*100%;/, 'width: 100%; height: 100%; box-sizing: border-box;')
+	},
+	{
+		id: 'M126', expect: 'T57',
+		desc: '紧凑档断点改成 200px（比产品最小窗高 270 还小，最小窗口里这档就失效了）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace('@media (max-height: 320px)', '@media (max-height: 200px)')
+	},
+
+	{
+		id: 'M127', expect: 'T56',
+		desc: '轨道高度按视口宽度夹而不是视口高度（vh 写成 vw，矮窗口里卡片照样顶出去）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace('height: min(472px, calc(100vh - 16px));', 'height: min(472px, calc(100vw - 16px));')
+	},
 ];
 
 function buildTree(dest) {

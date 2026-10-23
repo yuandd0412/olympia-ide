@@ -411,8 +411,8 @@ try {
 			b.click();
 			return true;
 		})()`);
-		if (!ok) { throw new Error('点不到「跳过引导」按钮'); }
-		console.log('  已点击「跳过引导」');
+		if (!ok) { throw new Error('点不到「跳过剩余引导」按钮'); }
+		console.log('  已点击「跳过剩余引导」');
 	} else {
 		const ACTIVE_CARD = `(() => {
 			const cards = [...document.querySelectorAll('.olympia-onboarding-card')];

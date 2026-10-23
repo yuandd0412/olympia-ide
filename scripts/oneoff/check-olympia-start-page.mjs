@@ -3222,6 +3222,40 @@ check('T50', `背景时钟必须单调递增、永不归零（时钟一重置，
 		return `renderFrame() 里 delta 被赋值 ${deltaWrites.length} 次（应恰好 1 次：定义处）—— delta 一旦被中途改写，前面算好的非负下限就失效了`;
 	}
 
+	// ③c delta 必须真的由 rAF 时间戳差算出来。
+	//     光有「单调」不够：写成写死的步长（比如每帧固定 0.016），时钟照样单调递增，
+	//     却不跟随真实时间 —— 60fps 与 144fps 机器上的极光流速会不一样，
+	//     弱机上时间线与背景就对不上了。
+	//     允许等价写法：中间变量承接、* 0.001 代替 / 1000。
+	const localDefs = new Map();
+	for (const m of frame.matchAll(/(?:^|[^.\w$])(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;]+);/g)) {
+		localDefs.set(m[1], m[2]);
+	}
+	const expandLocals = (expr) => {
+		let cur = expr;
+		for (let round = 0; round < 4; round++) {
+			let changed = false;
+			for (const [name, def] of localDefs) {
+				if (name === 'delta') { continue; }
+				const re = new RegExp('(?<![.\\w$])' + name + '(?![\\w$])');
+				if (re.test(cur)) {
+					cur = cur.replace(re, '(' + def + ')');
+					changed = true;
+				}
+			}
+			if (!changed) { break; }
+		}
+		return cur;
+	};
+	const deltaFull = expandLocals(deltaDecl[1]);
+	// 方向也钉住：必须是「当前时间戳 减 上一次时间戳」，反过来恒为负会被夹成 0，时钟根本不走。
+	if (!/(?:^|[^\w$])timestamp\s*-\s*(?:this\s*\.\s*)?lastTimestamp/.test(deltaFull)) {
+		return `delta 不是由 rAF 时间戳差算出来的（"${deltaDecl[1].trim()}"）—— 时钟虽然单调，却不再跟随真实时间`;
+	}
+	if (!/\/\s*1000\b/.test(deltaFull) && !/\*\s*0\.001\b/.test(deltaFull)) {
+		return `delta 没有把毫秒换算成秒（"${deltaDecl[1].trim()}"）—— 背景时钟会快 1000 倍`;
+	}
+
 	// ④ 累加必须发生在 renderFrame 里，且用的是 delta
 	//    允许 `+= delta`，也允许等价的 `= this.backdropTime + delta`（M27 记录的等价写法）。
 	const accumulated =

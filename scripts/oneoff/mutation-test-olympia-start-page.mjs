@@ -918,6 +918,33 @@ const MUTATIONS = [
 			'this.lastTimestamp = timestamp;',
 			'this.lastTimestamp = timestamp;\n\t\tdelta = -0.5;')
 	},
+	{
+		// T-031 复审判出的漏网之鱼：T50 只证明「时钟单调」，没证明「时钟跟着真实时间走」。
+		// 这三条分别证明：delta 写成固定步长会红、delta 不做毫秒→秒换算会红、
+		// 而「用中间变量承接 + * 0.001」这种等价写法不该被误判红。
+		id: 'M109', expect: 'T50',
+		desc: 'delta 写成固定步长（时钟仍单调，却不再跟随真实时间 —— 60fps 与 144fps 机器流速不同）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			'const delta = this.lastTimestamp === 0 ? 0 : Math.min(0.05, Math.max(0, (timestamp - this.lastTimestamp) / 1000));',
+			'const delta = this.lastTimestamp === 0 ? 0 : Math.min(0.05, Math.max(0, 0.016));')
+	},
+	{
+		id: 'M110', expect: 'T50',
+		desc: 'delta 不做毫秒→秒换算（直接用毫秒当秒 → 背景时钟快 1000 倍）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			'const delta = this.lastTimestamp === 0 ? 0 : Math.min(0.05, Math.max(0, (timestamp - this.lastTimestamp) / 1000));',
+			'const delta = this.lastTimestamp === 0 ? 0 : Math.min(0.05, Math.max(0, timestamp - this.lastTimestamp));')
+	},
+	{
+		id: 'M111', expectGreen: ['T50'],
+		desc: 'delta 改用中间变量承接 + `* 0.001`（语义等价，不该被判红）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			'const delta = this.lastTimestamp === 0 ? 0 : Math.min(0.05, Math.max(0, (timestamp - this.lastTimestamp) / 1000));',
+			'const elapsedMs = timestamp - this.lastTimestamp;\n\t\tconst delta = this.lastTimestamp === 0 ? 0 : Math.min(0.05, Math.max(0, elapsedMs * 0.001));')
+	},
 ];
 
 function buildTree(dest) {

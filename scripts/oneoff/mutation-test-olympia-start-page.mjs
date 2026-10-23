@@ -353,6 +353,28 @@ const MUTATIONS = [
 		mutate: t => t.replace(
 			"this.rootElement.classList.add('olympia-onboarding-fading');",
 			"this.enterStart = null;\n\t\tthis.rootElement.classList.add('olympia-onboarding-fading');")
+	},
+	{
+		id: 'M41', expect: 'T12',
+		desc: '去掉「请求在途就跳过」的闸门（扩展注册配置项的那段时间里 getRecentlyOpened() 被连着发好几次）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'\t\t\t\t\tif (binding.valuePending) {\n\t\t\t\t\t\tbreak;\n\t\t\t\t\t}',
+			'\t\t\t\t\t// (gate removed)')
+	},
+	{
+		id: 'M42', expect: 'T12',
+		desc: '取值失败时不放掉「在途」标记（这一行永远停在「请求中」，再也拿不到值）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'}, () => {\n\t\t\t\t\t\tbinding.valuePending = false;',
+			'}, () => {')
+	},
+	{
+		id: 'M43', expect: 'T12',
+		desc: '发请求之前不置「在途」标记（闸门永远打不开，重复请求照旧）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('binding.valuePending = true;', '// (not set)')
 	}
 ];
 

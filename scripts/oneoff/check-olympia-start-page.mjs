@@ -1856,6 +1856,38 @@ check('T11', `收场路径上不存在正在跑的进入动画，不得重置 en
 	return null;
 });
 
+check('T12', `异步取值的请求在途时不得重发（扩展注册配置项会连着触发 refresh）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const body = methodBody(code, /updateRowState\s*\([^)]*\)\s*:\s*void\s*\{/);
+	if (!body) return `未找到 updateRowState()`;
+	// 「已落地就跳过」（T7）只挡得住**落地之后**的重发。
+	// 扩展注册 `olympia.*` 配置项时会连着触发一串 `onDidChangeConfiguration` → `refresh()`，
+	// 而这些 refresh 往往发生在第一次请求**还没回来**的时候 ——
+	// 那段时间里只靠 valueResolved 是挡不住的，getRecentlyOpened() 会被连着发好几次。
+	// 所以必须另有一道「在途就跳过」的闸门。
+	const issueAt = body.indexOf('row.asyncValue()');
+	if (issueAt < 0) {
+		return `updateRowState() 里找不到 row.asyncValue() 的调用点`;
+	}
+	const before = body.slice(0, issueAt);
+	const after = body.slice(issueAt);
+	if (!/if\s*\(\s*binding\.valuePending\s*\)\s*\{?\s*break/.test(before)) {
+		return `valuePending 没有被当成早退闸门 —— 请求在途期间的每次 refresh 都会重发一遍 getRecentlyOpened()`;
+	}
+	if (!/binding\.valuePending\s*=\s*true/.test(before)) {
+		return `发请求之前没有置 valuePending —— 闸门永远打不开，重复请求照旧`;
+	}
+	// 两个收尾分支（成功 / 失败）都得把「在途」放掉。
+	// 只放成功分支的话，取值一旦失败，这一行就永远停在「请求中」，再也拿不到值。
+	const cleared = (after.match(/binding\.valuePending\s*=\s*false/g) || []).length;
+	if (cleared < 2) {
+		return `valuePending 只被放掉 ${cleared} 次（成功 / 失败两个收尾分支都得放）—— 取值失败时这一行会永远停在「请求中」，再也拿不到值`;
+	}
+	return null;
+});
+
 // ===========================================================================
 // Z. 断言编号唯一
 //

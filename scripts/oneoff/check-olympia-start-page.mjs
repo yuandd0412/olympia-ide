@@ -2064,6 +2064,129 @@ check('T16', `异步取值失败必须有界重试，到上限后如实报错（
 });
 
 // ===========================================================================
+// T17~T19. 写入状态机的代际安全
+//
+// 这三条钉的是同一个竞态的三个面：「放弃写入」把键从在途表里摘掉之后，
+// 那一次写入的 promise 之后还可能才回来。它回来时的 finally 若无脑删键，
+// 就会把**新一轮**写入的标记一起摘掉 —— 于是同一个配置键上跑起两个并发写，
+// 配置最终落在谁手里全看完成顺序，慢的那次会盖掉用户后来选的那个值。
+//
+// 这不是「理论上」：只要写入慢过 24 秒（额度）就会进入这个状态，
+// 而 24 秒在配置服务抽风时并不罕见。
+// ===========================================================================
+check('T17', `在途标记必须带代号：旧写入迟到时不能摘掉新一轮的标记（否则同一键并发写）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	// ① 在途表必须是带代号的 Map，不能是光秃秃的 Set。
+	if (!/writingKeys\s*=\s*new\s+Map\s*<\s*string\s*,\s*symbol\s*>/.test(code)) {
+		return `writingKeys 不是 Map<string, symbol> —— 没有代号，旧写入的 finally 会无脑删掉新一轮写入的标记，同一个键上跑起两个并发写，配置最终落在谁手里全看完成顺序`;
+	}
+	// ② 发起写入时必须发一个唯一代号并记进表里。
+	if (!/const\s+writeToken\s*=\s*Symbol\s*\(/.test(code)) {
+		return `发起写入时没有生成唯一代号 —— 分辨不出「这一次写入」和「后来那一次写入」`;
+	}
+	if (!/writingKeys\s*\.\s*set\s*\(\s*key\s*,\s*writeToken\s*\)/.test(code)) {
+		return `发起写入时没有把代号记进 writingKeys —— finally 里无从判断自己是不是当前那一次`;
+	}
+	// ③ finally 里的删除必须带代号守卫。
+	const body = methodBody(code, /flushPendingWrites\s*\([^)]*\)\s*:\s*Promise<void>\s*\{/);
+	if (!body) return `未找到 flushPendingWrites()`;
+	const guardM = /if\s*\(\s*this\.writingKeys\s*\.\s*get\s*\(\s*key\s*\)\s*===\s*writeToken\s*\)/.exec(body);
+	if (!guardM) return `finally 里的 writingKeys.delete(key) 没有代号守卫 —— 旧写入迟到时会摘掉新一轮写入的标记`;
+	const guardOpen = body.indexOf('{', guardM.index);
+	const guardBlock = balanced(body, guardOpen, '{', '}');
+	if (!guardBlock) return `代号守卫块无法配对解析`;
+	if (!/writingKeys\s*\.\s*delete\s*\(\s*key\s*\)/.test(guardBlock)) {
+		return `代号守卫块里没有写作键的删除 —— 守卫形同虚设`;
+	}
+	// ④ 未经守卫的裸删除（在 flushPendingWrites 体内）不许出现。
+	const guardEnd = guardOpen + guardBlock.length;
+	for (const m of body.matchAll(/writingKeys\s*\.\s*delete\s*\(\s*key\s*\)/g)) {
+		if (m.index < guardOpen || m.index > guardEnd) {
+			return `flushPendingWrites() 里有不在代号守卫内的 writingKeys.delete(key) —— 旧写入迟到会摘掉新一轮写入的标记，同一个键并发写`;
+		}
+	}
+	return null;
+});
+
+check('T18', `放弃写入时不得摘掉用户后来改的新值（用户刚点的选择不能白点）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const body = methodBody(code, /abandonWriteIfExhausted\s*\([^)]*\)\s*:\s*boolean\s*\{/);
+	if (!body) return `未找到 abandonWriteIfExhausted()`;
+	// ① 得先收下「本轮看到的待写值」，才谈得上判断用户有没有改过。
+	if (!/attemptedValue/.test(body)) {
+		return `abandonWriteIfExhausted() 没收下「本轮看到的待写值」 —— 无从判断用户是不是又改过`;
+	}
+	// ② 删除待写值之前必须比一比。
+	const guardM = /if\s*\(\s*this\.pendingWrites\s*\.\s*get\s*\(\s*key\s*\)\s*===\s*attemptedValue\s*\)/.exec(body);
+	if (!guardM) return `放弃写入时没有比较「用户是不是又改过这个值」 —— 旧值被放弃时会把用户后来点的那个新值一起摘掉，选择白点`;
+	const guardOpen = body.indexOf('{', guardM.index);
+	const guardBlock = balanced(body, guardOpen, '{', '}');
+	if (!guardBlock) return `守卫块无法配对解析`;
+	if (!/pendingWrites\s*\.\s*delete\s*\(\s*key\s*\)/.test(guardBlock)) {
+		return `守卫块里没有摘掉待写值 —— 比较了却什么都没做`;
+	}
+	// ③ 未经守卫的裸删除不许出现。
+	const guardEnd = guardOpen + guardBlock.length;
+	for (const m of body.matchAll(/pendingWrites\s*\.\s*delete\s*\(\s*key\s*\)/g)) {
+		if (m.index < guardOpen || m.index > guardEnd) {
+			return `abandonWriteIfExhausted() 里有未经「用户没改过」守卫的 pendingWrites.delete(key) —— 用户后来点的那个新值会被一起摘掉`;
+		}
+	}
+	return null;
+});
+
+check('T19', `被放弃的写入若迟到落地，必须把用户的选择补写回去（不能停在旧值上）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	// ① 用户意图要单独记一份：待写值会被消费掉，答不出「用户还想要什么」。
+	const write = methodBody(code, /writeConfig\s*\([^)]*\)\s*:\s*Promise<void>\s*\{/);
+	if (!write) return `未找到 writeConfig()`;
+	if (!/lastIntended\s*\.\s*set\s*\(\s*key\s*,\s*value\s*\)/.test(write)) {
+		return `writeConfig() 没有记下用户最后表达的意图 —— 待写值被消费掉之后，就再也答不出「用户还想要什么」`;
+	}
+	// ② finally 里代号对不上的那条路必须补偿。
+	const body = methodBody(code, /flushPendingWrites\s*\([^)]*\)\s*:\s*Promise<void>\s*\{/);
+	if (!body) return `未找到 flushPendingWrites()`;
+	const guardM = /if\s*\(\s*this\.writingKeys\s*\.\s*get\s*\(\s*key\s*\)\s*===\s*writeToken\s*\)/.exec(body);
+	if (!guardM) return `未找到 finally 里的代号守卫`;
+	const guardOpen = body.indexOf('{', guardM.index);
+	const guardBlock = balanced(body, guardOpen, '{', '}');
+	if (!guardBlock) return `代号守卫块无法配对解析`;
+	// `balanced()` 配的是**一对**花括号 —— if 的 `{` 配到 else 之前那个 `}`，
+	// 所以 else 块不在 guardBlock 里，得从 if 块的收尾处往后找。
+	const ifEnd = guardOpen + guardBlock.length - 1;
+	const elseM = /else\s*\{/.exec(body.slice(ifEnd));
+	if (!elseM) return `代号守卫没有 else 分支 —— 被放弃的写入迟到时没人管`;
+	const elseOpen = ifEnd + elseM.index + elseM[0].lastIndexOf('{');
+	const elseBlock = balanced(body, elseOpen, '{', '}');
+	if (!elseBlock) return `else 分支无法配对解析`;
+	if (!/rewriteIfStale/.test(elseBlock)) {
+		return `被放弃的写入迟到落地时没有补写用户的选择 —— 配置会停在旧值上，用户选了 B 却看到 A`;
+	}
+	// ③ 补偿本身要真的比对 + 真的重排。
+	const rw = methodBody(code, /rewriteIfStale\s*\([^)]*\)\s*:\s*void\s*\{/);
+	if (!rw) return `未找到 rewriteIfStale()`;
+	if (!/lastIntended\s*\.\s*get\s*\(\s*key\s*\)/.test(rw)) {
+		return `rewriteIfStale() 没有读用户意图 —— 无从判断现在这个值是不是过时的`;
+	}
+	if (!/configurationService\s*\.\s*getValue\s*\(\s*key\s*\)/.test(rw)) {
+		return `rewriteIfStale() 没有读配置真值 —— 不比对就不知道该不该补写`;
+	}
+	if (!/pendingWrites\s*\.\s*set\s*\(\s*key\s*,\s*intended\s*\)/.test(rw)) {
+		return `rewriteIfStale() 没有把用户的选择重新排队`;
+	}
+	if (!/scheduleFlushRetry\s*\(/.test(rw)) {
+		return `rewriteIfStale() 没有安排补写 —— 重新排队了却没人去写`;
+	}
+	return null;
+});
+
+// ===========================================================================
 // Z. 断言编号唯一
 //
 // 踩过的坑：新增一条断言时顺手用了已被占用的编号（D3），输出里出现两条 D3，

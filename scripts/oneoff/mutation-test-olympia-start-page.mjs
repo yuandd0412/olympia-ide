@@ -422,7 +422,7 @@ const MUTATIONS = [
 		desc: '写入在途时不消耗重试额度（一次正常写入白嫖一轮；写入永不 settle 时配额永远用不完）',
 		file: OL + 'olympiaOnboardingCards.ts',
 		mutate: t => t.replace(
-			'this.abandonWriteIfExhausted(key, `配置 ${key} 的写入还没回来`);',
+			'this.abandonWriteIfExhausted(key, `配置 ${key} 的写入还没回来`, undefined, pendingValue);',
 			'// (在途不消耗额度)')
 	},
 	{
@@ -468,6 +468,54 @@ const MUTATIONS = [
 		mutate: t => t.replace(
 			'console.warn(`[Olympia] 取「最近工程」失败（第 ${attempts} 次）：${error}`);',
 			'console.log(`[Olympia] 取「最近工程」失败（第 ${attempts} 次）：${error}`);')
+	},
+	{
+		id: 'M55', expect: 'T17',
+		desc: '在途表退回成 Set（没有代号，旧写入迟到会摘掉新一轮的标记 → 同一键并发写）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'private readonly writingKeys = new Map<string, symbol>();',
+			'private readonly writingKeys = new Set<string>();')
+	},
+	{
+		id: 'M56', expect: 'T17',
+		desc: '发起写入时不记代号（finally 里无从分辨自己是不是当前那一次）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'this.writingKeys.set(key, writeToken);',
+			'this.writingKeys.set(key, key as unknown as symbol);')
+	},
+	{
+		id: 'M57', expect: 'T17',
+		desc: 'finally 里的删除去掉代号守卫（旧写入迟到时误删新一轮写入的标记）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'if (this.writingKeys.get(key) === writeToken) {',
+			'if (this.writingKeys.get(key) === undefined) {')
+	},
+	{
+		id: 'M58', expect: 'T18',
+		desc: '放弃写入时无条件摘掉待写值（用户后来点的那个新值被一起摘掉 → 选择白点）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'if (this.pendingWrites.get(key) === attemptedValue) {',
+			'if (true) {')
+	},
+	{
+		id: 'M59', expect: 'T19',
+		desc: '被放弃的写入迟到落地时不补写用户的选择（配置停在旧值上）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'this.rewriteIfStale(key, value);',
+			'// (不补偿)')
+	},
+	{
+		id: 'M60', expect: 'T19',
+		desc: 'writeConfig 不记用户意图（待写值被消费后答不出「用户还想要什么」）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'this.lastIntended.set(key, value);',
+			'// (不记意图)')
 	}
 ];
 

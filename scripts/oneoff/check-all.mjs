@@ -43,6 +43,30 @@ const GATES = [
 		// 这个门自己认 --product，不吃位置参数；而且它会起真窗口、要独占 CDP 端口。
 		args: (productDir) => ['--product', productDir]
 	},
+	{
+		file: 'scripts/oneoff/analyze-sweep-bands.mjs',
+		name: '扫光几何+像素门禁',
+		保证: '五道扫光真的扫在目标部件上（DOM 真几何：位移在 [-B,E]、单调、不出屏、横穿），并且像素上真的看得见、在往一个方向动（时序差分，不是「峰值−中位数」那种会被内容喂饱的假绿）',
+		// 这条门读的是「抓帧目录」，不是产品目录树。抓帧是一次性的
+		// （抓完就没了），所以它靠环境变量指路；没给就跳过，
+		// 但必须打印跳过原因 —— 不许塌进「没问题」。
+		requiresEnv: 'OLYMPIA_FRAMES_DIR',
+		args: () => ['--frames', process.env.OLYMPIA_FRAMES_DIR]
+	},
+	{
+		file: 'scripts/oneoff/analyze-sweep-bands.mjs',
+		name: '扫光判据自检',
+		保证: '扫光判据自己有牙：正确几何/光带扫过必须通过，走 2 倍/卡住不动/压根没画/倒着扫/只在小范围挪动必须判红',
+		args: () => ['--selftest']
+	},
+	{
+		file: 'scripts/oneoff/analyze-sweep-bands.mjs',
+		name: '扫光门禁在真实数据上的牙',
+		保证: '把真实抓帧里的位移注入成 2 倍（等价于历史 bug）后，这条门必须判红 —— 否则上面那条门是假绿',
+		requiresEnv: 'OLYMPIA_FRAMES_DIR',
+		expectFailure: true,
+		args: () => ['--frames', process.env.OLYMPIA_FRAMES_DIR, '--inject-2x']
+	},
 	// build/verify-product-keybindings.mjs 先不登记：全新 profile 下首启界面会吃掉键盘输入，
 	// 命令面板一次都打不开（2026-10-18 实测 0/17），而它必须"每次都能跑"才有意义。
 	// 结论目前靠 .scratch/ui/kb-sweep.mjs 在已走完首启的 profile 上手工跑（17/17 一致）。
@@ -72,6 +96,13 @@ for (const g of GATES) {
 		failed++;
 		continue;
 	}
+	// 靠环境变量指路的门（一次性产物，比如抓帧目录）：
+	// 没给就跳过，但必须说清为什么跳过 —— 「没跑」不能读成「没问题」。
+	if (g.requiresEnv && !process.env[g.requiresEnv]) {
+		console.log(`跳过 ${g.file} —— ${g.保证}（要跑请设 ${g.requiresEnv}=<目录>）`);
+		skipped++;
+		continue;
+	}
 	// 脚本路径永远在最前面：`args` 只负责追加脚本自己的参数。
 	// （写成 `g.args ? g.args(productDir) : [abs]` 会把脚本路径整个丢掉，
 	//   那样 spawn 出去的是 `node --product <dir>` —— node 会把 `--product`
@@ -83,9 +114,12 @@ for (const g of GATES) {
 		args.push(productDir);
 	}
 	const r = spawnSync(process.execPath, args, { cwd: repoRoot, encoding: 'utf8' });
-	const ok = r.status === 0;
+	// expectFailure 的门：它要证明「坏数据会被判红」，所以**退出码非 0 才是通过**。
+	// （以前没有这一类门，于是「门自己有牙」这件事谁都没验证过。）
+	const ok = g.expectFailure ? r.status !== 0 : r.status === 0;
 	if (!ok) { failed++; }
-	console.log(`${ok ? 'ok  ' : 'FAIL'} ${g.file} —— ${g.保证}`);
+	const label = g.name ? `${g.file}（${g.name}）` : g.file;
+	console.log(`${ok ? 'ok  ' : 'FAIL'} ${label} —— ${g.保证}`);
 	if (!ok) {
 		const tail = ((r.stderr || '') + (r.stdout || '')).trim().split(/\r?\n/).slice(-6).join('\n     ');
 		console.log(`     ${tail}`);

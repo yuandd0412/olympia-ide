@@ -67,6 +67,32 @@ const GATES = [
 		expectFailure: true,
 		args: () => ['--frames', process.env.OLYMPIA_FRAMES_DIR, '--inject-2x']
 	},
+	{
+		file: 'scripts/oneoff/check-backdrop-continuity.mjs',
+		name: '背景连续性判据自检',
+		保证: '背景连续性判据自己有牙：正常序列必须绿，重建 / 冻结 / 清空 / 换元素必须红',
+		args: () => ['--selftest']
+	},
+	{
+		file: 'scripts/oneoff/check-backdrop-continuity.mjs',
+		name: '背景连续性真机门',
+		保证: '真机证明动态背景全程没断：洞单调（背景没被重建）、背景在流（没冻结）、无大面积亮度突变；并在同一份真实数据上注入三种故障自证有牙',
+		needsBuild: true,
+		// 这个门自己认 --product；它会起真窗口、要独占 CDP 端口（9241，不能和
+		// verify-onboarding-no-break 的 9223、capture-onboarding-frames 的 9225 撞）。
+		args: (productDir) => ['--product', productDir, '--port', '9241']
+	},
+	{
+		file: 'scripts/oneoff/check-backdrop-continuity.mjs',
+		name: '背景画布被换掉必须判红（采集层注入）',
+		保证: '真机采集时把背景 canvas 换成一张内容逐像素复制的新画布 —— 画面看不出差别，但背景层已经被重建过；脚本必须证明真实数据被判红且被 C1 抓住（这是唯一能证明采样器真看得见重建的牙）',
+		needsBuild: true,
+		// 注意：这一条**不是** expectFailure。
+		// --inject-canvas-swap 模式的语义是「脚本自己注入故障，再验证判据抓住了它」，
+		// 注入自证通过时脚本自己 exit 0 —— 它自己也会把真实数据判红（那正是它要证明的）。
+		// 门禁自己打印「真实数据 → 判红，被 C1 抓住」才算数，退出码仍是 0。
+		args: (productDir) => ['--product', productDir, '--port', '9241', '--inject-canvas-swap']
+	},
 	// build/verify-product-keybindings.mjs 先不登记：全新 profile 下首启界面会吃掉键盘输入，
 	// 命令面板一次都打不开（2026-10-18 实测 0/17），而它必须"每次都能跑"才有意义。
 	// 结论目前靠 .scratch/ui/kb-sweep.mjs 在已走完首启的 profile 上手工跑（17/17 一致）。

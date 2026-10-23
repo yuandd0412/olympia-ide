@@ -230,7 +230,12 @@ const MUTATIONS = [
 		id: 'M24', expect: 'H33',
 		desc: '写入失败不留痕（console.warn 降级成 console.log）',
 		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace('console.warn(', 'console.log(')
+		// 锚**写入那条**的 warn，不锚裸的 `console.warn(` ——
+		// 文件里现在有两条 warn（写入失败 / 取值失败），裸锚会打到先出现的那条，
+		// 期望的断言根本不会红。锚点带上 `${reason}` 才唯一。
+		mutate: t => t.replace(
+			'console.warn(`[Olympia] ${reason}（第 ${rounds} 轮）`);',
+			'console.log(`[Olympia] ${reason}（第 ${rounds} 轮）`);')
 	},
 	{
 		id: 'M25', expect: 'H34',
@@ -297,7 +302,7 @@ const MUTATIONS = [
 		id: 'M33', expect: 'T5',
 		desc: '重试额度退回全局计数（一个写不进去的键带着别的键一起耗光额度）',
 		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace('private readonly pendingWriteAttempts = new Map<string, number>();', 'private flushRetryCount = 0;')
+		mutate: t => t.replace('private readonly pendingWriteRounds = new Map<string, number>();', 'private flushRetryCount = 0;')
 	},
 	{
 		id: 'M34', expect: 'T6',
@@ -321,7 +326,7 @@ const MUTATIONS = [
 		id: 'M36', expect: 'T7',
 		desc: '异步取值行的「已落地就跳过」闸门被去掉（每次刷新都打回占位 + 重发请求）',
 		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace('if (binding.valueResolved) {', 'if (false) {')
+		mutate: t => t.replace('if (binding.valueResolved || binding.valueFailed) {', 'if (false) {')
 	},
 	{
 		id: 'M37', expect: 'T8',
@@ -367,14 +372,102 @@ const MUTATIONS = [
 		desc: '取值失败时不放掉「在途」标记（这一行永远停在「请求中」，再也拿不到值）',
 		file: OL + 'olympiaOnboardingCards.ts',
 		mutate: t => t.replace(
-			'}, () => {\n\t\t\t\t\t\tbinding.valuePending = false;',
-			'}, () => {')
+			'}, error => {\n\t\t\t\t\t\tbinding.valuePending = false;',
+			'}, error => {')
 	},
 	{
 		id: 'M43', expect: 'T12',
 		desc: '发请求之前不置「在途」标记（闸门永远打不开，重复请求照旧）',
 		file: OL + 'olympiaOnboardingCards.ts',
 		mutate: t => t.replace('binding.valuePending = true;', '// (not set)')
+	},
+	// ---------------------------------------------------------------------------
+	// T-026 复核之后新增的变异。
+	//
+	// 上一轮 Qoder 复核指出：断言光「写对」不够，还得**看得见**自己防的回归。
+	// 这批变异对应本轮加固的四处：H30（行区重建的全文件约束）、
+	// T10（只有定时器能消耗额度）、T13/T14（写入在途也消耗额度、放弃时摘键）、
+	// T15/T16（异步取值的失败必须真失败、必须有界重试）。
+	// ---------------------------------------------------------------------------
+	{
+		id: 'M44', expect: 'H30',
+		desc: '在 rebuildRows() 之外再加一处行区整片重建（旧断言只盯 refresh/refreshRowStates 两个函数名，看不见新入口）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'\t\t\tthis.previewElements[index].replaceChildren(...descriptor.preview());',
+			'\t\t\tthis.previewElements[index].replaceChildren(...descriptor.preview());\n\t\t\tthis.bodyElements[index].replaceChildren();')
+	},
+	{
+		id: 'M45', expect: 'H30',
+		desc: '行区改用 innerHTML 重建（整棵子树重新解析 = 用户按着的按钮被换掉）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'\t\tthis.bodyElements[index].replaceChildren(...built.elements);',
+			'\t\tthis.bodyElements[index].innerHTML = \'\';')
+	},
+	{
+		id: 'M46', expect: 'T10',
+		desc: '用户点一下也消耗重试额度（writeConfig 传 true）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('\t\tawait this.flushPendingWrites();', '\t\tawait this.flushPendingWrites(true);')
+	},
+	{
+		id: 'M47', expect: 'T10',
+		desc: '帧轮次也消耗重试额度（render 传 true）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('\t\t\tvoid this.flushPendingWrites();', '\t\t\tvoid this.flushPendingWrites(true);')
+	},
+	{
+		id: 'M48', expect: 'T13',
+		desc: '写入在途时不消耗重试额度（一次正常写入白嫖一轮；写入永不 settle 时配额永远用不完）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'this.abandonWriteIfExhausted(key, `配置 ${key} 的写入还没回来`);',
+			'// (在途不消耗额度)')
+	},
+	{
+		id: 'M49', expect: 'T14',
+		desc: '放弃写入时不把键从 writingKeys 里摘掉（卡死的写入永久挡住用户后来的点击）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('\n\t\tthis.writingKeys.delete(key);', '\n\t\t// (不摘键)')
+	},
+	{
+		id: 'M50', expect: 'T15',
+		desc: '把「取不到」重新吞成「还没有」（失败被伪装成成功，这一行整个生命周期冻在假值上）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'\t\tconst recent = await this.workspacesService.getRecentlyOpened();',
+			'\t\tlet recent;\n\t\ttry {\n\t\t\trecent = await this.workspacesService.getRecentlyOpened();\n\t\t} catch {\n\t\t\treturn empty;\n\t\t}')
+	},
+	{
+		id: 'M51', expect: 'T15',
+		desc: '取值失败时置 valueResolved（把失败当成「取到了值」= 冻住整行的元凶）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('\t\t\t\t\t\t\tbinding.valueFailed = true;', '\t\t\t\t\t\t\tbinding.valueResolved = true;')
+	},
+	{
+		id: 'M52', expect: 'T16',
+		desc: '取值失败后不再重试（存储服务启动早期抽风一次就宣判「没有工程」）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			/\t\t\t\t\t\tthis\.scheduleValueRetry\(\(\) => \{[\s\S]*?\t\t\t\t\t\t\}\);/,
+			'\t\t\t\t\t\t// (不重试)')
+	},
+	{
+		id: 'M53', expect: 'T16',
+		desc: '重试上限判定改成永假（永远到不了上限 = 永远停在「读取中…」骗用户）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'if (attempts >= OlympiaOnboardingCards.VALUE_RETRY_LIMIT) {',
+			'if (attempts >= 999999) {')
+	},
+	{
+		id: 'M54', expect: 'T15',
+		desc: '异步取值失败不留痕（console.warn 降级成 console.log）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'console.warn(`[Olympia] 取「最近工程」失败（第 ${attempts} 次）：${error}`);',
+			'console.log(`[Olympia] 取「最近工程」失败（第 ${attempts} 次）：${error}`);')
 	}
 ];
 

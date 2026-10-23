@@ -1445,6 +1445,27 @@ check('H30', `配置变化不得整片重建卡片行区（会把用户正按着
 			return `rebuildRows() 在 updateRows() 之外还有调用点 —— 配置一变就把 4 张卡的 DOM 全换掉，用户手指下的按钮会被换掉`;
 		}
 	}
+
+	// 「行区只允许在 rebuildRows() 里重建」必须**全文件**成立。
+	// 前面 clause ① 只盯 refresh() / refreshRowStates() 这两个**函数名**：
+	// 新开一个入口（renderRowsAgain() 之类）照样能绕过去，断言却一直绿。
+	// 断言要钉的是**行为**（行区在哪重建），不是名字。
+	const rbDecl = /private\s+rebuildRows\s*\(/.exec(code);
+	if (!rbDecl) return `未找到 rebuildRows()`;
+	const rbOpen = code.indexOf('{', rbDecl.index);
+	const rbBody = balanced(code, rbOpen, '{', '}');
+	if (!rbBody) return `rebuildRows() 的函数体无法配对解析`;
+	const rbEnd = rbOpen + rbBody.length;
+	for (const c of code.matchAll(/bodyElements\s*\[[^\]]*\]\s*\.\s*replaceChildren/g)) {
+		if (c.index < rbOpen || c.index > rbEnd) {
+			return `行区的整片重建出现在 rebuildRows() 之外 —— 配置一变就把 4 张卡的 DOM 全换掉，用户手指下的按钮会被换掉`;
+		}
+	}
+	// 行区只能拿 DOM API 拼：innerHTML 会把整棵子树重新解析一遍，
+	// 用户正按着的按钮等于被换掉了 —— 跟整片 replaceChildren 是一个效果。
+	if (/\binnerHTML\b/.test(code) || /\bouterHTML\b/.test(code) || /\binsertAdjacentHTML\b/.test(code)) {
+		return `行区用了 innerHTML / outerHTML / insertAdjacentHTML —— 整棵子树会被重新解析，用户正按着的按钮等于被换掉`;
+	}
 	return null;
 });
 
@@ -1729,8 +1750,8 @@ check('T5', `写入重试的额度必须按键独立算，耗尽时必须明确�
 	if (/flushRetryCount|flushFailureCount/.test(code)) {
 		return `还有全局重试计数（flushRetryCount / flushFailureCount）—— 一个永远写不进去的键会带着别的键一起把额度耗光，而它自己失败多少次全被别的键的成功掩盖`;
 	}
-	if (!/pendingWriteAttempts/.test(code)) {
-		return `没有按键计数的重试额度（pendingWriteAttempts）`;
+	if (!/pendingWriteRounds/.test(code)) {
+		return `没有按键计数的重试额度（pendingWriteRounds）`;
 	}
 	const flushBody = methodBody(code, /flushPendingWrites\s*\([^)]*\)\s*:\s*Promise<void>\s*\{/);
 	if (!flushBody) return `未找到 flushPendingWrites()`;
@@ -1742,8 +1763,8 @@ check('T5', `写入重试的额度必须按键独立算，耗尽时必须明确�
 	if (!/console\.error\s*\(/.test(abandonBody)) {
 		return `重试额度耗尽时没有 console.error —— 用户的选择会无声消失，控制台外没有任何痕迹`;
 	}
-	if (!/pendingWriteAttempts/.test(abandonBody)) {
-		return `abandonWriteIfExhausted() 没有动 pendingWriteAttempts —— 额度不是按键算的`;
+	if (!/pendingWriteRounds/.test(abandonBody)) {
+		return `abandonWriteIfExhausted() 没有动 pendingWriteRounds —— 额度不是按键算的`;
 	}
 	return null;
 });
@@ -1779,10 +1800,13 @@ check('T7', `异步取值行落地后不得被状态刷新打回占位，也不�
 	// 判据落在**代码**上：异步分支必须先看「值有没有落地」。
 	// 少了这个闸门，用户点一下别的选项，眼前这行就闪回「读取中…」，
 	// 后台还多跑一次 getRecentlyOpened()。
+	//
+	// 闸门条件写成 `valueResolved || valueFailed`（一个说「取到了」，一个说「确认取不到」）
+	// 也要算数 —— 这里判的是「拿 valueResolved 当早退闸门」这件事本身。
 	if (!/binding\.valueResolved/.test(body)) {
 		return `updateRowState() 里没有 valueResolved —— 异步取值行每次刷新都被打回占位（用户点一下别的选项，眼前这行就闪回「读取中…」），后台还重复调一次 getRecentlyOpened()`;
 	}
-	if (!/if\s*\(\s*binding\.valueResolved\s*\)\s*\{?\s*break/.test(body)) {
+	if (!/if\s*\([^)]*binding\.valueResolved[^)]*\)\s*\{?\s*break/.test(body)) {
 		return `valueResolved 没有被当成早退闸门 —— 只是读了一下，异步行照样每次刷新都重发请求`;
 	}
 	// 落地的那一刻必须把标记置上，否则闸门永远打不开。
@@ -1841,6 +1865,40 @@ check('T10', `重试额度只能由重试定时器消耗（用户多戳两下不
 	if (!/flushPendingWrites\s*\(\s*true\s*\)/.test(timerBody)) {
 		return `重试定时器没有把这一轮标记成重试轮 —— 额度永远不会被消耗，重试也就没有上限`;
 	}
+	// **只有**定时器能传 true。
+	// 前面只判了「定时器传了 true」，没判「别的地方没传 true」——
+	// 把 render() / writeConfig() 改成传 true，定时器那条判据照样成立，
+	// 而「用户随手点一下也在消耗额度」的缺陷就回来了。
+	// 所以这里扫**全文件**：实参只允许空（默认 false）或 false；
+	// 传 true 的只允许出现在 scheduleFlushRetry() 体内。
+	const declMatch = /private\s+async\s+flushPendingWrites\s*\(/.exec(code);
+	if (!declMatch) return `未找到 flushPendingWrites()`;
+	const declTokenIdx = code.indexOf('flushPendingWrites', declMatch.index);
+	const timerDecl = /scheduleFlushRetry\s*\(\s*\)\s*:\s*void\s*\{/.exec(code);
+	if (!timerDecl) return `未找到 scheduleFlushRetry()`;
+	const timerOpen = code.indexOf('{', timerDecl.index);
+	const timerText = balanced(code, timerOpen, '{', '}');
+	if (!timerText) return `scheduleFlushRetry() 的函数体无法配对解析`;
+	const timerEnd = timerOpen + timerText.length;
+	for (const c of code.matchAll(/flushPendingWrites\s*\(\s*([^)]*)\)/g)) {
+		if (c.index === declTokenIdx) {
+			continue;   // 声明本身（带默认实参）
+		}
+		const arg = c[1].trim();
+		const inTimer = c.index > timerOpen && c.index < timerEnd;
+		if (arg === 'true') {
+			if (!inTimer) {
+				return `flushPendingWrites(true) 出现在重试定时器之外 —— 非定时器的调用点也消耗额度，用户多戳两下就提前放弃，24 秒的承诺变成几秒`;
+			}
+			continue;
+		}
+		if (arg !== '' && arg !== 'false') {
+			return `flushPendingWrites() 的实参只能是空或 false（只有重试定时器那一处传 true）—— 当前是「${arg}」`;
+		}
+		if (inTimer) {
+			return `重试定时器没有把这一轮标记成重试轮 —— 额度永远不会被消耗，重试也就没有上限`;
+		}
+	}
 	return null;
 });
 
@@ -1884,6 +1942,123 @@ check('T12', `异步取值的请求在途时不得重发（扩展注册配置项
 	const cleared = (after.match(/binding\.valuePending\s*=\s*false/g) || []).length;
 	if (cleared < 2) {
 		return `valuePending 只被放掉 ${cleared} 次（成功 / 失败两个收尾分支都得放）—— 取值失败时这一行会永远停在「请求中」，再也拿不到值`;
+	}
+	return null;
+});
+
+check('T13', `写入在途也必须消耗重试额度（否则配额永远用不完）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const body = methodBody(code, /flushPendingWrites\s*\([^)]*\)\s*:\s*Promise<void>\s*\{/);
+	if (!body) return `未找到 flushPendingWrites()`;
+	// 「这个键正在写」这条分支**也必须**消耗额度。
+	// 不消耗的话有两个洞：
+	//   ① 一次正常的在途写入就能白嫖掉一轮，「400ms × 60 ≈ 24 秒」的承诺被拖长；
+	//   ② 写入的 promise 永不 settle 时，这个键每一轮都被跳过，配额永远用不完 ——
+	//      「到点就放弃」的承诺彻底破了（变成无限心跳）。
+	const m = /writingKeys\s*\.\s*has\s*\(\s*key\s*\)/.exec(body);
+	if (!m) return `flushPendingWrites() 里找不到「这个键正在写」的分支`;
+	const branch = balanced(body, body.indexOf('{', m.index), '{', '}');
+	if (!branch) return `「在途」分支无法配对解析`;
+	if (!/abandonWriteIfExhausted/.test(branch)) {
+		return `「写入在途」这条路径没有计入重试额度 —— 一次正常写入就白嫖一轮（24 秒的承诺被拖长）；写入永不 settle 时配额永远用不完，「到点就放弃」变成无限心跳`;
+	}
+	return null;
+});
+
+check('T14', `放弃写入时必须把键从 writingKeys 里摘掉（否则卡死的写入会挡住用户的下一次点击）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const body = methodBody(code, /abandonWriteIfExhausted\s*\([^)]*\)\s*:\s*boolean\s*\{/);
+	if (!body) return `未找到 abandonWriteIfExhausted()`;
+	// 放弃写入时如果只把键从 pendingWrites 摘掉，writingKeys 里的它还占着 ——
+	// 用户后来再点同一个选项，会被「正在写」挡掉，选择白点。
+	if (!/writingKeys\s*\.\s*delete\s*\(\s*key\s*\)/.test(body)) {
+		return `放弃写入时没有把键从 writingKeys 里摘掉 —— 卡死的写入会永久占着这个键，用户后来再点同一个选项会被「正在写」挡掉，选择白点`;
+	}
+	return null;
+});
+
+check('T15', `异步取值的失败必须真的失败：不能被吞成「还没有」，也不能把整行冻住`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	// ① 取值函数不许吞异常。
+	//    吞了的话一次失败会被伪装成「还没有」—— 那是一次**成功的 resolve**，
+	//    于是 valueResolved 被置上，这一行整个 overlay 生命周期都冻在假值上，
+	//    而「失败不标记 resolved、下轮重试」那条分支永远走不到。
+	const label = methodBody(code, /recentWorkspaceLabel\s*\(\s*\)\s*:\s*Promise<string>\s*\{/);
+	if (!label) return `未找到 recentWorkspaceLabel()`;
+	const catchM = /catch\s*(\([^)]*\))?\s*\{/.exec(label);
+	if (catchM) {
+		const catchBody = balanced(label, label.indexOf('{', catchM.index), '{', '}');
+		if (!catchBody) return `recentWorkspaceLabel() 的 catch 块无法配对解析`;
+		if (!/\bthrow\b/.test(catchBody)) {
+			return `recentWorkspaceLabel() 的 catch 块没有把失败抛出去 —— 一次失败被伪装成「还没有」，而这一行就此冻在假值上`;
+		}
+	}
+	// ② 失败分支必须留痕。
+	const state = methodBody(code, /updateRowState\s*\([^)]*\)\s*:\s*void\s*\{/);
+	if (!state) return `未找到 updateRowState()`;
+	const issueAt = state.indexOf('row.asyncValue()');
+	if (issueAt < 0) return `updateRowState() 里找不到 row.asyncValue() 的调用点`;
+	const after = state.slice(issueAt);
+	// `.then(成功分支, 失败分支)` —— 用「} , 参数 => {」来切，不依赖参数名。
+	const rejectM = /\}\s*,\s*(\w+)\s*=>\s*\{/.exec(after);
+	if (!rejectM) return `updateRowState() 里找不到异步取值的失败分支`;
+	const rejectBody = balanced(after, after.indexOf('{', rejectM.index), '{', '}');
+	if (!rejectBody) return `异步取值的失败分支无法配对解析`;
+	if (!/console\.warn/.test(rejectBody)) {
+		return `异步取值失败没有留痕 —— 用户点完卡片发现「最近工程」空着，而我们连原因都不知道`;
+	}
+	// ③ 失败不能被当成「取到了值」—— 那才是冻住整行的元凶。
+	if (/binding\.valueResolved\s*=\s*true/.test(rejectBody)) {
+		return `异步取值的失败分支置了 valueResolved —— 一次被吞掉的失败会被当成「取到了『还没有』」，这一行整个生命周期都冻在假值上`;
+	}
+	return null;
+});
+
+check('T16', `异步取值失败必须有界重试，到上限后如实报错（不能永远停在「读取中…」）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const state = methodBody(code, /updateRowState\s*\([^)]*\)\s*:\s*void\s*\{/);
+	if (!state) return `未找到 updateRowState()`;
+	const issueAt = state.indexOf('row.asyncValue()');
+	if (issueAt < 0) return `updateRowState() 里找不到 row.asyncValue() 的调用点`;
+	const after = state.slice(issueAt);
+	const rejectM = /\}\s*,\s*(\w+)\s*=>\s*\{/.exec(after);
+	if (!rejectM) return `updateRowState() 里找不到异步取值的失败分支`;
+	const rejectBody = balanced(after, after.indexOf('{', rejectM.index), '{', '}');
+	if (!rejectBody) return `异步取值的失败分支无法配对解析`;
+	// ① 必须有界重试：失败要再试，但不能无限试。
+	//    存储服务在启动早期偶尔会抽风，一次失败就宣判「没有工程」是冤枉用户；
+	//    但无限重试又是一个永远停不下来的 IO 心跳。
+	if (!/scheduleValueRetry/.test(rejectBody)) {
+		return `异步取值失败后没有安排重试 —— 存储服务在启动早期偶尔会抽风，一次失败就宣判「没有工程」是冤枉用户`;
+	}
+	if (!/valueAttempts/.test(rejectBody)) {
+		return `异步取值失败没有计数 —— 重试没有上限，一个永远失败的取值会变成无限 IO`;
+	}
+	if (!/VALUE_RETRY_LIMIT/.test(rejectBody)) {
+		return `异步取值重试没有上限判定（VALUE_RETRY_LIMIT）—— 重试会一直试下去`;
+	}
+	// ② 到上限必须如实报错，不能永远停在「读取中…」。
+	if (!/valueFailed\s*=\s*true/.test(rejectBody)) {
+		return `重试到上限后没有标记终态 —— 这一行会永远停在「读取中…」，骗用户`;
+	}
+	if (!/olympia\.onboarding\.practice\.recent\.failed/.test(rejectBody)) {
+		return `重试到上限后没有显示失败文案 —— 这一行会永远停在「读取中…」，骗用户`;
+	}
+	// ③ 重试要有间隔，不能 busy loop。
+	//    注意签名正则不能写成 `\(\s*[^)]*\s*\)`：参数类型是 `() => void`，
+	//    里面自带一个右括号，`[^)]*` 会在那里截断，匹配不到声明。
+	const retry = methodBody(code, /private\s+scheduleValueRetry\s*\(/);
+	if (!retry) return `未找到 scheduleValueRetry()`;
+	if (!/VALUE_RETRY_INTERVAL/.test(retry)) {
+		return `scheduleValueRetry() 没有间隔（VALUE_RETRY_INTERVAL）—— 失败一次就立刻再试，等于 busy loop`;
 	}
 	return null;
 });

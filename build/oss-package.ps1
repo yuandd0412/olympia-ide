@@ -184,6 +184,19 @@ if ($rc -ne 0) { exit $rc }
 
 $dist = Join-Path (Split-Path $Oss -Parent) 'VSCode-win32-x64'
 
+# workbench 自己也得跟源码对得上。`-SkipBundle` 会复用 `out-vscode/`，那意味着
+# 「改了产品源码但没重跑 bundle」时，产物里静默是旧代码 —— 2026-10-23 实测踩中：
+# 源码里文案已改、状态位已加，产物里搜到的还是旧的，而打包一路 EXITCODE=0。
+# 扩展那边已经有同类门（verify-product-extensions.mjs），这里补上 workbench + NLS + CSS。
+Write-Output ''
+Write-Output '=== 验证产物里的 workbench / NLS / CSS 不是旧源码 ==='
+node 'D:\oler-ide-v2\build\verify-product-workbench.mjs' $dist
+$wrc = $LASTEXITCODE
+if ($wrc -ne 0) {
+    Write-Output '产物里的 workbench 不是当前源码编出来的（bundle 或 NLS 没重跑）。' -ForegroundColor Red
+    exit $wrc
+}
+
 # ---------------------------------------------------------------- 4. compile cache
 
 Write-Output ("=== STAGE 4/4 node-compile-cache START " + (& $stamp) + " ===")

@@ -80,9 +80,35 @@
  *            store 与绘制变换的比例没搞反（CSS 尺寸 vs 设备像素）
  *   resize-mid   动画**中途**（洞正在开）改窗口大小 —— 几何必须跟着重算，不能有台阶
  *   resize-late  洞**开满之后**改窗口大小 —— 新尺寸的四角仍然必须被盖住
+ *   tiny       最小窗 400×270（产品允许拖到的下限）—— 卡片必须完整放得下
+ *   min-width  400×760（最窄可用宽度）—— 窄窗下预览与代码块都得站得住
  *
  * 每个场景：独立 profile + 独立 CDP 端口 + 独立产品进程，收尾按 --user-data-dir
  * 特征反查进程并确认归零。
+
+ * ---------------------------------------------------------------------------
+ * ## 卡片布局判据（L-*）
+ *
+ * 配置期那四张卡在真机上量出来过五个缺陷，这个门禁把它们一条条钉住：
+ *
+ *   L-center   卡片视觉中心与视口中心重合（≤ 2px）—— 曾经偏 25×21px。
+ *   L-bounds   整张卡完整落在视口里（越出 ≤ 1px）—— 400×270 里曾经上下各裁 65/107px。
+ *   L-gap      相邻两张卡之间留得出间隙（≥ 8px）—— 曾经重叠 4.9px。
+ *   L-cta      主按钮完整可见可点 —— 被裁就等于点不到。
+ *   L-code     代码样例露出 ≥3 行，且光标落在可视区内、没掉进底部渐隐区。
+ *   L-preview  预览面板不留大片空白（空白 ≤ max(6px, 可用区高×15%)）。
+ *
+ * ### L-preview 钉的是「空白量」，不是「图示居中」
+ *
+ * 早先版本把「图示内容中心 == 可用区中心」当判据，结果在**修好的新包**上判红 ——
+ * 查下去发现**判据本身错了**：预览面板里除了图示还有一段命令文字
+ * （.olympia-onboarding-command），图示和它是同一组内容；窄窗里命令换行变高，
+ * 会把图示挤得偏上，但面板并没有留白。探针实测（480×900）：图示 511..535、
+ * 命令 569..614、面板空白只有 2px —— pipe 自身的居中是准的。
+ *
+ * F5 真正的定义是「预览框底部大片空白」：修复前实测框 189px 高、内容只占 108px、
+ * 底部空 81px。所以判据改成：可用区高 − 直接子元素并集高 ≤ 容差。
+ * 旧包必红（81px > 28px），新包必绿（2px）。
  *
  * ---------------------------------------------------------------------------
  * ## 门禁自证有牙
@@ -123,7 +149,18 @@ const TH = {
 	monoTolerance: 0.02,   // 覆盖率允许的微小回退（采样噪声量级）
 	maxRate: 30,           // 单步覆盖率变化率上限（/s），自然峰值 ~10.4/s
 	firstRiseMin: 1.2,     // 洞第一次透出的时刻下界（秒，相对点击）
-	firstRiseMax: 2.4      // 上界
+	firstRiseMax: 2.4,      // 上界
+	// 卡片布局判据（针对真机量出来的五处缺陷：F1 不居中 / F2 相邻卡贴死 /
+	// F3 最小窗裁切 / F4 代码样例被硬裁 / F5 预览框底部大片空白）
+	card: {
+		centerTol: 2,          // 卡片视觉中心与视口中心的偏差上限（px）
+		boundsTol: 1,          // 卡片越出视口的上限（px）
+		minGap: 8,             // 相邻两张卡之间的最小水平间隙（px）
+		minCodeLines: 3,       // 代码样例至少要露出几行
+		caretZone: 0.9,        // 光标必须停在这条线以内（与 CSS 底部渐隐的起点配对）
+		previewTolRatio: 0.15, // 预览面板允许的空白上限（占可用区高度的比例）
+		previewTolMin: 6       // 同上的下限（可用区太矮时用百分比会太苛刻）
+	},
 };
 
 // ---------------------------------------------------------------------------
@@ -165,6 +202,113 @@ function judgeFirstRise(series) {
 // ---------------------------------------------------------------------------
 // 门禁自检：每条判据的正反两面
 // ---------------------------------------------------------------------------
+/**
+	* 卡片布局判据。
+	*
+	* 每条都返回 { ok, detail }；ok === null 表示「这条在这个视口下不适用」
+	* （比如极矮窗口里预览块整块 display:none，或者这张卡根本没有代码样例）。
+	* 不适用不算失败 —— 但也不能因此跳过其它判据。
+	*/
+
+/** F1：卡片视觉中心必须与视口中心重合。 */
+function judgeCardCenter(m) {
+	const ok = Math.abs(m.centerDx) <= TH.card.centerTol && Math.abs(m.centerDy) <= TH.card.centerTol;
+	return {
+		ok: ok,
+		detail: `中心偏移 dx=${m.centerDx.toFixed(1)} dy=${m.centerDy.toFixed(1)}（应 ≤ ${TH.card.centerTol}px）`
+	};
+}
+
+/** F3：整张卡必须完整落在视口里。 */
+function judgeCardBounds(m) {
+	const c = m.card, v = m.viewport, t = TH.card.boundsTol;
+	const over = Math.max(-c.l, -c.t, c.r - v.w, c.b - v.h);
+	const ok = over <= t;
+	return {
+		ok: ok,
+		detail: `卡片 ${c.w.toFixed(0)}×${c.h.toFixed(0)} 位于 [${c.l.toFixed(0)},${c.t.toFixed(0)}]→[${c.r.toFixed(0)},${c.b.toFixed(0)}]，视口 ${v.w}×${v.h}，越出 ${over.toFixed(1)}px（应 ≤ ${t}px）`
+	};
+}
+
+/** F2：相邻两张卡不许重叠。 */
+function judgeCardGap(m) {
+	if (m.gap === null) {
+		return { ok: null, detail: '视口里只看得见一张卡，没有相邻关系可判' };
+	}
+	const ok = m.gap >= TH.card.minGap;
+	return {
+		ok: ok,
+		detail: `相邻卡最小水平间隙 ${m.gap.toFixed(1)}px（应 ≥ ${TH.card.minGap}px；重叠时是负数）`
+	};
+}
+
+/** 主按钮必须真的露在外面（点得到）。 */
+function judgeCardCta(m) {
+	const c = m.cta;
+	const ok = !!m.ctaVisible && !!c && c.w > 1 && c.h > 1
+		&& c.l >= -TH.card.boundsTol && c.t >= -TH.card.boundsTol
+		&& c.r <= m.viewport.w + TH.card.boundsTol && c.b <= m.viewport.h + TH.card.boundsTol;
+	return {
+		ok: ok,
+		detail: c
+			? `主按钮 ${c.w.toFixed(0)}×${c.h.toFixed(0)} @ [${c.l.toFixed(0)},${c.t.toFixed(0)}]，可见=${m.ctaVisible}`
+			: '没找到主按钮'
+	};
+}
+
+/** F4：代码样例要露出几行，而且光标必须看得见（不能被裁、不能掉进渐隐区）。 */
+function judgeCardCode(m) {
+	const c = m.code;
+	if (!c || !c.applicable) {
+		return { ok: null, detail: '这张卡没有代码样例（或预览块被紧凑档整块隐藏了）' };
+	}
+	if (c.visibleLines < TH.card.minCodeLines) {
+		return { ok: false, detail: `代码样例只露出 ${c.visibleLines}/${c.totalLines} 行（应 ≥ ${TH.card.minCodeLines} 行）` };
+	}
+	if (!c.caret || c.caret.h <= 0) {
+		return { ok: false, detail: '没有找到光标' };
+	}
+	if (c.caret.b > c.clipBottom + 1) {
+		return { ok: false, detail: `光标落在 ${c.caret.b.toFixed(0)}，已经超出可视区底边 ${c.clipBottom.toFixed(0)}（被裁掉了）` };
+	}
+	if (c.caret.b > c.zoneLimit + 1) {
+		return { ok: false, detail: `光标落在 ${c.caret.b.toFixed(0)}，掉进了底部渐隐区（这条线在 ${c.zoneLimit.toFixed(0)}）` };
+	}
+	return { ok: true, detail: `露出 ${c.visibleLines}/${c.totalLines} 行，光标在 ${c.caret.b.toFixed(0)}（渐隐线 ${c.zoneLimit.toFixed(0)}，可视底边 ${c.clipBottom.toFixed(0)}）` };
+}
+
+/**
+ * F5：预览面板里不许有大片空白。
+ *
+ * 判据钉的是**空白量**，不是「图示单独居中」——
+ *
+ * 面板里的内容不止图示：编译那张卡还有一段命令文字（.olympia-onboarding-command），
+ * 图示和它是同一组内容。真机实测（修好之后）：
+ *   480×900  图示在 511..535，命令在 569..614 —— 图示中心离可用区中心 -19px，
+ *            可面板里的空白只有 2px（内容把面板撑满了）。
+ *
+ * 「图示居中」会把一个没问题的排版判红；「空白量」才是 F5 真正的定义 ——
+ * 修复前实测：预览框 189px 高，图示内容只占上面 108px，底部空着 81px。
+ */
+function judgeCardPreview(m) {
+	const ps = (m.previews || []).filter(p => p.areaHeight > 1);
+	if (!ps.length) {
+		return { ok: null, detail: '没有可判的图示预览区' };
+	}
+	let worst = null;
+	for (const p of ps) {
+		const tol = Math.max(TH.card.previewTolMin, p.areaHeight * TH.card.previewTolRatio);
+		if (!worst || p.blank > worst.blank) {
+			worst = { blank: p.blank, tol: tol, areaHeight: p.areaHeight };
+		}
+	}
+	const ok = worst.blank <= worst.tol;
+	return {
+		ok: ok,
+		detail: `预览面板内空白 ${worst.blank.toFixed(1)}px（可用区高 ${worst.areaHeight.toFixed(0)}，容差 ${worst.tol.toFixed(1)}px）`
+	};
+}
+
 function selftest() {
 	/** 一套判据整体是否全绿。 */
 	const allGreen = (lastCoverage, corners, series) =>
@@ -210,6 +354,66 @@ function selftest() {
 
 	const never = smooth.map(s => ({ t: s.t, coverage: 0 }));
 	cases.push({ name: '洞从头到尾没透出 → 判红', got: allGreen(0, [0, 0, 0, 0], never), expectGreen: false });
+
+	// 卡片布局判据的自检：每条的正反两面都要跑一遍。
+	{
+	const good = {
+	viewport: { w: 1200, h: 800 },
+	card: { l: 399, t: 164, r: 801, b: 636, w: 402, h: 472, cx: 600, cy: 400 },
+	centerDx: 0, centerDy: 0,
+	gap: 45,
+	ctaVisible: true,
+	cta: { l: 520, t: 590, r: 680, b: 618, w: 160, h: 28 },
+	code: { applicable: true, visibleLines: 6, totalLines: 11, caret: { t: 284, b: 300, h: 16 }, clipBottom: 340, zoneLimit: 320, boxH: 190 },
+	previews: [{ areaTop: 200, areaBottom: 340, areaHeight: 140, contentTop: 200, contentBottom: 340, usedHeight: 140, blank: 0 }]
+	};
+	const clone = (o) => JSON.parse(JSON.stringify(o));
+	const allCardGreen = (m) => {
+	const r = [judgeCardCenter(m), judgeCardBounds(m), judgeCardGap(m), judgeCardCta(m), judgeCardCode(m), judgeCardPreview(m)];
+	return r.every(x => x.ok !== false);
+	};
+	cases.push({ name: '卡片布局全套判据：正常数据全绿', got: allCardGreen(good), expectGreen: true });
+
+	const offCenter = clone(good);
+	offCenter.centerDx = 25; offCenter.centerDy = 21;
+	cases.push({ name: '卡片中心偏了 25×21px → L-center 判红', got: allCardGreen(offCenter), expectGreen: false });
+
+	const cropped = clone(good);
+	cropped.viewport = { w: 400, h: 270 };
+	cropped.card = { l: 24, t: -100, r: 426, b: 372, w: 402, h: 472, cx: 225, cy: 136 };
+	cropped.centerDx = 25; cropped.centerDy = 1;
+	cases.push({ name: '400×270 里卡片上下都被裁 → L-bounds 判红', got: allCardGreen(cropped), expectGreen: false });
+
+	const overlap = clone(good);
+	overlap.gap = -4.9;
+	cases.push({ name: '相邻卡重叠 4.9px → L-gap 判红', got: allCardGreen(overlap), expectGreen: false });
+
+	const noCta = clone(good);
+	noCta.ctaVisible = false;
+	cases.push({ name: '主按钮被裁掉 → L-cta 判红', got: allCardGreen(noCta), expectGreen: false });
+
+	const hiddenCaret = clone(good);
+	hiddenCaret.code.caret = { t: 384, b: 400, h: 16 };
+	cases.push({ name: '光标被裁到可视区外 → L-code 判红', got: allCardGreen(hiddenCaret), expectGreen: false });
+
+	const fadedCaret = clone(good);
+	fadedCaret.code.caret = { t: 324, b: 340, h: 16 };
+	cases.push({ name: '光标掉进底部渐隐区 → L-code 判红', got: allCardGreen(fadedCaret), expectGreen: false });
+
+	// 用**修复前的真机实测值**当反例：框 189px 高、内容只占上面 108px、底部空 81px。
+	const bottomBlank = clone(good);
+	bottomBlank.previews[0] = { areaTop: 200, areaBottom: 389, areaHeight: 189, contentTop: 200, contentBottom: 308, usedHeight: 108, blank: 81 };
+	cases.push({ name: '预览框底部空 81px（修复前实测：框 189 / 内容 108）→ L-preview 判红', got: allCardGreen(bottomBlank), expectGreen: false });
+
+	// 内容不在正中、但面板没留白 —— 不该判红（这正是旧判据错的地方）。
+	const offCenterButFull = clone(good);
+	offCenterButFull.previews[0] = { areaTop: 200, areaBottom: 340, areaHeight: 140, contentTop: 205, contentBottom: 335, usedHeight: 130, blank: 10 };
+	cases.push({ name: '预览内容不在正中但面板没留白 → L-preview 不判红', got: allCardGreen(offCenterButFull), expectGreen: true });
+
+	const noPreview = clone(good);
+	noPreview.previews = [];
+	cases.push({ name: '没有图示预览区 → L-preview 不适用（不算失败）', got: allCardGreen(noPreview), expectGreen: true });
+	}
 
 	let bad = 0;
 	console.log('=== 几何门禁自检（判据必须有牙）===');
@@ -322,6 +526,139 @@ const SAMPLE_EXPR = `(() => {
 	};
 })()`;
 
+/**
+	* 卡片布局测量（页面内执行）。
+	*
+	* 量的是**用户眼睛看到的位置**（getBoundingClientRect，含 transform 的 scale），
+	* 不是布局位置 —— 卡片有缩放和位移，按布局位置量会算出假的间隙。
+	*/
+	const CARD_LAYOUT_EXPR = `(() => {
+	const vw = window.innerWidth, vh = window.innerHeight;
+	const cards = [...document.querySelectorAll('.olympia-onboarding-card')];
+	if (!cards.length) { return { missing: true }; }
+	const R = function (el) {
+	const r = el.getBoundingClientRect();
+	return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height, cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+	};
+	const active = cards.find(function (c) { return c.style.pointerEvents === 'auto'; }) || cards[0];
+	const card = R(active);
+
+	// 相邻卡之间的水平间隙：只看还看得见的卡，按屏幕上的左右顺序排。
+	const vis = [];
+	for (const c of cards) {
+	const op = Number(getComputedStyle(c).opacity);
+	if (op > 0.05) { vis.push(R(c)); }
+	}
+	vis.sort(function (a, b) { return a.l - b.l; });
+	let gap = null;
+	const gaps = [];
+	for (let i = 0; i + 1 < vis.length; i++) {
+	const g = vis[i + 1].l - vis[i].r;
+	gaps.push(g);
+	if (gap === null || g < gap) { gap = g; }
+	}
+
+	// 主按钮
+	const ctaEl = active.querySelector('.olympia-onboarding-cta');
+	const cta = ctaEl ? R(ctaEl) : null;
+	let ctaVisible = false;
+	if (ctaEl && cta) {
+	const cs = getComputedStyle(ctaEl);
+	ctaVisible = cta.w > 0 && cta.h > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) > 0.05;
+	}
+
+	// 代码样例（哪张卡有算哪张）：可视区底边取预览面板的底边 ——
+	// 代码盒子自己 overflow:hidden 之前，溢出的行是「画到面板外面去了」，不是被它自己裁掉。
+	let code = null;
+	for (const c of cards) {
+	const box = c.querySelector('.olympia-onboarding-code');
+	if (!box) { continue; }
+	const preview = c.querySelector('.olympia-onboarding-card-preview');
+	const boxRect = R(box);
+	const prevRect = preview ? R(preview) : null;
+	const caretEl = box.querySelector('.olympia-onboarding-caret');
+	const caret = caretEl ? R(caretEl) : null;
+	const lines = [...box.querySelectorAll('.olympia-onboarding-code-line')].map(R);
+	const clipBottom = prevRect ? prevRect.b : boxRect.b;
+	code = {
+	applicable: boxRect.h > 1,
+	boxH: boxRect.h,
+	boxTop: boxRect.t,
+	clipBottom: clipBottom,
+	visibleLines: lines.filter(function (l) { return l.b <= clipBottom + 1; }).length,
+	totalLines: lines.length,
+	caret: caret,
+	caretBottom: caret ? caret.b : null,
+	zoneLimit: boxRect.t + 0.9 * boxRect.h
+	};
+	break;
+	}
+
+	// 预览区里有没有大片没用上的高度（F5）
+	//
+	// 判据钉的是**空白量**：可用区（预览面板去掉边框和 padding 的内容盒）减去
+	// 「直接子元素并集」的高度。
+	//
+	// 为什么不是「图示单独居中」：预览面板里除了图示还有一段命令文字
+	// （.olympia-onboarding-command），图示和它是同一组内容。真机实测（修好之后）：
+	//   480×900  图示在 511..535，命令在 569..614 —— 图示中心离可用区中心 -19px，
+	//            但面板里的空白只有 2px（内容把面板撑满了）。
+	// 「图示居中」会把一个没问题的排版判红；「空白量」才是 F5 真正的定义 ——
+	// 修复前实测：预览框 189px 高，内容只占上面 108px，底部空着 81px。
+	const previews = [];
+	for (const c of cards) {
+		const preview = c.querySelector('.olympia-onboarding-card-preview');
+		if (!preview) { continue; }
+		const pr = R(preview);
+		if (pr.h <= 1) { continue; }
+		const cs = getComputedStyle(preview);
+		const padTop = parseFloat(cs.paddingTop) || 0;
+		const padBottom = parseFloat(cs.paddingBottom) || 0;
+		const border = preview.clientTop || 0;
+		const areaTop = pr.t + border + padTop;
+		const areaBottom = pr.b - border - padBottom;
+		const areaHeight = areaBottom - areaTop;
+		if (areaHeight <= 1) { continue; }
+		const kids = [...preview.children].filter(function (el) {
+			const st = getComputedStyle(el);
+			if (st.display === 'none' || st.visibility === 'hidden') { return false; }
+			return el.getBoundingClientRect().height > 0.5;
+		});
+		if (!kids.length) { continue; }
+		let top = Infinity, bottom = -Infinity;
+		for (const el of kids) {
+			const r = el.getBoundingClientRect();
+			top = Math.min(top, r.top);
+			bottom = Math.max(bottom, r.bottom);
+		}
+		const usedHeight = bottom - top;
+		previews.push({
+			areaTop: areaTop,
+			areaBottom: areaBottom,
+			areaHeight: areaHeight,
+			contentTop: top,
+			contentBottom: bottom,
+			usedHeight: usedHeight,
+			blank: Math.max(0, areaHeight - usedHeight),
+			childCount: kids.length
+		});
+	}
+
+	return {
+	missing: false,
+	viewport: { w: vw, h: vh },
+	card: card,
+	centerDx: card.cx - vw / 2,
+	centerDy: card.cy - vh / 2,
+	gap: gap,
+	gaps: gaps,
+	cta: cta,
+	ctaVisible: ctaVisible,
+	code: code,
+	previews: previews
+	};
+	})()`;
+
 const ACTIVE_CARD = `(() => {
 	const cards = [...document.querySelectorAll('.olympia-onboarding-card')];
 	return cards.find(c => c.style.pointerEvents === 'auto') || cards[0] || null;
@@ -403,8 +740,15 @@ async function triggerEnter(cdp) {
 const results = [];
 const problems = [];
 
+/**
+	* 记一条判据。
+	*
+	* ok === null 表示「这条在这个视口下不适用」—— 不算失败，但也不许当成通过
+	* （汇总里显示为「—」，一眼能看出它没被测到，而不是被漏掉了）。
+	*/
 function judge(id, desc, ok, detail) {
 	results.push({ id, desc, ok, detail });
+	if (ok === null) { console.log(`  — ${id} ${desc} —— ${detail}（不适用）`); return; }
 	if (ok) { console.log(`  ✓ ${id} ${desc}`); }
 	else { console.log(`  ✗ ${id} ${desc} —— ${detail}`); problems.push(`${id}: ${detail}`); }
 }
@@ -471,6 +815,39 @@ async function runScenario(name, opts) {
 				judge(`${name}-G-dpr`, `devicePixelRatio 确实是 ${opts.forceDpr}`,
 					Math.abs((m.devicePixelRatio || 0) - opts.forceDpr) < 0.01,
 					`实际 dpr=${m.devicePixelRatio}`);
+			}
+		}
+
+		// 卡片布局测量：必须在触发进入动画**之前**做 ——
+		// 一旦点下「开始做题」，卡片就散了，再也量不到配置期的布局。
+		await sleep(700);
+		let cardLayout = null;
+		try {
+			cardLayout = await cdp.eval(CARD_LAYOUT_EXPR);
+		} catch (e) {
+			cardLayout = { missing: true, error: e.message };
+		}
+		fs.writeFileSync(path.join(outDir, 'card-layout.json'), JSON.stringify(cardLayout, null, 2));
+		if (!cardLayout || cardLayout.missing) {
+			judge(`${name}-L-present`, '卡片布局可测（页面上找得到卡片）', false,
+				`页面上没有可测的 .olympia-onboarding-card${cardLayout && cardLayout.error ? '（' + cardLayout.error + '）' : ''}`);
+		} else {
+			const c = cardLayout.card;
+			console.log(`  卡片 ${c.w.toFixed(0)}×${c.h.toFixed(0)} @ [${c.l.toFixed(0)},${c.t.toFixed(0)}]→[${c.r.toFixed(0)},${c.b.toFixed(0)}]`
+				+ ` | 视口 ${cardLayout.viewport.w}×${cardLayout.viewport.h}`
+				+ ` | 中心偏移 ${cardLayout.centerDx.toFixed(1)}×${cardLayout.centerDy.toFixed(1)}`
+				+ ` | 相邻间隙 ${cardLayout.gap === null ? '（只有一张可见）' : cardLayout.gap.toFixed(1) + 'px'}`);
+			const cardJudges = [
+				['L-center', '卡片视觉中心与视口中心重合', judgeCardCenter],
+				['L-bounds', '整张卡完整落在视口里（不被裁切）', judgeCardBounds],
+				['L-gap', '相邻两张卡之间留得出间隙（不重叠）', judgeCardGap],
+				['L-cta', '主按钮完整可见可点', judgeCardCta],
+				['L-code', '代码样例露出足够行数、光标可见且不在渐隐区', judgeCardCode],
+				['L-preview', '预览面板没有留出大片空白', judgeCardPreview],
+			];
+			for (const [id, desc, fn] of cardJudges) {
+				const r = fn(cardLayout);
+				judge(`${name}-${id}`, desc, r.ok, r.detail);
 			}
 		}
 
@@ -559,8 +936,9 @@ const SCENARIOS = [
 	{ name: 'flat', viewport: [1400, 300], dpr: 1, portOffset: 1 },
 	{ name: 'hidpi', viewport: [900, 900], dpr: 2, forceDpr: 2, portOffset: 2 },
 	{ name: 'resize-mid', viewport: [1100, 800], dpr: 1, portOffset: 3, resizeAtMs: 1700, resizeTo: [900, 640] },
-	{ name: 'resize-late', viewport: [1100, 800], dpr: 1, portOffset: 4, resizeAtMs: 3200, resizeTo: [820, 900] }
-];
+	{ name: 'resize-late', viewport: [1100, 800], dpr: 1, portOffset: 4, resizeAtMs: 3200, resizeTo: [820, 900] },
+	{ name: 'tiny', viewport: [400, 270], dpr: 1, portOffset: 5 },
+	{ name: 'min-width', viewport: [400, 760], dpr: 1, portOffset: 6 },];
 
 for (const sc of SCENARIOS) {
 	if (ONLY_SCENARIO && sc.name !== ONLY_SCENARIO) { continue; }
@@ -585,7 +963,7 @@ fs.writeFileSync(path.join(OUT, 'geometry-report.json'), JSON.stringify(report, 
 
 console.log('\n================ 汇总 ================');
 for (const r of results) {
-	console.log(`  ${r.ok ? '✓' : '✗'} ${r.id} ${r.desc}${r.ok ? '' : ' —— ' + r.detail}`);
+	console.log(`  ${r.ok === null ? '—' : (r.ok ? '✓' : '✗')} ${r.id} ${r.desc}${r.ok === null || r.ok ? '' : ' —— ' + r.detail}`);
 }
 console.log(problems.length ? `\n有 ${problems.length} 条几何判据没过` : '\n窗口几何全过 ✓');
 console.log('报告:', path.join(OUT, 'geometry-report.json'));

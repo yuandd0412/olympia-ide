@@ -72,6 +72,45 @@ const OL = 'oss/src/vs/workbench/contrib/olympia/browser/';
  * 注意：锚点要落在**代码**上，不能落在文档注释上。注释里同样会出现
  * `WorkbenchPhase.BlockStartup` 这种字符串，先匹配到注释等于这一条变异白做。
  */
+/**
+	* 在指定 `@media (max-height: Npx)` 档里替换第一处匹配。
+	*
+	* 为什么不能直接 t.replace(...)：
+	* `flex: 0 0 auto;` 在默认档和 ≤420 档里都有，裸 replace 只改第一处（默认档），
+	* 改不到目标档 —— 断言当然不会红，而结论会变成「断言没用」，其实是被变异绕开了。
+	* 所以这里先把目标档的正文切出来，只在正文里找。
+	*/
+	function replaceInMaxHeightBlock(text, maxHeight, find, replace) {
+		// String.raw 只保证反斜杠不被吃掉，出来的还是**字符串** —— 必须再包一层 new RegExp。
+	const re = new RegExp(String.raw`@media\s*\(max-height:\s*${maxHeight}px\)`);
+		const m = re.exec(text);
+		if (!m) {
+			return text;
+		}
+		const braceIdx = text.indexOf('{', m.index + m[0].length);
+		if (braceIdx < 0) {
+			return text;
+		}
+		let depth = 1;
+		let j = braceIdx + 1;
+		while (j < text.length && depth > 0) {
+			const ch = text[j];
+			if (ch === '{') {
+				depth++;
+			} else if (ch === '}') {
+				depth--;
+			}
+			j++;
+		}
+		const body = text.slice(braceIdx + 1, j - 1);
+		const idx = body.indexOf(find);
+		if (idx < 0) {
+			return text;
+		}
+		const newBody = body.slice(0, idx) + replace + body.slice(idx + find.length);
+		return text.slice(0, braceIdx + 1) + newBody + text.slice(j - 1);
+	}
+
 const MUTATIONS = [
 	{
 		id: 'M1', expect: 'H1',
@@ -1053,9 +1092,9 @@ const MUTATIONS = [
 	},
 	{
 		id: 'M118', expect: 'T57',
-		desc: '极矮档不再隐藏预览块（270px 高的窗口里主按钮会被裁）',
+		desc: '紧凑模式整体不再隐藏预览块（所有档的 display:none 都删掉）',
 		file: OL + 'media/olympiaOnboarding.css',
-		mutate: t => t.replace(/\.olympia-onboarding-card-preview\s*\{\s*display:\s*none;/, '.olympia-onboarding-card-preview { display: block;')
+		mutate: t => t.replace(/\.olympia-onboarding-card-preview\s*\{[^}]*?display:\s*none;/g, '.olympia-onboarding-card-preview { display: block;')
 	},
 	{
 		id: 'M119', expect: 'T58',
@@ -1100,8 +1139,8 @@ const MUTATIONS = [
 		mutate: t => t.replace(/box-sizing:\s*border-box;\s*width:\s*100%;\s*height:\s*100%;/, 'width: 100%; height: 100%; box-sizing: border-box;')
 	},
 	{
-		id: 'M126', expect: 'T57',
-		desc: '紧凑档断点改成 200px（比产品最小窗高 270 还小，最小窗口里这档就失效了）',
+		id: 'M126', expect: 'T75',
+		desc: '最紧档的断点改成 200px（够不着产品最小窗高 270px，那档等于白写）',
 		file: OL + 'media/olympiaOnboarding.css',
 		mutate: t => t.replace('@media (max-height: 320px)', '@media (max-height: 200px)')
 	},
@@ -1111,6 +1150,42 @@ const MUTATIONS = [
 		desc: '轨道高度按视口宽度夹而不是视口高度（vh 写成 vw，矮窗口里卡片照样顶出去）',
 		file: OL + 'media/olympiaOnboarding.css',
 		mutate: t => t.replace('height: min(472px, calc(100vh - 16px));', 'height: min(472px, calc(100vw - 16px));')
+	},
+	{
+		id: 'M137', expect: 'T69',
+		desc: '矮窗口档的行区改回可压缩（flex: 0 1 auto）—— 行区被压扁后被 overflow:hidden 静默裁掉',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => replaceInMaxHeightBlock(t, 420, 'flex: 0 0 auto;', 'flex: 0 1 auto;')
+	},
+	{
+		id: 'M138', expect: 'T70',
+		desc: '矮窗口档给行区加 min-height: 0（等于允许 flex 把行区压到内容高度以下）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => replaceInMaxHeightBlock(t, 420, 'flex: 0 0 auto;', 'flex: 0 0 auto;\n\t\tmin-height: 0;')
+	},
+	{
+		id: 'M139', expect: 'T71',
+		desc: '预览让位档的断点从 385px 改成 200px（断点乱跑，预览在 386~420px 区间又被切成一半）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace('@media (max-height: 385px)', '@media (max-height: 200px)')
+	},
+	{
+		id: 'M140', expect: 'T72',
+		desc: '预览让位档不再把页脚钉底（margin-top: auto 删掉，中间空一大段）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => replaceInMaxHeightBlock(t, 385, 'margin-top: auto;', '')
+	},
+	{
+		id: 'M141', expect: 'T73',
+		desc: '预览让位档把配置行拉开（给行区加 justify-content: space-between）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => replaceInMaxHeightBlock(t, 385, '.olympia-onboarding-card-preview {', '.olympia-onboarding-card-body {\n\t\tjustify-content: space-between;\n\t}\n\n\t.olympia-onboarding-card-preview {')
+	},
+	{
+		id: 'M142', expect: 'T74',
+		desc: '最窄档的断点从 320px 改成 500px（档位顺序乱掉，宽断点盖掉窄断点）',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace('@media (max-height: 320px)', '@media (max-height: 500px)')
 	},
 ];
 

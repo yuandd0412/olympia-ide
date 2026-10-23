@@ -3492,13 +3492,23 @@ check('T56', `轨道高度也必须用 min() 夹在视口内（最小窗口 400�
 check('T57', `必须有矮窗口紧凑模式（预览让位 + 主按钮贴底，且必须覆盖产品最小窗高 270px）`, () => {
 	const raw = load(F_ONB_CSS);
 	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
-	const blocks = cssMaxHeightMediaBlocks(stripComments(raw));
+	const css = stripComments(raw);
+	const blocks = cssMaxHeightMediaBlocks(css);
 	if (!blocks.length) {
 		return `CSS 里没有任何 @media (max-height: ...) 规则 —— 窗口一矮卡片就装不下（产品允许的最小窗口是 400×270）`;
 	}
-	const hit = blocks.find(b => b.maxHeight >= 270 && /display\s*:\s*none/.test(b.body) && /margin-top\s*:\s*auto/.test(b.body));
-	if (!hit) {
-		return `没有一档覆盖到产品最小窗高（270px）的矮窗口规则同时做到「预览块 display:none」+「页脚 margin-top:auto」—— 预览块在极矮窗口里必须整块让位（主按钮被裁掉比预览没了严重得多）；断点必须 ≥ 270px，否则 270px 高的窗口里主按钮直接被裁掉`;
+	// 算「270px 高时真正生效的值」：所有断点 ≥ 270 的档都会命中，写在后面的赢。
+	// 所以不能只看「有没有一档写了 display:none」—— 后来的一档把它改回 block 也照样生效，
+	// 那就是白写（这条断言就是被这种写法架空过一次）。
+	const previewDisplay = cssEffectiveDecl(blocks, '.olympia-onboarding-card-preview', 'display', 270)
+		?? cssDeclValue(cssRule(css, '.olympia-onboarding-card-preview'), 'display');
+	const footerMargin = cssEffectiveDecl(blocks, '.olympia-onboarding-card-footer', 'margin-top', 270)
+		?? cssDeclValue(cssRule(css, '.olympia-onboarding-card-footer'), 'margin-top');
+	if (previewDisplay !== 'none') {
+		return `270px 高的窗口里 .olympia-onboarding-card-preview 的 display 生效值是 \`${previewDisplay}\` —— 必须是 none：预览块在极矮窗口里必须整块让位（主按钮被裁掉比预览没了严重得多；实测 330px 高的窗口里预览内区只剩 117px，管道图读不出）`;
+	}
+	if (footerMargin !== 'auto') {
+		return `270px 高的窗口里 .olympia-onboarding-card-footer 的 margin-top 生效值是 \`${footerMargin}\` —— 必须是 auto，让页脚钉在卡片底部，不然主按钮会被裁掉`;
 	}
 	return null;
 });
@@ -3719,6 +3729,298 @@ check('T68', `标记必须能被撤掉（重新点一次 / 写成功了都不该
 	if (flush === null) return `没有 flushPendingWrites`;
 	if (!/unsavedKeys\.delete\(/.test(flush)) {
 		return `写入成功时没有撤掉标记 —— 明明存上了，行上还写着「未保存」`;
+	}
+	return null;
+});
+
+// ===========================================================================
+// Q6：矮窗口下配置行不许被静默裁掉
+//
+// 真机实测（13 档高度 × 4 张卡）：窗口高 321~420px 时，
+// `.olympia-onboarding-card-body` 被压成 flex: 0 1 auto + min-height: 0 +
+// overflow: hidden —— 行区被压到 50px（内容 120px），
+// 「光标动画」那一行整行看不见，连滚动条都不给。
+// 用户根本不知道自己还有一项没配。
+//
+// 修法（三档）：
+//   ≥421px  默认档，header / 行区 / 预览 / 页脚 四块齐全。
+//   ≤420px  行区 flex: 0 0 auto（shrink=0）+ 不声明 min-height: 0 ——
+//           宁可预览被压扁，也不能把行区裁掉。
+//   ≤385px  预览整块让位（display:none）+ 页脚钉底（margin-top:auto），
+//           行区保持紧凑 —— 绝不用 space-between 把行拉开。
+//
+// 这里只钉**结构**；像素级结论由真机门 verify-onboarding-geometry.mjs 的
+// L-rows 判据量（行区 scrollHeight ≤ clientHeight + 1、每行下沿不越出行区盒子、
+// 行区可见高 ≥ 20px）。
+// ===========================================================================
+
+/**
+	* 把一个规则体拆成「属性名 → 值」表。
+	*
+	* 为什么不用正则取属性：
+	* - `margin-top` 和 `margin` 分不开（朴素的 indexOf 会把前者也当成后者）；
+	* - `min-height` 和 `height` 分不开；
+	* - `flex` 和 `flex-grow` 分不开；
+	* - 值里带 `:` 的（url(...)）会让「取第一个冒号」取错分隔符。
+	* 这里按「顶层分号切声明」来做，属性名精确匹配，上面这些问题天然不存在。
+	*/
+	function cssDecls(body) {
+		const out = new Map();
+		let depth = 0;
+		let buf = '';
+		const flush = () => {
+			const d = buf.trim();
+			buf = '';
+			if (!d) {
+				return;
+			}
+			const idx = d.indexOf(':');
+			if (idx <= 0) {
+				return;
+			}
+			out.set(d.slice(0, idx).trim().toLowerCase(), d.slice(idx + 1).trim());
+		};
+		for (const ch of body) {
+			if (ch === '{') {
+				depth++;
+				buf = '';
+				continue;
+			}
+			if (ch === '}') {
+				depth--;
+				buf = '';
+				continue;
+			}
+			if (ch === ';' && depth === 0) {
+				flush();
+				continue;
+			}
+			buf += ch;
+		}
+		flush();
+		return out;
+	}
+
+/** 取一个属性上的值；没有这一条声明就返回 null。 */
+	function cssDeclValue(body, prop) {
+		if (!body) {
+			return null;
+		}
+		const v = cssDecls(body).get(prop);
+		return v === undefined ? null : v;
+	}
+
+/**
+	* 解析 `flex: <grow> <shrink> <basis>`。
+	*
+	* 省略写法也得算对，否则 `flex: none` 会被误判成「可压缩」：
+	*   flex: 1       → 1 1 0%
+	*   flex: none    → 0 0 auto
+	*   flex: auto    → 1 1 auto
+	*   flex: initial → 0 1 auto
+	*/
+	function cssFlexTriple(body) {
+		const raw = cssDeclValue(body, 'flex');
+		if (raw === null) {
+			return null;
+		}
+		const s = raw.trim();
+		if (s === 'none') {
+			return { grow: 0, shrink: 0, basis: 'auto', raw: s };
+		}
+		if (s === 'auto') {
+			return { grow: 1, shrink: 1, basis: 'auto', raw: s };
+		}
+		if (s === 'initial') {
+			return { grow: 0, shrink: 1, basis: 'auto', raw: s };
+		}
+		const parts = s.split(/\s+/);
+		if (parts.length >= 3) {
+			return { grow: Number(parts[0]), shrink: Number(parts[1]), basis: parts.slice(2).join(' '), raw: s };
+		}
+		if (parts.length === 2) {
+			return { grow: Number(parts[0]), shrink: 1, basis: parts[1], raw: s };
+		}
+		if (parts.length === 1 && /^\d/.test(parts[0])) {
+			return { grow: Number(parts[0]), shrink: 1, basis: '0%', raw: s };
+		}
+		return null;
+	}
+
+/**
+	* 找出「预览整块让位」那一档：断点在 360~420px 之间，且档内预览 display:none。
+	*
+	* 下界 360 是实测推出来的：card0 预览内区（去掉 padding 和标题）在 386px 高时
+	* 只剩 100.5px，管道图被压到 27.3px 已经读不出；420px 高时还有 134.5px。
+	* 让位档切在 385px，正好切在「管道图还读得出」和「读不出」之间。
+	*/
+	function cssYieldBlock(blocks) {
+		for (const b of blocks) {
+			if (!(b.maxHeight >= 360 && b.maxHeight < 420)) {
+				continue;
+			}
+			const body = cssRule(b.body, '.olympia-onboarding-card-preview');
+			if (body === null) {
+				continue;
+			}
+			if (cssDeclValue(body, 'display') === 'none') {
+				return b;
+			}
+		}
+		return null;
+	}
+
+/**
+	* 算「某个高度下真正生效的声明值」。
+	*
+	* CSS 的层叠：所有 max-height ≥ 该高度的档都会命中，写在后面的赢。
+	* 所以判断「270px 高的窗口里预览是不是隐藏」，不能只看「有没有一档写了
+	* display:none」—— 后来的一档把它改回 block 也照样生效，那就是白写。
+	* 返回 null = 没有任何档声明过这个属性（那就用默认档的值）。
+	*/
+	function cssEffectiveDecl(blocks, selector, prop, height) {
+		let value = null;
+		for (const b of blocks) {
+			if (b.maxHeight < height) {
+				continue;
+			}
+			const body = cssRule(b.body, selector);
+			if (body === null) {
+				continue;
+			}
+			const v = cssDeclValue(body, prop);
+			if (v !== null) {
+				value = v;
+			}
+		}
+		return value;
+	}
+
+check('T69', `矮窗口档里配置行区不许被压扁（flex 的 shrink 因子必须是 0）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const blocks = cssMaxHeightMediaBlocks(stripComments(raw));
+	const short = blocks.filter(b => b.maxHeight <= 420);
+	if (!short.length) {
+		return `CSS 里没有 max-height ≤ 420px 的紧凑档 —— 窗口一矮卡片就装不下（产品允许的最小窗口是 400×270）`;
+	}
+	let pinned = 0;
+	for (const b of short) {
+		const body = cssRule(b.body, '.olympia-onboarding-card-body');
+		if (body === null) {
+			continue;
+		}
+		const flex = cssFlexTriple(body);
+		if (flex === null) {
+			continue;
+		}
+		pinned++;
+		if (flex.shrink !== 0) {
+			return `max-height:${b.maxHeight}px 档里 .olympia-onboarding-card-body 的 flex 是 \`${flex.raw}\` —— shrink 因子不为 0，行区会被压扁再被 overflow:hidden 静默裁掉（实测 330px 高的窗口里行区只剩 50px、内容 120px，「光标动画」整行不可见，连滚动条都没有）；行区是功能内容（能点的选项、开关），预览只是「看一眼后果」，压缩必须全部交给预览块`;
+		}
+	}
+	if (!pinned) {
+		return `所有 max-height ≤ 420px 的紧凑档都没有显式声明 .olympia-onboarding-card-body 的 flex —— 行区默认可压缩，矮窗口里会被静默裁掉`;
+	}
+	return null;
+});
+
+check('T70', `矮窗口档里配置行区不许声明 min-height: 0（那等于允许被压到内容以下）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const blocks = cssMaxHeightMediaBlocks(stripComments(raw));
+	for (const b of blocks.filter(x => x.maxHeight <= 420)) {
+		const body = cssRule(b.body, '.olympia-onboarding-card-body');
+		if (body === null) {
+			continue;
+		}
+		const minH = cssDeclValue(body, 'min-height');
+		if (minH !== null && /^0(px|%)?$/.test(minH.trim())) {
+			return `max-height:${b.maxHeight}px 档里 .olympia-onboarding-card-body 声明了 min-height: ${minH} —— 这会让 flex 把行区压到内容高度以下，配合 overflow:hidden 就是静默裁掉配置行`;
+		}
+	}
+	return null;
+});
+
+check('T71', `必须有一档「预览整块让位」（断点 360~420px 之间，预览 display:none）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const blocks = cssMaxHeightMediaBlocks(stripComments(raw));
+	if (!cssYieldBlock(blocks)) {
+		return `没有一档在 360~420px 之间把 .olympia-onboarding-card-preview 整块 display:none —— 实测 card0 预览内区在 386px 高时只剩 100.5px（管道图被压到 27.3px，读不出），420px 高时也只剩 134.5px；预览切一半比整块没有更难看，必须整块让位`;
+	}
+	return null;
+});
+
+check('T72', `预览让位那一档必须把页脚钉在底部（margin-top: auto），不然中间那段留白像内容被挤掉了`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const blocks = cssMaxHeightMediaBlocks(stripComments(raw));
+	const y = cssYieldBlock(blocks);
+	if (!y) {
+		return `没有预览让位档（先修 T71）`;
+	}
+	const body = cssRule(y.body, '.olympia-onboarding-card-footer');
+	if (body === null) {
+		return `让位档里没有 .olympia-onboarding-card-footer 规则 —— 页脚必须钉在卡片底部（margin-top: auto），不然预览让位后中间空一大段，读起来像内容被挤掉了`;
+	}
+	const mt = cssDeclValue(body, 'margin-top');
+	if (mt !== 'auto') {
+		return `让位档里页脚的 margin-top 是 \`${mt}\` —— 必须是 auto，让页脚钉在卡片底部`;
+	}
+	return null;
+});
+
+check('T73', `预览让位那一档不许把配置行拉开（不许 space-between，也不许行区自己去长高）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const blocks = cssMaxHeightMediaBlocks(stripComments(raw));
+	const y = cssYieldBlock(blocks);
+	if (!y) {
+		return `没有预览让位档（先修 T71）`;
+	}
+	const body = cssRule(y.body, '.olympia-onboarding-card-body');
+	if (body === null) {
+		// 让位档根本没碰行区 —— 行区保持默认的紧凑状态，正是我们要的。
+		return null;
+	}
+	const jc = cssDeclValue(body, 'justify-content');
+	if (jc !== null && /^space-/.test(jc.trim())) {
+		return `让位档里行区用了 justify-content: ${jc} —— 预览让位后多出来的空白会把配置行拉开（实测 330px 高的窗口里行间空 47px、末行又贴页脚，读起来像内容散架）`;
+	}
+	const flex = cssFlexTriple(body);
+	if (flex !== null && flex.grow >= 1) {
+		return `让位档里行区的 flex 是 \`${flex.raw}\` —— grow ≥ 1 会让行区去吃多出来的空白，把配置行拉开`;
+	}
+	return null;
+});
+
+check('T74', `所有 @media (max-height: Npx) 档必须按 N 严格递减（后面的档断点更窄才能覆盖前面那档）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const blocks = cssMaxHeightMediaBlocks(stripComments(raw));
+	if (!blocks.length) {
+		return `CSS 里没有任何 @media (max-height: ...) 规则`;
+	}
+	const list = blocks.map(b => b.maxHeight);
+	for (let i = 1; i < list.length; i++) {
+		if (!(list[i] < list[i - 1])) {
+			return `max-height 档的顺序是 ${list.join(' → ')} —— 必须严格递减：写在后面的档断点更窄，它才能覆盖前面那档；断点乱序时矮窗口会拿到宽窗口的规则`;
+		}
+	}
+	return null;
+});
+
+check('T75', `紧凑档的断点不许低于产品允许的最小窗高 270px（够不着的档等于白写）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const blocks = cssMaxHeightMediaBlocks(stripComments(raw));
+	if (!blocks.length) {
+		return `CSS 里没有任何 @media (max-height: ...) 规则`;
+	}
+	const min = Math.min(...blocks.map(b => b.maxHeight));
+	if (min < 270) {
+		return `有一档的断点是 ${min}px —— 产品允许的最小窗口高是 270px，低于它的档永远不生效：最小窗口里其实还在用宽档的 padding（上下 26px，紧档是 22px），行区被挤掉 4px，页脚会被卡片的 overflow:hidden 裁掉`;
 	}
 	return null;
 });

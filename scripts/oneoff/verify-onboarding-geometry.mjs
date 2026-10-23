@@ -159,7 +159,9 @@ const TH = {
 		minCodeLines: 3,       // 代码样例至少要露出几行
 		caretZone: 0.9,        // 光标必须停在这条线以内（与 CSS 底部渐隐的起点配对）
 		previewTolRatio: 0.15, // 预览面板允许的空白上限（占可用区高度的比例）
-		previewTolMin: 6       // 同上的下限（可用区太矮时用百分比会太苛刻）
+		previewTolMin: 6,      // 同上的下限（可用区太矮时用百分比会太苛刻）
+		rowClipTol: 1,         // 行区被裁掉的量上限（px）—— 1px 以内当亚像素误差
+		rowMinHeight: 20       // 行区可见高度下限（px）—— 低于这个等于整块行区不见了
 	},
 };
 
@@ -309,6 +311,71 @@ function judgeCardPreview(m) {
 	};
 }
 
+/**
+ * Q6：配置行不许被静默裁掉。
+ *
+ * 这是 T-032 复审 Q6 在真机上坐实的缺陷：@media (max-height: 420px) 档把
+ * `.olympia-onboarding-card-body` 写成 `flex: 0 1 auto; min-height: 0`，
+ * 窗口高落到 321~420 之间时行区被压扁 —— 330px 高的窗口里 card1 的行区
+ * 只剩 50px（内容 120px），「光标动画」那一行整行看不见，
+ * 而且 overflow:hidden 连滚动条都不给：用户根本不知道自己还有一项没配。
+ *
+ * 判据钉三件事（各自独立成立）：
+ *   ① 行区内容高度不许超过可见高度（scrollHeight ≤ clientHeight）——
+ *      装不下就意味着被切了。
+ *   ② 每一行的下沿不许超出行区盒子的下沿 —— 逐行核对，
+ *      免得「整体装得下、但某一行被切掉半截」这种半吊子状态蒙混过关。
+ *   ③ 行区可见高度不许低到等于没有。
+ *
+ * scrollHeight / clientHeight 是布局像素（不含卡片的缩放），
+ * 行的下沿与盒子的下沿是屏幕像素（都含缩放）—— 两组量各自内部同坐标系，
+ * 不混用。
+ */
+function judgeCardRows(m) {
+		const rs = (m.rows || []).filter(r => r.rowCount > 0);
+		if (!rs.length) {
+				return { ok: null, detail: '没有可判的配置行区' };
+		}
+		let worst = null;
+		for (const r of rs) {
+				const clipped = r.scrollH - r.clientH;
+				const score = Math.max(clipped, r.rowsBottomExcess);
+				if (!worst || score > worst.score) {
+						worst = {
+								score: score,
+								clipped: clipped,
+								overflowRows: r.rowsBottomExcess,
+								clientH: r.clientH,
+								scrollH: r.scrollH,
+								rowCount: r.rowCount,
+								card: r.cardIndex
+						};
+				}
+		}
+		if (worst.clientH < TH.card.rowMinHeight) {
+				return {
+						ok: false,
+						detail: `第 ${worst.card + 1} 张卡的行区只剩 ${worst.clientH.toFixed(0)}px 高（内容 ${worst.scrollH.toFixed(0)}px）—— 整块行区被压没了`
+				};
+		}
+		if (worst.clipped > TH.card.rowClipTol) {
+				return {
+						ok: false,
+						detail: `第 ${worst.card + 1} 张卡的行区内容 ${worst.scrollH.toFixed(0)}px 装不进 ${worst.clientH.toFixed(0)}px，被裁掉 ${worst.clipped.toFixed(0)}px`
+				};
+		}
+		if (worst.overflowRows > TH.card.rowClipTol) {
+				return {
+						ok: false,
+						detail: `第 ${worst.card + 1} 张卡有配置行的下沿超出行区盒子 ${worst.overflowRows.toFixed(0)}px（那一行看不见了）`
+				};
+		}
+		return {
+				ok: true,
+				detail: `行区可见 ${worst.clientH.toFixed(0)}px / 内容 ${worst.scrollH.toFixed(0)}px，${worst.rowCount} 行全露着`
+		};
+}
+
 function selftest() {
 	/** 一套判据整体是否全绿。 */
 	const allGreen = (lastCoverage, corners, series) =>
@@ -365,11 +432,12 @@ function selftest() {
 	ctaVisible: true,
 	cta: { l: 520, t: 590, r: 680, b: 618, w: 160, h: 28 },
 	code: { applicable: true, visibleLines: 6, totalLines: 11, caret: { t: 284, b: 300, h: 16 }, clipBottom: 340, zoneLimit: 320, boxH: 190 },
-	previews: [{ areaTop: 200, areaBottom: 340, areaHeight: 140, contentTop: 200, contentBottom: 340, usedHeight: 140, blank: 0 }]
+	previews: [{ areaTop: 200, areaBottom: 340, areaHeight: 140, contentTop: 200, contentBottom: 340, usedHeight: 140, blank: 0 }],
+	rows: [{ cardIndex: 0, clientH: 134, scrollH: 134, rowCount: 2, rowsBottomExcess: 0 }]
 	};
 	const clone = (o) => JSON.parse(JSON.stringify(o));
 	const allCardGreen = (m) => {
-	const r = [judgeCardCenter(m), judgeCardBounds(m), judgeCardGap(m), judgeCardCta(m), judgeCardCode(m), judgeCardPreview(m)];
+	const r = [judgeCardCenter(m), judgeCardBounds(m), judgeCardGap(m), judgeCardCta(m), judgeCardCode(m), judgeCardPreview(m), judgeCardRows(m)];
 	return r.every(x => x.ok !== false);
 	};
 	cases.push({ name: '卡片布局全套判据：正常数据全绿', got: allCardGreen(good), expectGreen: true });
@@ -413,6 +481,19 @@ function selftest() {
 	const noPreview = clone(good);
 	noPreview.previews = [];
 	cases.push({ name: '没有图示预览区 → L-preview 不适用（不算失败）', got: allCardGreen(noPreview), expectGreen: true });
+
+	// Q6 的三条反例，用真机实测值（330px 高时行区只剩 50px、内容 120px）。
+	const clippedRows = clone(good);
+	clippedRows.rows = [{ cardIndex: 0, clientH: 50, scrollH: 120, rowCount: 2, rowsBottomExcess: 0 }];
+	cases.push({ name: '行区被压到 50px、内容 120px（330px 窗实测）→ L-rows 判红', got: allCardGreen(clippedRows), expectGreen: false });
+
+	const goneRows = clone(good);
+	goneRows.rows = [{ cardIndex: 0, clientH: 12, scrollH: 120, rowCount: 2, rowsBottomExcess: 0 }];
+	cases.push({ name: '行区只剩 12px → L-rows 判红', got: allCardGreen(goneRows), expectGreen: false });
+
+	const cutRow = clone(good);
+	cutRow.rows = [{ cardIndex: 0, clientH: 134, scrollH: 134, rowCount: 2, rowsBottomExcess: 9 }];
+	cases.push({ name: '某一行的下沿超出行区盒子 9px → L-rows 判红', got: allCardGreen(cutRow), expectGreen: false });
 	}
 
 	let bad = 0;
@@ -644,6 +725,34 @@ const SAMPLE_EXPR = `(() => {
 		});
 	}
 
+	// Q6：配置行区有没有被静默裁掉。
+			//
+			// 量两件事，各自内部同坐标系：
+			//   ① scrollHeight vs clientHeight（布局像素，不含卡片的缩放）——
+			//      内容装不下就是被 overflow:hidden 切了。
+			//   ② 每一行的下沿 vs 行区盒子的下沿（屏幕像素，两边都含缩放）——
+			//      逐行核对，防止「整体装得下但某一行被切半截」。
+			const rows = [];
+			for (let ci = 0; ci < cards.length; ci++) {
+					const c = cards[ci];
+					const body = c.querySelector('.olympia-onboarding-card-body');
+					if (!body) { continue; }
+					const br = R(body);
+					const rowEls = [...body.querySelectorAll('.olympia-onboarding-row')];
+					let excess = 0;
+					for (const el of rowEls) {
+							const rr = el.getBoundingClientRect();
+							excess = Math.max(excess, rr.bottom - br.bottom);
+					}
+					rows.push({
+							cardIndex: ci,
+							clientH: body.clientHeight,
+							scrollH: body.scrollHeight,
+							rowCount: rowEls.length,
+							rowsBottomExcess: excess
+					});
+			}
+
 	return {
 	missing: false,
 	viewport: { w: vw, h: vh },
@@ -655,7 +764,8 @@ const SAMPLE_EXPR = `(() => {
 	cta: cta,
 	ctaVisible: ctaVisible,
 	code: code,
-	previews: previews
+	previews: previews,
+	rows: rows
 	};
 	})()`;
 
@@ -844,6 +954,7 @@ async function runScenario(name, opts) {
 				['L-cta', '主按钮完整可见可点', judgeCardCta],
 				['L-code', '代码样例露出足够行数、光标可见且不在渐隐区', judgeCardCode],
 				['L-preview', '预览面板没有留出大片空白', judgeCardPreview],
+				['L-rows', '配置行不许被静默裁掉（每一行都要看得见）', judgeCardRows],
 			];
 			for (const [id, desc, fn] of cardJudges) {
 				const r = fn(cardLayout);
@@ -938,7 +1049,9 @@ const SCENARIOS = [
 	{ name: 'resize-mid', viewport: [1100, 800], dpr: 1, portOffset: 3, resizeAtMs: 1700, resizeTo: [900, 640] },
 	{ name: 'resize-late', viewport: [1100, 800], dpr: 1, portOffset: 4, resizeAtMs: 3200, resizeTo: [820, 900] },
 	{ name: 'tiny', viewport: [400, 270], dpr: 1, portOffset: 5 },
-	{ name: 'min-width', viewport: [400, 760], dpr: 1, portOffset: 6 },];
+	{ name: 'min-width', viewport: [400, 760], dpr: 1, portOffset: 6 },
+	{ name: 'short', viewport: [1000, 400], dpr: 1, portOffset: 7 },
+	{ name: 'veryshort', viewport: [1000, 330], dpr: 1, portOffset: 8 },];
 
 for (const sc of SCENARIOS) {
 	if (ONLY_SCENARIO && sc.name !== ONLY_SCENARIO) { continue; }

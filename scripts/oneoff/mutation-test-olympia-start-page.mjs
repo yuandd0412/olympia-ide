@@ -310,6 +310,49 @@ const MUTATIONS = [
 		desc: '卡片侧 lastFrameTime 的哨兵退回 0（赌「0 永不出现」）',
 		file: OL + 'olympiaOnboardingCards.ts',
 		mutate: t => t.replace('private lastFrameTime = -1;', 'private lastFrameTime = 0;')
+	},
+	// ---------------------------------------------------------------------------
+	// T-025 审计之后新增的变异。
+	//
+	// 每一���都对应那轮修的一个**真实缺陷**。新加的断言（T7~T11）如果抓不住
+	// 自己的变异，那就是假断言 —— 和当初 M9 打在注释上导致 H13 假绿是同一类错误。
+	// ---------------------------------------------------------------------------
+	{
+		id: 'M36', expect: 'T7',
+		desc: '异步取值行的「已落地就跳过」闸门被去掉（每次刷新都打回占位 + 重发请求）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('if (binding.valueResolved) {', 'if (false) {')
+	},
+	{
+		id: 'M37', expect: 'T8',
+		desc: '「扩展还没注册」那条路径不再消耗重试额度（永远重试下去）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace(
+			'abandonWriteIfExhausted(key, `配置 ${key} 尚未注册',
+			'abandonWrite(key, `配置 ${key} 尚未注册')
+	},
+	{
+		id: 'M38', expect: 'T9',
+		desc: '放弃写入后不再刷新界面（chip 高亮继续撒谎：显示用户点的，配置里其实没写）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		// 锚点带上 `return true;` 才唯一 —— `refresh()` 里也有同样两行。
+		mutate: t => t.replace(
+			'\t\tthis.refreshRowStates();\n\t\tthis.refreshPreview();\n\t\treturn true;',
+			'\t\treturn true;')
+	},
+	{
+		id: 'M39', expect: 'T10',
+		desc: '重试定时器不再把这一轮标记成重试轮（额度永远不被消耗 = 没有上限）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('void this.flushPendingWrites(true);', 'void this.flushPendingWrites();')
+	},
+	{
+		id: 'M40', expect: 'T11',
+		desc: '收场路径里把死代码 enterStart = null 加回来（暗示存在中途取消路径）',
+		file: OL + 'olympiaOnboarding.ts',
+		mutate: t => t.replace(
+			"this.rootElement.classList.add('olympia-onboarding-fading');",
+			"this.enterStart = null;\n\t\tthis.rootElement.classList.add('olympia-onboarding-fading');")
 	}
 ];
 

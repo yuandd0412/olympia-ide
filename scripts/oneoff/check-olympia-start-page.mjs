@@ -1388,18 +1388,27 @@ check('H30', `配置变化不得整片重建卡片行区（会把用户正按着
 	const t = load(F_ONB_CARDS);
 	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
 	const code = stripTsComments(t);
-	const rm = /(?:private\s+|public\s+|protected\s+)?refresh\s*\(\s*\)\s*:\s*void\s*\{/.exec(code);
-	if (!rm) return `未找到 refresh()`;
-	const rbody = balanced(code, code.indexOf('{', rm.index), '{', '}');
-	if (!rbody) return `refresh() 的函数体无法配对解析`;
-	if (/bodyElements\[[^\]]*\]\s*\.replaceChildren/.test(rbody)) {
-		return `refresh() 仍在整片重建行区 —— 配置一变就把 4 张卡的 DOM 全换掉，用户手指下的按钮会被换掉`;
+	// 「刷新路径」= refresh() 以及它调用的 refreshRowStates()。
+	// 只盯 refresh() 一个函数是不够的：把重建挪到 refreshRowStates() 里，
+	// 每次刷新照样重建行区 —— 那还是硬切（这条断言就是这么被绕开过的）。
+	const refreshPath = [];
+	for (const sig of [
+		/(?:private\s+|public\s+|protected\s+)?refresh\s*\(\s*\)\s*:\s*void\s*\{/,
+		/private\s+refreshRowStates\s*\(\s*\)\s*:\s*void\s*\{/
+	]) {
+		const m = sig.exec(code);
+		if (!m) return `未找到 refresh() / refreshRowStates()`;
+		const body = balanced(code, code.indexOf('{', m.index), '{', '}');
+		if (!body) return `刷新路径上的函数体无法配对解析`;
+		refreshPath.push({ name: m[0].trim(), body });
 	}
-	if (/footerElements\[[^\]]*\]\s*\.replaceChildren/.test(rbody)) {
-		return `refresh() 仍在重建页脚 —— 页脚只跟卡片序号有关，重建它只会换掉用户正按着的 CTA`;
-	}
-	if (/\brebuildRows\s*\(/.test(rbody)) {
-		return `refresh() 直接调用 rebuildRows() —— 配置一变就把 4 张卡的 DOM 全换掉，用户手指下的按钮会被换掉`;
+	for (const { name, body } of refreshPath) {
+		if (/bodyElements\[[^\]]*\]\s*\.replaceChildren/.test(body)) {
+			return `${name} 仍在整片重建行区 —— 配置一变就把 4 张卡的 DOM 全换掉，用户手指下的按钮会被换掉`;
+		}
+		if (/footerElements\[[^\]]*\]\s*\.replaceChildren/.test(body)) {
+			return `${name} 仍在重建页脚 —— 页脚只跟卡片序号有关，重建它只会换掉用户正按着的 CTA`;
+		}
 	}
 	if (!/rowsSignature/.test(code)) return `没有结构签名（rowsSignature）—— 每次刷新都会重建 DOM`;
 	if (!/updateRowState/.test(code)) return `没有就地更新状态的路径（updateRowState）—— 选中态/开关状态只能靠重建来刷`;
@@ -1418,6 +1427,23 @@ check('H30', `配置变化不得整片重建卡片行区（会把用户正按着
 	}
 	if (!/\bupdateRowState\s*\(/.test(ubody)) {
 		return `updateRows() 没有就地更新状态的路径 —— 选中态/开关状态只能靠重建来刷`;
+	}
+
+	// **重建行区的入口只有 updateRows 一条**。
+	// 早先这里只判「refresh() 的函数体里没有 rebuildRows」—— 把重建挪到
+	// refreshRowStates() 里就绕开了，回归照样发生，断言却一直绿。
+	const decl = /private\s+rebuildRows\s*\(/.exec(code);
+	if (!decl) return `未找到 rebuildRows()`;
+	const declToken = code.indexOf('rebuildRows', decl.index);
+	const uStart = code.indexOf('{', um.index);
+	const uEnd = uStart + ubody.length;
+	for (const c of code.matchAll(/\brebuildRows\s*\(/g)) {
+		if (c.index === declToken) {
+			continue;   // 声明本身
+		}
+		if (c.index < uStart || c.index > uEnd) {
+			return `rebuildRows() 在 updateRows() 之外还有调用点 —— 配置一变就把 4 张卡的 DOM 全换掉，用户手指下的按钮会被换掉`;
+		}
 	}
 	return null;
 });
@@ -1465,7 +1491,7 @@ check('H33', `配置写入失败不能静默吞掉；重试也不能随 overlay 
 	const t = load(F_ONB_CARDS);
 	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
 	const code = stripTsComments(t);
-	const m = /private\s+async\s+flushPendingWrites\s*\(\s*\)\s*:\s*Promise<void>\s*\{/.exec(code);
+	const m = /private\s+async\s+flushPendingWrites\s*\([^)]*\)\s*:\s*Promise<void>\s*\{/.exec(code);
 	if (!m) return `未找到 flushPendingWrites()`;
 	const body = balanced(code, code.indexOf('{', m.index), '{', '}');
 	if (!body) return `flushPendingWrites() 的函数体无法配对解析`;
@@ -1479,8 +1505,21 @@ check('H33', `配置写入失败不能静默吞掉；重试也不能随 overlay 
 	// 额度耗尽分支里的 `console.error` 会把它喂饱，于是把 catch 里的
 	// `console.warn` 降级成 `console.log`（等于静默吞掉）它照样绿。
 	// 单次失败用 warn、额度耗尽用 error，两条各归各的断言（H33 / T5）。
-	if (!/console\.warn/.test(catchBody)) {
-		return `写入失败的 catch 块里没有 console.warn 留痕 —— 用户点了「开始」发现设置没变，而我们连原因都不知道`;
+	//
+	// 留痕现在收敛在 `abandonWriteIfExhausted()` 里（两条失败路径共用），
+	// 所以这里判的是「catch 块**够得到**留痕」+「留痕用的是 warn」。
+	// 只判 catch 块里有没有字面量 console.warn 也不够 ——
+	// 把 warn 搬到 catch 外面就绕开了「失败必须留痕」这条约束。
+	if (!/abandonWriteIfExhausted/.test(catchBody)) {
+		return `写入失败的 catch 块没有走留痕路径 —— 用户点了「开始」发现设置没变，而我们连原因都不知道`;
+	}
+	const abandonBody = methodBody(code, /abandonWriteIfExhausted\s*\([^)]*\)\s*:\s*boolean\s*\{/);
+	if (!abandonBody) return `未找到 abandonWriteIfExhausted()`;
+	if (!/console\.warn/.test(abandonBody)) {
+		return `写入失败的留痕里没有 console.warn —— 用户点了「开始」发现设置没变，而我们连原因都不知道`;
+	}
+	if (/console\.error\s*\(/.test(catchBody)) {
+		return `catch 块里直接调了 console.error —— 单次失败用 warn、额度耗尽用 error，两者的职责不能混（额度耗尽那一条归 T5 判）`;
 	}
 	if (!/scheduleFlushRetry/.test(body)) {
 		return `写入失败后没有安排重试 —— 内置扩展注册完之前的选择会永远存不下来`;
@@ -1587,6 +1626,11 @@ check('H36', `背景时钟必须单调且永不重置（进入动画期间极光
 //   T4 派生值行滞留     —— 值行由别的配置项派生，只刷预览块的话预览新、卡片旧。
 //   T5 静默丢设置       —— 重试额度耗尽直接 return，用户的选择无声消失。
 //   T6 时间戳哨兵       —— 拿 rAF 合法域里的 0 当「未设置」，等于赌它永不出现。
+//   T7 异步行被打回占位 —— 「最近工程」落地后又被刷成「读取中…」，还重复发一次请求。
+//   T8 未注册路径无上限 —— 「扩展还没注册」那条路不计重试额度，于是永远重试下去。
+//   T9 放弃写入后界面撒谎 —— chip 高亮还停在用户点的那个选项上，配置里其实没写。
+//   T10 额度被点击消耗   —— 额度是「重试轮数」，不是「用户点击次数」。
+//   T11 收场路径的死代码 —— abortEnter 重置 enterStart，暗示存在中途取消路径。
 // ===========================================================================
 
 /** 取出一个具名函数（或方法）的函数体文本。 */
@@ -1688,10 +1732,18 @@ check('T5', `写入重试的额度必须按键独立算，耗尽时必须明确�
 	if (!/pendingWriteAttempts/.test(code)) {
 		return `没有按键计数的重试额度（pendingWriteAttempts）`;
 	}
-	const flushBody = methodBody(code, /flushPendingWrites\s*\(\s*\)\s*:\s*Promise<void>\s*\{/);
+	const flushBody = methodBody(code, /flushPendingWrites\s*\([^)]*\)\s*:\s*Promise<void>\s*\{/);
 	if (!flushBody) return `未找到 flushPendingWrites()`;
-	if (!/console\.error\s*\(/.test(flushBody)) {
+	// 额度耗尽的收场现在收敛在 `abandonWriteIfExhausted()` 里（两条路径共用：
+	// 「扩展没注册」和「写入抛异常」）。console.error 必须落在**那个**函数里 ——
+	// 落在 flushPendingWrites 里的话，「未注册」那条路径就没有留痕。
+	const abandonBody = methodBody(code, /abandonWriteIfExhausted\s*\([^)]*\)\s*:\s*boolean\s*\{/);
+	if (!abandonBody) return `未找到 abandonWriteIfExhausted()`;
+	if (!/console\.error\s*\(/.test(abandonBody)) {
 		return `重试额度耗尽时没有 console.error —— 用户的选择会无声消失，控制台外没有任何痕迹`;
+	}
+	if (!/pendingWriteAttempts/.test(abandonBody)) {
+		return `abandonWriteIfExhausted() 没有动 pendingWriteAttempts —— 额度不是按键算的`;
 	}
 	return null;
 });
@@ -1714,6 +1766,92 @@ check('T6', `时间戳哨兵必须落在 rAF 合法域（非负）之外`, () =>
 	const cardsProblem = checkSentinel(cardsCode, 'lastFrameTime', gotoBody);
 	if (cardsProblem) {
 		return cardsProblem;
+	}
+	return null;
+});
+
+check('T7', `异步取值行落地后不得被状态刷新打回占位，也不得重复发请求`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const body = methodBody(code, /updateRowState\s*\([^)]*\)\s*:\s*void\s*\{/);
+	if (!body) return `未找到 updateRowState()`;
+	// 判据落在**代码**上：异步分支必须先看「值有没有落地」。
+	// 少了这个闸门，用户点一下别的选项，眼前这行就闪回「读取中…」，
+	// 后台还多跑一次 getRecentlyOpened()。
+	if (!/binding\.valueResolved/.test(body)) {
+		return `updateRowState() 里没有 valueResolved —— 异步取值行每次刷新都被打回占位（用户点一下别的选项，眼前这行就闪回「读取中…」），后台还重复调一次 getRecentlyOpened()`;
+	}
+	if (!/if\s*\(\s*binding\.valueResolved\s*\)\s*\{?\s*break/.test(body)) {
+		return `valueResolved 没有被当成早退闸门 —— 只是读了一下，异步行照样每次刷新都重发请求`;
+	}
+	// 落地的那一刻必须把标记置上，否则闸门永远打不开。
+	if (!/binding\.valueResolved\s*=\s*true/.test(body)) {
+		return `异步值落地后没有置 valueResolved —— 闸门永远打不开，请求照旧每次重发`;
+	}
+	return null;
+});
+
+check('T8', `「扩展还没注册」这条路径也必须消耗重试额度（否则永远重试下去）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const body = methodBody(code, /flushPendingWrites\s*\([^)]*\)\s*:\s*Promise<void>\s*\{/);
+	if (!body) return `未找到 flushPendingWrites()`;
+	// 锚在「扩展还没注册」这个分支上：getValue(key) === undefined
+	const m = /getValue\s*\(\s*key\s*\)\s*===\s*undefined/.exec(body);
+	if (!m) return `flushPendingWrites() 里找不到「getValue(key) === undefined」的分支`;
+	const branch = balanced(body, body.indexOf('{', m.index), '{', '}');
+	if (!branch) return `「未注册」分支无法配对解析`;
+	if (!/abandonWriteIfExhausted/.test(branch)) {
+		return `「扩展还没注册」这条路径没有计入重试额度 —— 内置扩展永远不注册时就永远重试下去，注释承诺的「400ms × 60 ≈ 24 秒」在这条路径上不成立`;
+	}
+	return null;
+});
+
+check('T9', `放弃写入后必须把界面拉回真值（chip 高亮不能继续撒谎）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const body = methodBody(code, /abandonWriteIfExhausted\s*\([^)]*\)\s*:\s*boolean\s*\{/);
+	if (!body) return `未找到 abandonWriteIfExhausted()`;
+	if (!/refreshRowStates/.test(body)) {
+		return `放弃写入后没有重刷行状态 —— chip 的高亮还停在用户刚点的那个选项上，而配置里其实什么都没写，界面在撒谎`;
+	}
+	if (!/refreshPreview/.test(body)) {
+		return `放弃写入后没有重刷预览 —— 预览区显示的还是用户刚点的那个（其实没写进去的）值`;
+	}
+	if (/this\.refresh\s*\(/.test(body)) {
+		return `放弃写入后走了 refresh() —— 它会再触发一轮 flushPendingWrites，形成递归`;
+	}
+	return null;
+});
+
+check('T10', `重试额度只能由重试定时器消耗（用户多戳两下不该提前放弃）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	// flushPendingWrites 必须能分辨「重试轮」和「随手点一下」——
+	// 额度承诺的是「400ms × 60 ≈ 24 秒」，那是**重试轮数**，不是点击次数。
+	if (!/flushPendingWrites\s*\(\s*(?:isRetryRound\s*:\s*boolean)\s*[^)]*\)\s*:\s*Promise<void>\s*\{/.test(code)) {
+		return `flushPendingWrites() 没有「本轮是不是重试轮」的判据 —— 额度会被用户点击次数消耗，多戳两下就提前放弃，24 秒的承诺变成几秒`;
+	}
+	const timerBody = methodBody(code, /scheduleFlushRetry\s*\(\s*\)\s*:\s*void\s*\{/);
+	if (!timerBody) return `未找到 scheduleFlushRetry()`;
+	if (!/flushPendingWrites\s*\(\s*true\s*\)/.test(timerBody)) {
+		return `重试定时器没有把这一轮标记成重试轮 —— 额度永远不会被消耗，重试也就没有上限`;
+	}
+	return null;
+});
+
+check('T11', `收场路径上不存在正在跑的进入动画，不得重置 enterStart`, () => {
+	const onb = load(F_ONB);
+	if (onb === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const code = stripTsComments(onb);
+	const body = methodBody(code, /abortEnter\s*\(\s*\)\s*:\s*void\s*\{/);
+	if (!body) return `未找到 abortEnter()`;
+	if (/enterStart/.test(body)) {
+		return `abortEnter() 里动了 enterStart —— 走到这里的路径上进入动画必然还没起跑（闸门放行那一帧会把 enterRequested 置回 false，maybeStartEnter 再也不会被调用），这里重置它是死代码，而且会让人以为「收场要处理中途取消」`;
 	}
 	return null;
 });

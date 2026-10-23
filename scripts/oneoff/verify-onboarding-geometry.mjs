@@ -97,6 +97,9 @@
  *   L-cta      主按钮完整可见可点 —— 被裁就等于点不到。
  *   L-code     代码样例露出 ≥3 行，且光标落在可视区内、没掉进底部渐隐区。
  *   L-preview  预览面板不留大片空白（空白 ≤ max(6px, 可用区高×15%)）。
+ *   L-preview-overflow 预览内容不许溢出可用区（上沿/下沿各算，超出 > 2px 判红）。
+ *   L-card-fit 卡片必须装得下：主按钮下沿不许越过卡片 padding box 下沿，
+ *                   卡片 scrollHeight 不许超过 clientHeight（超 > 2px 判红）。
  *
  * ### L-preview 钉的是「空白量」，不是「图示居中」
  *
@@ -109,6 +112,35 @@
  * F5 真正的定义是「预览框底部大片空白」：修复前实测框 189px 高、内容只占 108px、
  * 底部空 81px。所以判据改成：可用区高 − 直接子元素并集高 ≤ 容差。
  * 旧包必红（81px > 28px），新包必绿（2px）。
+ *
+ * ---------------------------------------------------------------------------
+ * ## L-preview-overflow：预览内容溢出（不是留白）
+ *
+ * L-preview 钉的是「空白太多」；这条钉的是反方向的病：**内容装不下，被裁掉了**。
+ *
+ * 预览面板（.olympia-onboarding-card-preview）是 overflow:hidden 的 flex 列，
+ * 内容（管道图示 + 命令文字）比可用区高时，多出来的那截直接消失 ——
+ * 用户看到的是「图示缺了一截」，不是「留白」。这两个是相反的缺陷，必须分别钉。
+ *
+ * 口径（**不用**「用高 − 区高」，那是 F5 的留白口径，两个量不能混）：
+ *   overflowPx    = max(0, 内容下沿 − 可用区下沿)   ← 底部被裁的量
+ *   topOverflowPx = max(0, 可用区上沿 − 内容上沿)   ← 顶部被裁的量
+ * 取两者的最大值与容差比；超过容差判红。
+ *
+ * ---------------------------------------------------------------------------
+ * ## L-card-fit：卡片装不装得下
+ *
+ * 两个互相独立的信号，都说明「卡片被自己的 overflow:hidden 裁了」：
+ *   ① 主按钮下沿越过卡片的 **padding box** 下沿（可见下沿）——
+ *      越过去 = 按钮被卡片裁掉 = 点不到。
+ *      卡片有 transform:scale，主按钮与卡片边界都是**屏幕像素**，
+ *      比较前先 ÷ 卡片 scale 换算回布局像素再比容差。
+ *   ② 卡片 scrollHeight − clientHeight > 容差 —— 内容装不下。
+ *      这两个量本来就是布局像素，直接比。
+ *
+ * 「卡片内容盒（content box）高多少」只作诊断输出，**不参与判红**：
+ * 内容盒比 padding box 小是正常的（padding + border 本来就占地方），
+ * 拿它当判据会把所有正常卡片都判红。
  *
  * ---------------------------------------------------------------------------
  * ## 门禁自证有牙
@@ -161,7 +193,9 @@ const TH = {
 		previewTolRatio: 0.15, // 预览面板允许的空白上限（占可用区高度的比例）
 		previewTolMin: 6,      // 同上的下限（可用区太矮时用百分比会太苛刻）
 		rowClipTol: 1,         // 行区被裁掉的量上限（px）—— 1px 以内当亚像素误差
-		rowMinHeight: 20       // 行区可见高度下限（px）—— 低于这个等于整块行区不见了
+		rowMinHeight: 20,      // 行区可见高度下限（px）—— 低于这个等于整块行区不见了
+		previewOverflowTol: 2, // 预览内容溢出可用区的上限（px）—— 2px 以内当亚像素误差
+		cardFitTol: 2          // 卡片装填误差上限（px）—— 主按钮越界 / scrollHeight 超出共用
 	},
 };
 
@@ -376,6 +410,78 @@ function judgeCardRows(m) {
 		};
 }
 
+/**
+ * L-preview-overflow：预览内容不许溢出可用区（上沿、下沿各算）。
+ *
+ * 这是 L-preview 的反面：L-preview 钉「空白太多」，这条钉「内容被裁掉」。
+ * 预览面板 overflow:hidden，内容比可用区高时多出来的那截直接消失 ——
+ * 用户看到的是缺了一截的图示，不是留白。
+ *
+ * 口径：
+ *   overflowPx    = max(0, contentBottom − areaBottom)
+ *   topOverflowPx = max(0, areaTop − contentTop)
+ * 取两者最大与容差比。
+ */
+function judgeCardPreviewOverflow(m) {
+	const ps = (m.previews || []).filter(p => p.areaHeight > 1);
+	if (!ps.length) {
+		return { ok: null, detail: '没有可判的图示预览区' };
+	}
+	let worst = null;
+	for (const p of ps) {
+		const over = Math.max(p.overflowPx ?? 0, p.topOverflowPx ?? 0);
+		if (!worst || over > worst.over) {
+			worst = {
+				over: over,
+				overflowPx: p.overflowPx ?? 0,
+				topOverflowPx: p.topOverflowPx ?? 0,
+				areaHeight: p.areaHeight
+			};
+		}
+	}
+	const ok = worst.over <= TH.card.previewOverflowTol;
+	return {
+		ok: ok,
+		detail: `预览内容超出可用区 ${worst.over.toFixed(1)}px（下溢 ${worst.overflowPx.toFixed(1)} / 上溢 ${worst.topOverflowPx.toFixed(1)}，容差 ${TH.card.previewOverflowTol}px）`
+	};
+}
+
+/**
+ * L-card-fit：卡片必须装得下。
+ *
+ * 两个独立信号：
+ *   ① 主按钮下沿越过卡片的 padding box 下沿（可见下沿）—— 越过去就是被裁 = 点不到。
+ *      按钮与卡片边界都是屏幕像素（卡片有 transform:scale），
+ *      先 ÷ 卡片 scale 换算回布局像素再比容差。
+ *   ② 卡片 scrollHeight − clientHeight > 容差 —— 内容装不下（布局像素，直接比）。
+ *
+ * 「内容盒高多少」只作诊断，不参与判红。
+ */
+function judgeCardFit(m) {
+	const f = m.fit;
+	if (!f) {
+		return { ok: null, detail: '没有可判的卡片装填信息' };
+	}
+	const t = TH.card.cardFitTol;
+	if (f.ctaBelowPadBox > t) {
+		return {
+			ok: false,
+			detail: `主按钮下沿越过卡片可见下沿 ${f.ctaBelowPadBox.toFixed(1)}px（已换算回布局像素；容差 ${t}px）`
+		};
+	}
+	if (f.overflow > t) {
+		return {
+			ok: false,
+			detail: `卡片内容 ${f.scrollH}px 装不进 ${f.clientH}px（差 ${f.overflow}px；容差 ${t}px）`
+		};
+	}
+	return {
+		ok: true,
+		detail: `主按钮离可见下沿 ${f.ctaBelowPadBox.toFixed(1)}px，卡片 ${f.scrollH}/${f.clientH}px 装得下`
+			+ `（诊断：scale=${(f.scale ?? 1).toFixed(3)}，内容盒 ${f.contentH ?? '?'}px）`
+	};
+}
+
 function selftest() {
 	/** 一套判据整体是否全绿。 */
 	const allGreen = (lastCoverage, corners, series) =>
@@ -432,12 +538,13 @@ function selftest() {
 	ctaVisible: true,
 	cta: { l: 520, t: 590, r: 680, b: 618, w: 160, h: 28 },
 	code: { applicable: true, visibleLines: 6, totalLines: 11, caret: { t: 284, b: 300, h: 16 }, clipBottom: 340, zoneLimit: 320, boxH: 190 },
-	previews: [{ areaTop: 200, areaBottom: 340, areaHeight: 140, contentTop: 200, contentBottom: 340, usedHeight: 140, blank: 0 }],
-	rows: [{ cardIndex: 0, clientH: 134, scrollH: 134, rowCount: 2, rowsBottomExcess: 0 }]
+	previews: [{ areaTop: 200, areaBottom: 340, areaHeight: 140, contentTop: 200, contentBottom: 340, usedHeight: 140, blank: 0, overflowPx: 0, topOverflowPx: 0 }],
+	rows: [{ cardIndex: 0, clientH: 134, scrollH: 134, rowCount: 2, rowsBottomExcess: 0 }],
+	fit: { scale: 1, ctaBelowPadBox: 0, ctaBelowPadBoxScreen: 0, scrollH: 472, clientH: 472, overflow: 0, contentH: 436, padBoxBottom: 636 }
 	};
 	const clone = (o) => JSON.parse(JSON.stringify(o));
 	const allCardGreen = (m) => {
-	const r = [judgeCardCenter(m), judgeCardBounds(m), judgeCardGap(m), judgeCardCta(m), judgeCardCode(m), judgeCardPreview(m), judgeCardRows(m)];
+	const r = [judgeCardCenter(m), judgeCardBounds(m), judgeCardGap(m), judgeCardCta(m), judgeCardCode(m), judgeCardPreview(m), judgeCardPreviewOverflow(m), judgeCardRows(m), judgeCardFit(m)];
 	return r.every(x => x.ok !== false);
 	};
 	cases.push({ name: '卡片布局全套判据：正常数据全绿', got: allCardGreen(good), expectGreen: true });
@@ -494,6 +601,48 @@ function selftest() {
 	const cutRow = clone(good);
 	cutRow.rows = [{ cardIndex: 0, clientH: 134, scrollH: 134, rowCount: 2, rowsBottomExcess: 9 }];
 	cases.push({ name: '某一行的下沿超出行区盒子 9px → L-rows 判红', got: allCardGreen(cutRow), expectGreen: false });
+
+	// ---- L-preview-overflow：预览内容被裁（与「留白」相反的病） ----
+	const overflowBottom = clone(good);
+	overflowBottom.previews[0] = { areaTop: 200, areaBottom: 340, areaHeight: 140, contentTop: 200, contentBottom: 364, usedHeight: 164, blank: 0, overflowPx: 24, topOverflowPx: 0 };
+	cases.push({ name: '预览内容下沿溢出可用区 24px → L-preview-overflow 判红', got: allCardGreen(overflowBottom), expectGreen: false });
+
+	const overflowTop = clone(good);
+	overflowTop.previews[0] = { areaTop: 200, areaBottom: 340, areaHeight: 140, contentTop: 192, contentBottom: 340, usedHeight: 148, blank: 0, overflowPx: 0, topOverflowPx: 8 };
+	cases.push({ name: '预览内容上沿溢出可用区 8px → L-preview-overflow 判红', got: allCardGreen(overflowTop), expectGreen: false });
+
+	const overflowEdge = clone(good);
+	overflowEdge.previews[0] = { areaTop: 200, areaBottom: 340, areaHeight: 140, contentTop: 198, contentBottom: 342, usedHeight: 144, blank: 0, overflowPx: 2, topOverflowPx: 2 };
+	cases.push({ name: '预览内容溢出 2px（正好等于容差）→ L-preview-overflow 不判红', got: allCardGreen(overflowEdge), expectGreen: true });
+
+	// ---- L-card-fit：卡片装不装得下 ----
+	const ctaBelow = clone(good);
+	ctaBelow.fit = Object.assign({}, good.fit, { ctaBelowPadBox: 12, ctaBelowPadBoxScreen: 12 });
+	cases.push({ name: '主按钮下沿越过卡片可见下沿 12px → L-card-fit 判红', got: allCardGreen(ctaBelow), expectGreen: false });
+
+	const notFit = clone(good);
+	notFit.fit = Object.assign({}, good.fit, { scrollH: 487, clientH: 472, overflow: 15 });
+	cases.push({ name: '卡片内容 487px 装不进 472px（差 15px）→ L-card-fit 判红', got: allCardGreen(notFit), expectGreen: false });
+
+	const fitEdge = clone(good);
+	fitEdge.fit = Object.assign({}, good.fit, { scrollH: 474, clientH: 472, overflow: 2 });
+	cases.push({ name: '卡片内容溢出 2px（正好等于容差）→ L-card-fit 不判红', got: allCardGreen(fitEdge), expectGreen: true });
+
+	// 两个新判据的**直接**返回值断言：证明是它们自己判红的，不是别条误伤。
+	cases.push({
+		name: 'L-preview-overflow 直接判据：正常绿 / 底部溢出 24px 红 / 顶部溢出 8px 红',
+		got: judgeCardPreviewOverflow(good).ok === true
+			&& judgeCardPreviewOverflow(overflowBottom).ok === false
+			&& judgeCardPreviewOverflow(overflowTop).ok === false,
+		expectGreen: true
+	});
+	cases.push({
+		name: 'L-card-fit 直接判据：正常绿 / 按钮越过下沿 12px 红 / 装不下 15px 红',
+		got: judgeCardFit(good).ok === true
+			&& judgeCardFit(ctaBelow).ok === false
+			&& judgeCardFit(notFit).ok === false,
+		expectGreen: true
+	});
 	}
 
 	let bad = 0;
@@ -721,6 +870,8 @@ const SAMPLE_EXPR = `(() => {
 			contentBottom: bottom,
 			usedHeight: usedHeight,
 			blank: Math.max(0, areaHeight - usedHeight),
+			overflowPx: Math.max(0, bottom - areaBottom),
+			topOverflowPx: Math.max(0, areaTop - top),
 			childCount: kids.length
 		});
 	}
@@ -753,6 +904,37 @@ const SAMPLE_EXPR = `(() => {
 					});
 			}
 
+	// 卡片装填（Q2 / Q8）：卡片自己 overflow:hidden，内容装不下就会被它切掉。
+	//   ① 主按钮下沿越过卡片的 padding box 下沿（可见下沿）
+	//   ② 卡片 scrollHeight − clientHeight
+	// 屏幕像素（含卡片 transform 的 scale）先 ÷ scale 换算回布局像素再比容差。
+	const fit = (function () {
+		const el = active;
+		if (!el) { return null; }
+		const cr = el.getBoundingClientRect();
+		const cs = getComputedStyle(el);
+		const scale = el.offsetWidth > 0 ? (cr.width / el.offsetWidth) : 1;
+		const borderBottom = parseFloat(cs.borderBottomWidth) || 0;
+		const padBoxBottom = cr.bottom - borderBottom * scale;
+		let ctaScreen = 0;
+		const ctaEl = el.querySelector('.olympia-onboarding-cta');
+		if (ctaEl) {
+			ctaScreen = ctaEl.getBoundingClientRect().bottom - padBoxBottom;
+		}
+		const padTop = parseFloat(cs.paddingTop) || 0;
+		const padBottom = parseFloat(cs.paddingBottom) || 0;
+		return {
+			scale: scale,
+			ctaBelowPadBox: ctaScreen / (scale || 1),
+			ctaBelowPadBoxScreen: ctaScreen,
+			scrollH: el.scrollHeight,
+			clientH: el.clientHeight,
+			overflow: el.scrollHeight - el.clientHeight,
+			contentH: el.clientHeight - padTop - padBottom,
+			padBoxBottom: padBoxBottom
+		};
+	})();
+
 	return {
 	missing: false,
 	viewport: { w: vw, h: vh },
@@ -765,7 +947,8 @@ const SAMPLE_EXPR = `(() => {
 	ctaVisible: ctaVisible,
 	code: code,
 	previews: previews,
-	rows: rows
+	rows: rows,
+	fit: fit
 	};
 	})()`;
 
@@ -954,7 +1137,9 @@ async function runScenario(name, opts) {
 				['L-cta', '主按钮完整可见可点', judgeCardCta],
 				['L-code', '代码样例露出足够行数、光标可见且不在渐隐区', judgeCardCode],
 				['L-preview', '预览面板没有留出大片空白', judgeCardPreview],
+				['L-preview-overflow', '预览内容不许溢出可用区（上沿下沿都不许）', judgeCardPreviewOverflow],
 				['L-rows', '配置行不许被静默裁掉（每一行都要看得见）', judgeCardRows],
+				['L-card-fit', '卡片内容必须装得下（主按钮不许被卡片裁掉）', judgeCardFit],
 			];
 			for (const [id, desc, fn] of cardJudges) {
 				const r = fn(cardLayout);
@@ -1051,7 +1236,8 @@ const SCENARIOS = [
 	{ name: 'tiny', viewport: [400, 270], dpr: 1, portOffset: 5 },
 	{ name: 'min-width', viewport: [400, 760], dpr: 1, portOffset: 6 },
 	{ name: 'short', viewport: [1000, 400], dpr: 1, portOffset: 7 },
-	{ name: 'veryshort', viewport: [1000, 330], dpr: 1, portOffset: 8 },];
+	{ name: 'veryshort', viewport: [1000, 330], dpr: 1, portOffset: 8 },
+	{ name: 'midshort', viewport: [900, 460], dpr: 1, portOffset: 9 },];
 
 for (const sc of SCENARIOS) {
 	if (ONLY_SCENARIO && sc.name !== ONLY_SCENARIO) { continue; }

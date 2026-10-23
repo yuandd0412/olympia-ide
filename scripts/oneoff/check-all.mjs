@@ -22,6 +22,7 @@ const GATES = [
 	{ file: 'scripts/oneoff/check-version-mirrors.mjs', 保证: '抄来的版本字面量等于真源' },
 	{ file: 'scripts/oneoff/check-olympia-command-ids.mjs', 保证: '三个扩展的命令 id 引用=声明=注册' },
 	{ file: 'scripts/oneoff/check-olympia-start-page.mjs', 保证: '开始页接线钉死：独立 scheme（不与上游 walkThrough 抢）/ 配置节点 id 是 olympia / upstream startupEditor 枚举未被污染 / CSS 红线' },
+	{ file: 'scripts/oneoff/mutation-test-olympia-start-page.mjs', 保证: '上面那条门的断言真能抓住回归（逐条变异，看对应断言会不会变红）' },
 	{ file: 'scripts/oneoff/test-timeouts.mjs', 保证: '三个编译超时各不相干（语法自检最快、编译最慢），且没有裸字面量绕过常量' },
 	{ file: 'scripts/oneoff/test-reveal-once.mjs', 保证: '首启只把竞赛工具面板带出来一次（标记读写同一个 key、失败不炸启动、不依赖文件夹）' },
 	{ file: 'scripts/oneoff/check-keybinding-mirrors.mjs', 保证: '文案里写的组合键与真实注册表一致' },

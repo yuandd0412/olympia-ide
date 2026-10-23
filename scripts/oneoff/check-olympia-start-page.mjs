@@ -22,7 +22,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const REPO = path.resolve(import.meta.dirname, '..', '..');
+const REPO = process.env.OLYMPIA_CHECK_REPO
+	? path.resolve(process.env.OLYMPIA_CHECK_REPO)
+	: path.resolve(import.meta.dirname, '..', '..');
 const OSS = path.join(REPO, 'oss');
 
 // ---------------------------------------------------------------------------
@@ -110,6 +112,157 @@ function stripComments(css) {
 function shorten(s, n = 160) {
 	const one = s.replace(/\s+/g, ' ').trim();
 	return one.length <= n ? one : `${one.slice(0, n)}…`;
+}
+
+// ---------------------------------------------------------------------------
+// 辅助：TS 注释剥离 / CSS 规则块 / 配置常量与默认值 / 扩展 schema
+// ---------------------------------------------------------------------------
+
+/**
+ * 剥掉 TS 的块注释与行注释。
+ *
+ * 断言要看的是**代码**，不是文档里的散文 —— 否则文件头里一句
+ * 「这里不使用 Date.now()」就会把「禁止 Date.now()」这条断言自己判红。
+ */
+function stripTsComments(text) {
+	return text
+		.replace(/\/\*[\s\S]*?\*\//g, '')
+		.replace(/(^|[^:'"`])\/\/[^\n]*/g, (m, p1) => p1);
+}
+
+/**
+ * 取某个 CSS 选择器对应的规则体（花括号内部，不含大括号）。找不到返回 null。
+ *
+ * 定位必须是「选择器 + 紧跟的 `{`」：只按选择器字符串 indexOf 会把
+ * `.olympia-onboarding` 撞上 `.olympia-onboarding-splash`。
+ */
+function cssRule(css, selector) {
+	let from = 0;
+	for (;;) {
+		const idx = css.indexOf(selector, from);
+		if (idx < 0) {
+			return null;
+		}
+		from = idx + selector.length;
+		const m = /^\s*\{/.exec(css.slice(from));
+		if (!m) {
+			continue;   // 是别的选择器的一部分
+		}
+		const braceIdx = from + m[0].length - 1;
+		const body = balanced(css, braceIdx, '{', '}');
+		if (body) {
+			return body.slice(1, -1);
+		}
+	}
+}
+
+/** 解析 `export const OLYMPIA_CONFIG_X = 'key'`。 */
+function parseConfigConstants(text) {
+	const out = new Map();
+	const re = /export\s+const\s+(OLYMPIA_CONFIG_\w+)\s*=\s*'([^']+)'/g;
+	let m;
+	while ((m = re.exec(text))) {
+		out.set(m[1], m[2]);
+	}
+	return out;
+}
+
+/** 解析 `OLYMPIA_ONBOARDING_CONFIG_DEFAULTS` 里的字面量默认值。 */
+function parseConfigDefaults(text) {
+	const out = new Map();
+	const anchor = text.indexOf('OLYMPIA_ONBOARDING_CONFIG_DEFAULTS');
+	if (anchor < 0) {
+		return out;
+	}
+	const braceIdx = text.indexOf('{', anchor);
+	const body = balanced(text, braceIdx, '{', '}');
+	if (!body) {
+		return out;
+	}
+	const re = /\[(OLYMPIA_CONFIG_\w+)\]\s*:\s*('(?:[^'\\]|\\.)*'|-?\d+(?:\.\d+)?|true|false)/g;
+	let m;
+	while ((m = re.exec(body))) {
+		const raw = m[2];
+		let value;
+		if (raw.startsWith("'")) {
+			value = raw.slice(1, -1).replace(/\\'/g, "'");
+		} else if (raw === 'true') {
+			value = true;
+		} else if (raw === 'false') {
+			value = false;
+		} else {
+			value = Number(raw);
+		}
+		out.set(m[1], value);
+	}
+	return out;
+}
+
+/** 读内置扩展 package.json 里 `contributes.configuration.properties` 的 olympia.* 键。 */
+function loadExtensionSchema() {
+	const out = new Map();
+	const extDir = path.join(OSS, 'extensions');
+	let dirs = [];
+	try {
+		dirs = fs.readdirSync(extDir, { withFileTypes: true })
+			.filter(e => e.isDirectory())
+			.map(e => e.name);
+	} catch {
+		return out;
+	}
+	for (const d of dirs) {
+		const f = path.join(extDir, d, 'package.json');
+		let j = null;
+		try {
+			j = JSON.parse(fs.readFileSync(f, 'utf8'));
+		} catch {
+			continue;
+		}
+		const props = j && j.contributes && j.contributes.configuration && j.contributes.configuration.properties;
+		if (!props) {
+			continue;
+		}
+		for (const [k, v] of Object.entries(props)) {
+			if (!k.startsWith('olympia.')) {
+				continue;
+			}
+			out.set(k, { type: v.type, enum: v.enum, default: v.default, file: d });
+		}
+	}
+	return out;
+}
+
+/** 抽出卡片里所有「绑定了配置键的行对象」。 */
+function extractConfigRows(text) {
+	const rows = [];
+	const re = /configurationKey\s*:\s*(OLYMPIA_CONFIG_\w+)/g;
+	let m;
+	while ((m = re.exec(text))) {
+		const braceIdx = text.lastIndexOf('{', m.index);
+		if (braceIdx < 0) {
+			continue;
+		}
+		const body = balanced(text, braceIdx, '{', '}');
+		if (!body) {
+			continue;
+		}
+		const kindMatch = /kind\s*:\s*'(options|toggle)'/.exec(body);
+		rows.push({ constName: m[1], kind: kindMatch ? kindMatch[1] : '<未知>', block: body });
+	}
+	return rows;
+}
+
+/** 取某个配置键常量所在的行对象（用 `configurationKey: <常量名>` 定位）。 */
+function rowBlockFor(text, constantName) {
+	const idx = text.indexOf(`configurationKey: ${constantName}`);
+	if (idx < 0) {
+		return null;
+	}
+	const braceIdx = text.lastIndexOf('{', idx);
+	if (braceIdx < 0) {
+		return null;
+	}
+	return balanced(text, braceIdx, '{', '}');
 }
 
 // ---------------------------------------------------------------------------
@@ -412,6 +565,535 @@ check('G3', `olympiaWelcome.css 的动画属性只允许非布局属性（transf
 		if (seen.size) offenders.push(`@keyframes ${shorten(m[0].replace(/[{].*/, '').trim(), 60)} → ${[...seen].join(', ')}`);
 	}
 	if (offenders.length) return `布局属性动画会触发 relayout，违规：${shorten(offenders.join(' | '), 240)}`;
+	return null;
+});
+
+// ===========================================================================
+// H. 鸿蒙式开始引导：无断点结构 + 配置类型一致性
+//
+// 「全程没有断点」这件事，肉眼看不出来 —— 一次「顺手重构」就能把挂载点改回
+// document.body、把擦洞改成隐藏画布、把 5.4 秒改成 3 秒、把枚举开关写成布尔。
+// 所以这里把它拆成**可静态断言的结构前提**，逐条钉死。
+//
+// 断点的定义：画面从 A 跳到 B 的那一瞬间 —— 黑屏、场景重建、欢迎页切工作台。
+// 要没有断点，只有一种做法：**让 A 和 B 从第一帧就同时存在**。
+// ===========================================================================
+const F_ONB = `${OLYMPIA_BROWSER_DIR}/olympiaOnboarding.ts`;
+const F_ONB_CONTRIB = `${OLYMPIA_BROWSER_DIR}/olympiaOnboarding.contribution.ts`;
+const F_ONB_CARDS = `${OLYMPIA_BROWSER_DIR}/olympiaOnboardingCards.ts`;
+const F_ONB_TIMELINE = `${OLYMPIA_BROWSER_DIR}/olympiaOnboardingTimeline.ts`;
+const F_ONB_BACKDROP = `${OLYMPIA_BROWSER_DIR}/olympiaOnboardingBackdrop.ts`;
+const F_ONB_CONFIG = `${OLYMPIA_BROWSER_DIR}/olympiaOnboardingConfig.ts`;
+const F_ONB_JUDGE = `${OLYMPIA_BROWSER_DIR}/olympiaJudgeTargets.ts`;
+const F_ONB_CSS = `${OLYMPIA_BROWSER_DIR}/media/olympiaOnboarding.css`;
+
+check('H1', `引导 overlay 挂在 layoutService.getContainer(mainWindow)，不挂 document.body`, () => {
+	const t = load(F_ONB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	// 只看代码：文件头里那句「不是 document.body」是文档，不是实现。
+	const code = stripTsComments(t);
+	if (!/layoutService\.getContainer\(\s*mainWindow\s*\)/.test(code)) return `没有 getContainer(mainWindow) 调用`;
+	if (/document\.body/.test(code)) {
+		return `出现了 document.body —— body 挂载会盖住对话框/快速输入/通知（浮层 z-index 2540~2575，overlay 是 2530），破坏浮层层叠语义`;
+	}
+	return null;
+});
+
+check('H2', `引导贡献注册在 WorkbenchPhase.BlockStartup（首帧即极光）`, () => {
+	const t = load(F_ONB_CONTRIB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CONTRIB}）`;
+	// 这份文件的头部注释里大段解释「为什么是 BlockStartup」—— 全文 grep 会被注释骗过：
+	// 注释里写了 BlockStartup，真代码却挪到 AfterRestored，断言照样绿。
+	// 所以必须先剥注释，再锚在**注册调用**的阶段实参上。
+	const code = stripTsComments(t);
+	const m = /registerWorkbenchContribution2\(\s*OlympiaOnboardingContribution\.ID\s*,\s*OlympiaOnboardingContribution\s*,\s*WorkbenchPhase\.(\w+)\s*\)/.exec(code);
+	if (!m) {
+		return `没找到引导贡献的注册调用（registerWorkbenchContribution2(..., WorkbenchPhase.?)）`;
+	}
+	if (m[1] !== 'BlockStartup') {
+		return `引导贡献注册在 WorkbenchPhase.${m[1]} —— 必须用 BlockStartup（对应 LifecyclePhase.Starting）；Ready 阶段注册会晚于 renderWorkbench，首帧会闪出工作台`;
+	}
+	return null;
+});
+
+check('H3', `overlay 根规则 .olympia-onboarding 不带背景色（背景只能放在独立 splash 层）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const body = cssRule(stripComments(raw), '.olympia-onboarding');
+	if (body === null) return `未找到 .olympia-onboarding 规则块`;
+	if (/background\s*[:(]/.test(body)) {
+		return `根规则里有 background —— 洞擦出来之后这块底色会跟着露出来（洞是透明的，根元素不透明）`;
+	}
+	return null;
+});
+
+check('H4', `splash 兜底层有底色，且画布首帧后淡出到 opacity 0`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const css = stripComments(raw);
+	const splash = cssRule(css, '.olympia-onboarding-splash');
+	if (splash === null) return `未找到 .olympia-onboarding-splash 规则块`;
+	if (!/background\s*[:(]/.test(splash)) return `splash 没有背景 —— canvas 画出第一帧前屏幕会是空的`;
+	const painted = cssRule(css, '.olympia-onboarding-painted .olympia-onboarding-splash');
+	if (painted === null) return `未找到 .olympia-onboarding-painted .olympia-onboarding-splash 规则块`;
+	if (!/opacity\s*:\s*0\b/.test(painted)) {
+		return `painted 之后 splash 没有 opacity: 0 —— 兜底层会一直挡着工作台，洞擦出来看到的也是它`;
+	}
+	return null;
+});
+
+check('H5', `擦洞用 destination-out（在背景上擦穿），不是隐藏或移除画布`, () => {
+	const t = load(F_ONB_BACKDROP);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_BACKDROP}）`;
+	if (!/globalCompositeOperation\s*=\s*['"]destination-out['"]/.test(t)) {
+		return `没有 destination-out —— 洞必须是「擦穿背景」，而不是把背景换掉`;
+	}
+	if (/display\s*=\s*['"]none['"]/.test(t) || /\.style\.display\s*=/.test(t)) {
+		return `背景被 display:none 掉了 —— 那是一次硬切`;
+	}
+	return null;
+});
+
+check('H6', `背景时钟只累加、永不重置（重置会让极光相位跳一下 = 断点）`, () => {
+	const t = load(F_ONB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	if (!/this\.backdropTime\s*\+=/.test(t)) return `没有 backdropTime += ...`;
+	if (/this\.backdropTime\s*=\s*0\b/.test(t)) {
+		return `backdropTime 被重置为 0 —— 极光相位会跳一下`;
+	}
+	return null;
+});
+
+check('H7', `动画时间线不得用 performance.now()（必须与 rAF 帧时间戳同源）`, () => {
+	// 宿主与背景：整份文件里都不许出现。
+	for (const rel of [F_ONB, F_ONB_BACKDROP]) {
+		const t = load(rel);
+		if (t === null) return `文件不存在（见上面的 MISSING ${rel}）`;
+		// 只看代码：注释里那句「早先版本这里用 performance.now()」是历史说明，不是实现。
+		if (stripTsComments(t).includes('performance.now()')) {
+			return `${rel} 用了 performance.now() —— 与 rAF 时间戳不同源，阶段守卫会永远不成立，动画挂死`;
+		}
+	}
+	// 卡片层：只允许出现在**拖拽速度测量**里。那是一次真实的物理测量（两次指针事件之间
+	// 过了多少毫秒），本来就不该用帧时间戳 —— 帧时间戳在两次事件之间是不动的，
+	// 拿来算速度会得到 0 或一个巨大的值。补间起点则必须用 rAF 帧时间戳。
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	const codeLines = code.split(/\r?\n/);
+	for (let i = 0; i < codeLines.length; i++) {
+		if (!codeLines[i].includes('performance.now()')) {
+			continue;
+		}
+		const ctx = codeLines.slice(Math.max(0, i - 1), i + 2).join(' ');
+		const allowed = /this\.lastTime\s*=\s*performance\.now\(\)/.test(ctx)
+			|| /const\s+now\s*=\s*performance\.now\(\)/.test(ctx);
+		if (!allowed) {
+			return `olympiaOnboardingCards.ts 里的 performance.now() 用在了补间或阶段判定上（上下文：${shorten(codeLines.slice(Math.max(0, i - 2), i + 1).join(' '), 160)}）`;
+		}
+	}
+	// 补间起点必须用最近一帧的 rAF 时间戳。
+	if (!/start:\s*this\.lastFrameTime/.test(code)) {
+		return `卡片补间的起点不是 lastFrameTime —— 补间起点与渲染时钟不同源，跟手度会随帧率抖动`;
+	}
+	return null;
+});
+
+check('H8', `时间线模块是纯函数：不碰 DOM、计时器、随机数、当前时间`, () => {
+	const t = load(F_ONB_TIMELINE);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	const code = stripTsComments(t);
+	const forbidden = [
+		['Math.random', /Math\.random/],
+		['Date.now', /Date\.now/],
+		['document', /\bdocument\b/],
+		['window', /\bwindow\b/],
+		['setTimeout / setInterval', /\bset(?:Timeout|Interval)\b/],
+		['requestAnimationFrame', /requestAnimationFrame/]
+	];
+	for (const [name, re] of forbidden) {
+		if (re.test(code)) return `时间线里出现了 ${name} —— 时间线必须是「相对 t 的纯函数」，否则没法静态断言`;
+	}
+	return null;
+});
+
+check('H9', `星光粒子的随机参数由索引哈希推导（同一 t 永远同一张图）`, () => {
+	const t = load(F_ONB_TIMELINE);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	const code = stripTsComments(t);
+	if (!/olympiaOnboardingHash1\(/.test(code) || !/olympiaOnboardingHash2\(/.test(code)) {
+		return `buildParticles 没有用索引哈希 —— 粒子参数必须由 (card, index) 推导`;
+	}
+	return null;
+});
+
+check('H10', `进入动画总时长在「5 秒左右」区间（4.5~6.0 秒）`, () => {
+	const t = load(F_ONB_TIMELINE);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	const m = /export\s+const\s+OLYMPIA_ONBOARDING_ENTER_DURATION\s*=\s*([0-9.]+)/.exec(t);
+	if (!m) return `未找到 OLYMPIA_ONBOARDING_ENTER_DURATION`;
+	const v = Number(m[1]);
+	if (!(v >= 4.5 && v <= 6.0)) return `总时长 ${v}s 不在 4.5~6.0 秒的「5 秒左右」区间`;
+	return null;
+});
+
+check('H11', `时间线所有视觉量都在总时长内收尾（洞/卡片/粒子/暗角/扫光）`, () => {
+	const t = load(F_ONB_TIMELINE);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	const num = name => {
+		const m = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*([0-9.]+)`).exec(t);
+		return m ? Number(m[1]) : null;
+	};
+	const duration = num('OLYMPIA_ONBOARDING_ENTER_DURATION');
+	if (duration === null) return `未找到 OLYMPIA_ONBOARDING_ENTER_DURATION`;
+	for (const [name, desc] of [
+		['OLYMPIA_ONBOARDING_REVEAL_END', '擦洞'],
+		['OLYMPIA_ONBOARDING_DISSOLVE_END', '卡片消散'],
+		['OLYMPIA_ONBOARDING_PARTICLE_WINDOW', '粒子飞行'],
+		['OLYMPIA_ONBOARDING_VIGNETTE_FALL_END', '暗角归零']
+	]) {
+		const v = num(name);
+		if (v === null) return `未找到 ${name}`;
+		if (v > duration) {
+			return `${desc} 的结束时间 ${v}s 超过总时长 ${duration}s —— 收尾时它还没结束，overlay 被删掉就是一次可见的跳变`;
+		}
+	}
+	const sweepsAnchor = t.indexOf('export const OLYMPIA_ONBOARDING_SWEEPS');
+	if (sweepsAnchor < 0) return `未找到 OLYMPIA_ONBOARDING_SWEEPS`;
+	// 定位必须落在**赋值语句**的数组字面量上：`readonly X[] = [` 里的 `[]` 是类型标注，
+	// 扫到它会得到空数组（踩过：数组被读成 `[]`，`end:` 一个都找不到）。
+	const assignIdx = t.indexOf('= [', sweepsAnchor);
+	if (assignIdx < 0) return `OLYMPIA_ONBOARDING_SWEEPS 不是数组字面量赋值，无法解析`;
+	const listBody = balanced(t, t.indexOf('[', assignIdx), '[', ']');
+	if (!listBody) return `OLYMPIA_ONBOARDING_SWEEPS 的数组无法配对解析`;
+	const ends = [...listBody.matchAll(/end:\s*([0-9.]+)/g)].map(m => Number(m[1]));
+	if (!ends.length) return `OLYMPIA_ONBOARDING_SWEEPS 里没有 end 字段`;
+	const maxEnd = Math.max(...ends);
+	if (maxEnd > duration) return `最后一条扫光结束于 ${maxEnd}s，超过总时长 ${duration}s`;
+	return null;
+});
+
+check('H12', `揭示几何按 W/√2 算圆空间角距（洞必须盖住画布四角）`, () => {
+	const t = load(F_ONB_TIMELINE);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	const code = stripTsComments(t);
+	if (!/viewportWidth\s*\/\s*Math\.SQRT2/.test(code)) return `没有 viewportWidth / Math.SQRT2`;
+	if (/Math\.hypot\s*\(\s*viewportWidth\s*\/\s*2/.test(code)) {
+		return `用了 hypot(W/2, H/2) —— 洞盖不住画布四角，收尾那一帧四角会残留一圈极光`;
+	}
+	return null;
+});
+
+check('H13', `进入动画必须等 LifecyclePhase.Restored（否则擦洞时工作台还没渲染完 = 二次断点）`, () => {
+	const t = load(F_ONB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	if (!/LifecyclePhase\.Restored/.test(t)) {
+		return `没有 Restored 判定 —— 露出来的会是半成品工作台`;
+	}
+	return null;
+});
+
+check('H14', `等恢复有上限（不会永久卡住）`, () => {
+	const t = load(F_ONB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const m = /RESTORE_WAIT_LIMIT\s*=\s*([0-9.]+)/.exec(t);
+	if (!m) return `未找到 RESTORE_WAIT_LIMIT`;
+	const v = Number(m[1]);
+	if (!(v > 0 && v <= 5)) return `兜底 ${v}s 不合理（应在 0~5 秒之间）`;
+	return null;
+});
+
+check('H15', `收尾条件用 elapsed >= 总时长，且 finish() 直接删 overlay（没有第二段淡出）`, () => {
+	const t = load(F_ONB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	if (!/elapsed\s*>=\s*OLYMPIA_ONBOARDING_ENTER_DURATION/.test(t)) {
+		return `收尾条件不是 elapsed >= OLYMPIA_ONBOARDING_ENTER_DURATION`;
+	}
+	const fm = /private\s+finish\(\)\s*:\s*void\s*\{/.exec(t);
+	if (!fm) return `未找到 finish()`;
+	const body = balanced(t, t.indexOf('{', fm.index), '{', '}');
+	if (!body) return `finish() 的函数体无法配对解析`;
+	if (/opacity|transition|classList/.test(body)) {
+		return `finish() 里还有淡出或状态切换 —— overlay 被删的那一刻必须已经完全不可见`;
+	}
+	return null;
+});
+
+check('H16', `首启标记用 StorageScope.PROFILE + StorageTarget.MACHINE（不参与设置同步）`, () => {
+	const t = load(F_ONB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const re = /storageService\.store\(\s*OlympiaOnboarding\.STORAGE_KEY\s*,\s*true\s*,\s*StorageScope\.PROFILE\s*,\s*StorageTarget\.MACHINE\s*\)/;
+	if (!re.test(t)) {
+		return `写入调用不是 PROFILE + MACHINE —— 同步到别的机器会让那边也弹一次引导`;
+	}
+	return null;
+});
+
+check('H17', `只有一条 rAF 链，且帧体被 try/catch 包住（一帧算错不能掐死整条链）`, () => {
+	const t = load(F_ONB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const rafCount = (t.match(/requestAnimationFrame\(/g) || []).length;
+	if (rafCount !== 2) {
+		return `requestAnimationFrame 调用点有 ${rafCount} 处（应为 2：启动 1 + 帧内续 1）—— 多于一条链会各自为政`;
+	}
+	const om = /private\s+readonly\s+onFrame\s*=/.exec(t);
+	if (!om) return `未找到 onFrame`;
+	const braceIdx = t.indexOf('{', t.indexOf('=>', om.index));
+	const body = balanced(t, braceIdx, '{', '}');
+	if (!body) return `onFrame 的函数体无法配对解析`;
+	if (!/try\s*\{/.test(body) || !/catch/.test(body)) {
+		return `onFrame 没有 try/catch —— 一帧算错会把整条 rAF 链掐断，引导僵在最后一帧`;
+	}
+	return null;
+});
+
+check('H18', `进入动画期间不插入任何文案（用户要「不要介绍」）`, () => {
+	const t = load(F_ONB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const code = stripTsComments(t);
+	const locals = (code.match(/localize\(/g) || []).length;
+	if (locals !== 1) {
+		return `olympiaOnboarding.ts 里有 ${locals} 处 localize —— 进入动画期间出现新文案就变成产品介绍了`;
+	}
+	const texts = (code.match(/\.textContent\s*=/g) || []).length;
+	if (texts !== 1) {
+		return `有 ${texts} 处 textContent 赋值 —— 只有「正在准备工作台…」这一条状态提示允许存在`;
+	}
+	return null;
+});
+
+check('H19', `overlay 的 z-index 是 2530（盖住标题栏 2500，让开窗口按钮 3000 / 浮层 2540~2575）`, () => {
+	const t = load(F_ONB);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const m = /OLYMPIA_ONBOARDING_Z_INDEX\s*=\s*(\d+)/.exec(t);
+	if (!m) return `未找到 OLYMPIA_ONBOARDING_Z_INDEX`;
+	if (Number(m[1]) !== 2530) return `z-index = ${m[1]}，应为 2530`;
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const body = cssRule(stripComments(raw), '.olympia-onboarding');
+	if (body !== null && !/z-index\s*:\s*2530/.test(body)) return `CSS 里没有 z-index: 2530`;
+	return null;
+});
+
+check('H20', `卡片只通过 OLYMPIA_CONFIG_* 常量引用配置键（不写裸键名）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	const literals = [...code.matchAll(/configurationKey\s*:\s*'([^']+)'/g)].map(m => m[1]);
+	if (literals.length) return `出现了裸配置键：${literals.join('，')} —— 键名必须走 olympiaOnboardingConfig.ts 的常量`;
+	const ids = [...code.matchAll(/configurationKey\s*:\s*([A-Za-z_$][\w$]*)/g)].map(m => m[1]);
+	const bad = ids.filter(k => !/^OLYMPIA_CONFIG_/.test(k));
+	if (bad.length) return `configurationKey 引用了非 OLYMPIA_CONFIG_* 的标识符：${bad.join('，')}`;
+	return null;
+});
+
+check('H21', `数字型配置（字号/行高/内存上限/每日题量）必须走 configValue（写字符串会被 schema 拒绝）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	for (const name of [
+		'OLYMPIA_CONFIG_EDITOR_FONT_SIZE',
+		'OLYMPIA_CONFIG_EDITOR_LINE_HEIGHT',
+		'OLYMPIA_CONFIG_JUDGE_MEMORY_LIMIT',
+		'OLYMPIA_CONFIG_TRAIN_DAILY_GOAL'
+	]) {
+		const block = rowBlockFor(t, name);
+		if (block === null) return `未找到 ${name} 所在的行对象`;
+		if (!/configValue/.test(block)) {
+			return `${name} 那一行没有 configValue —— 写字符串进 number 类型的键会被配置校验拒绝，用户的选择永远存不下`;
+		}
+	}
+	return null;
+});
+
+check('H22', `枚举型开关（光标动画）必须走 toggleValues 写字符串`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const block = rowBlockFor(t, 'OLYMPIA_CONFIG_EDITOR_SMOOTH_CARET');
+	if (block === null) return `未找到光标动画那一行`;
+	if (!/toggleValues/.test(block)) {
+		return `光标动画行没有 toggleValues —— 该键的 schema 是 off|explicit|on，写布尔会被配置校验拒绝`;
+	}
+	if (!/on\s*:\s*'on'/.test(block) || !/off\s*:\s*'off'/.test(block)) {
+		return `toggleValues 的 on/off 值不对（应为 'on' / 'off'）`;
+	}
+	return null;
+});
+
+check('H23', `core 侧的 olympia.* 默认值与两个扩展的 package.json 完全一致（防漂移）`, () => {
+	const cfg = load(F_ONB_CONFIG);
+	if (cfg === null) return `文件不存在（见上面的 MISSING ${F_ONB_CONFIG}）`;
+	const consts = parseConfigConstants(cfg);
+	const defaults = parseConfigDefaults(cfg);
+	if (!defaults.size) return `没能从 ${F_ONB_CONFIG} 解析出任何默认值`;
+	const schema = loadExtensionSchema();
+	for (const [constName, value] of defaults) {
+		const key = consts.get(constName);
+		if (!key) return `无法解析 ${constName} 对应的配置键`;
+		const s = schema.get(key);
+		if (!s) return `扩展的 package.json 里没有 ${key}（core 却有一份默认值）`;
+		if (JSON.stringify(s.default) !== JSON.stringify(value)) {
+			return `${key} 的默认值不一致：core=${JSON.stringify(value)}，扩展（${s.file}）=${JSON.stringify(s.default)}`;
+		}
+	}
+	return null;
+});
+
+check('H24', `每个开关/选项写入的值类型必须与扩展 schema 的 type 一致`, () => {
+	const cards = load(F_ONB_CARDS);
+	const cfg = load(F_ONB_CONFIG);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	if (cfg === null) return `文件不存在（见上面的 MISSING ${F_ONB_CONFIG}）`;
+	const consts = parseConfigConstants(cfg);
+	const schema = loadExtensionSchema();
+	// editor.* 是 core 自己的键，类型由上游 editorOptions.ts 决定（不在扩展的 package.json 里）。
+	const editorTypes = {
+		'editor.fontSize': 'number',
+		'editor.lineHeight': 'number',
+		'editor.minimap.enabled': 'boolean',
+		'editor.cursorSmoothCaretAnimation': 'string'
+	};
+	const rows = extractConfigRows(cards);
+	if (!rows.length) return `没从 ${F_ONB_CARDS} 里解析出任何绑定了配置键的行`;
+	for (const row of rows) {
+		const key = consts.get(row.constName);
+		if (!key) return `无法解析 ${row.constName} 对应的配置键`;
+		let type = null;
+		if (key.startsWith('editor.')) {
+			type = editorTypes[key];
+			if (!type) return `断言脚本不知道 ${key} 的 schema 类型（请补进 editorTypes）`;
+		} else {
+			const s = schema.get(key);
+			if (!s) return `扩展的 package.json 里没有 ${key}`;
+			type = s.type;
+		}
+		if (row.kind === 'toggle') {
+			if (type === 'boolean') {
+				if (/toggleValues/.test(row.block)) return `${key} 是 boolean 类型的开关，不该带 toggleValues`;
+			} else if (type === 'string') {
+				if (!/toggleValues/.test(row.block)) {
+					return `${key} 的 schema 是 string（枚举），当开关写必须带 toggleValues`;
+				}
+			} else {
+				return `${key} 的 schema 是 ${type}，不该当成开关`;
+			}
+		} else if (row.kind === 'options') {
+			if (type === 'number') {
+				if (!/configValue/.test(row.block)) return `${key} 是 number 类型，必须走 configValue 写数字`;
+				if (/(?<![A-Za-z0-9_])value\s*:\s*\d/.test(row.block)) {
+					return `${key} 的展示值写成了裸数字（应为字符串，数字只出现在 configValue 里）`;
+				}
+			} else if (type === 'string') {
+				const cm = /configValue\s*:\s*([^,}\n]+)/.exec(row.block);
+				if (cm && !/^['"]/.test(cm[1].trim())) {
+					return `${key} 是 string 类型，configValue 必须是字符串（实际是 ${cm[1].trim()}）`;
+				}
+			} else {
+				return `${key} 的 schema 是 ${type}，不该用选项组`;
+			}
+		} else {
+			return `${row.constName} 的 kind 是 ${row.kind}，不是 options/toggle`;
+		}
+	}
+	return null;
+});
+
+check('H25', `core 的评测机表与扩展的 OJ_TARGETS 逐字段一致（卡片显示的是真实编译命令）`, () => {
+	const core = load(F_ONB_JUDGE);
+	if (core === null) return `文件不存在（见上面的 MISSING ${F_ONB_JUDGE}）`;
+	const extPath = 'oss/extensions/olympia-onboarding/src/ojTargets.ts';
+	const ext = load(extPath);
+	if (ext === null) return `文件不存在（见上面的 MISSING ${extPath}）`;
+	const pick = (text, exportName) => {
+		// 锚点必须是**数组字面量**，不能是 `export const X` 后面的第一个 `{`——
+		// 那是对应数组第一个元素的花括号，用括号配对截出来的只有第 1 个评测机，
+		// 第 2 条往后漂移永远看不见（变异测试 M16 实测踩过这个坑）。
+		const decl = new RegExp(`export\\s+const\\s+${exportName}\\b[^=]*=\\s*\\[`).exec(text);
+		if (!decl) return null;
+		const bracketIdx = decl.index + decl[0].length - 1;
+		const array = balanced(text, bracketIdx, '[', ']');
+		if (!array) return null;
+		const entries = [];
+		let idx = array.indexOf('{');
+		while (idx >= 0) {
+			const entry = balanced(array, idx, '{', '}');
+			if (!entry) break;
+			const field = name => {
+				const fm = new RegExp(`(?:^|[{,\\s])${name}\\s*:\\s*'([^']*)'`).exec(entry);
+				return fm ? fm[1] : null;
+			};
+			const bm = /(?:^|[{,\s])baseFlags\s*:\s*([A-Za-z_$][\w$]*)/.exec(entry);
+			entries.push({
+				id: field('id'),
+				label: field('label'),
+				gcc: field('gcc'),
+				std: field('std'),
+				onlineJudgeEnv: field('onlineJudgeEnv'),
+				baseFlagsRef: bm ? bm[1] : null
+			});
+			idx = array.indexOf('{', idx + entry.length);
+		}
+		return entries;
+	};
+	const a = pick(core, 'OLYMPIA_JUDGE_TARGETS');
+	const b = pick(ext, 'OJ_TARGETS');
+	if (!a || !b) return `没能解析出两份评测机表`;
+	if (a.length !== b.length) return `评测机数量不一致：core=${a.length}，扩展=${b.length}`;
+	for (let i = 0; i < a.length; i++) {
+		for (const field of ['id', 'label', 'gcc', 'std', 'onlineJudgeEnv', 'baseFlagsRef']) {
+			if (a[i][field] !== b[i][field]) {
+				return `第 ${i + 1} 个评测机的 ${field} 不一致：core=${a[i][field]}，扩展=${b[i][field]}`;
+			}
+		}
+	}
+	// baseFlags 两边都引用同一个常量名，也要一致。
+	const flagsOf = (text, name) => {
+		const m = new RegExp(`const\\s+${name}\\s*=\\s*\\[([^\\]]*)\\]`).exec(text);
+		return m ? m[1].replace(/\s+/g, ' ').trim() : null;
+	};
+	const cf = flagsOf(core, 'LUOGU_BASE_FLAGS');
+	const ef = flagsOf(ext, 'LUOGU_BASE_FLAGS');
+	if (cf !== ef) return `LUOGU_BASE_FLAGS 不一致：core=${cf}，扩展=${ef}`;
+	return null;
+});
+
+check('H26', `olympiaOnboarding.css 同样不得含 class 子串选择子 / root 级 :has()`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const css = stripComments(raw);
+	const lines = css.split(/\r?\n/);
+	const sub = lines.map((l, i) => ({ l, n: i + 1 })).filter(({ l }) => /\[\s*class\s*(?:\*=|\^=|\$=)\s*/i.test(l));
+	if (sub.length) return `命中 ${sub.length} 处 class 子串选择子，例如第 ${sub[0].n} 行：${shorten(sub[0].l, 140)}`;
+	const has = lines.map((l, i) => ({ l, n: i + 1 })).filter(({ l }) => /(?::root|\bhtml|\bbody|\.monaco-workbench)\s*:has\s*\(/i.test(l));
+	if (has.length) return `工作台/root 级 :has() 会造成全工作台失效，第 ${has[0].n} 行：${shorten(has[0].l, 140)}`;
+	return null;
+});
+
+check('H27', `卡片层的隐藏用 opacity，不许用 display:none / visibility:hidden（那是一次硬切）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const body = cssRule(stripComments(raw), '.olympia-onboarding-cards.hidden');
+	if (body === null) return `未找到 .olympia-onboarding-cards.hidden 规则块`;
+	if (/display\s*:\s*none/.test(body)) return `hidden 用 display:none —— 卡片层会瞬间消失，是一次硬切`;
+	if (/visibility\s*:\s*hidden/.test(body)) return `hidden 用 visibility:hidden —— 同样是硬切`;
+	if (!/opacity\s*:\s*0\b/.test(body)) return `hidden 规则里没有 opacity: 0`;
+	return null;
+});
+
+check('H28', `卡片拖拽不用 setPointerCapture（会把兼容鼠标事件改派到轨道）`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	if (/setPointerCapture/.test(t)) return `出现了 setPointerCapture`;
+	return null;
+});
+
+check('H29', `卡片层的本地状态要跟着写入走：pendingWrites 是「用户当前选择的真相」`, () => {
+	const t = load(F_ONB_CARDS);
+	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(t);
+	if (!/if\s*\(\s*this\.pendingWrites\.has\(key\)\s*\)/.test(code)) {
+		return `readConfig 没有优先读 pendingWrites —— 扩展没注册前，卡片会显示扩展默认值，用户点了像「没生效」`;
+	}
+	if (!/writingKeys/.test(code)) return `没有 in-flight 去重（writingKeys）—— 同一个键会被重复写`;
 	return null;
 });
 

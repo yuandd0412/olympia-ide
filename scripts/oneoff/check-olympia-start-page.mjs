@@ -396,6 +396,103 @@ function extractConfigRows(text) {
 	return rows;
 }
 
+/**
+ * 从卡片层里解析出「一张卡 = 一个描述符对象」。
+ *
+ * 与旧的 extractConfigRows 的区别：旧版靠 `kind: 'options' | 'toggle'` 认行型，
+ * 新模型没有 kind 了 —— 认的是「对象里出现了 configurationKey: <常量>」。
+ *
+ * 关键坑：Cards.ts 里 localize 的默认文案含 `{0}` / `{1}` 这类占位符，
+ * 直接用 lastIndexOf('{') 会把占位符当成对象开头，取出来的「块」是错的。
+ * 所以先把所有字符串字面量屏蔽成空格（长度不变，下标仍然对齐），
+ * 再在屏蔽后的文本上做括号配对。
+ */
+function maskStringLiterals(code) {
+	// 引号**保留**：只有内容被屏蔽。
+	//
+	// 之前连引号一起屏蔽掉了，于是 H21/H24 里「configValue 不能是字符串字面量」
+	// 那两条判据永远不可能命中 —— 断言看着在管类型，实际是死代码。
+	// 内容屏蔽掉就够用了：字符串里的花括号（localize("GCC {0} · {1}")）
+	// 正是括号配对会跑偏的原因，内容屏蔽后配对就准了。
+	const out = code.split('');
+	let i = 0;
+	const n = code.length;
+	while (i < n) {
+		const ch = code[i];
+		if (ch === '/' && code[i + 1] === '/') {
+			while (i < n && code[i] !== '\n') { out[i] = ' '; i++; }
+			continue;
+		}
+		if (ch === '/' && code[i + 1] === '*') {
+			out[i] = ' ';
+			out[i + 1] = ' ';
+			i += 2;
+			while (i < n && !(code[i] === '*' && code[i + 1] === '/')) {
+				if (code[i] !== '\n') { out[i] = ' '; }
+				i++;
+			}
+			if (i < n) { out[i] = ' '; out[i + 1] = ' '; i += 2; }
+			continue;
+		}
+		if (ch === "'" || ch === '"' || ch === '`') {
+			const quote = ch;
+			i++;   // 开引号保留
+			while (i < n) {
+				if (code[i] === '\\') {
+					out[i] = ' ';
+					if (i + 1 < n) { out[i + 1] = ' '; }
+					i += 2;
+					continue;
+				}
+				if (code[i] === quote) { i++; break; }   // 闭引号保留
+				if (code[i] !== '\n') { out[i] = ' '; }
+				i++;
+			}
+			continue;
+		}
+		i++;
+	}
+	return out.join('');
+}
+
+/** 找出某处所在的最近一层外层对象字面量的起始 '{'（找不到返回 -1）。 */
+function enclosingBrace(masked, index) {
+	let depth = 0;
+	for (let i = index - 1; i >= 0; i--) {
+		const c = masked[i];
+		if (c === '}') { depth++; continue; }
+		if (c === '{') {
+			if (depth === 0) { return i; }
+			depth--;
+		}
+	}
+	return -1;
+}
+
+/**
+ * 取出卡片层里每一张卡的描述符对象。
+ *
+ * @returns {{ constName: string, block: string }[]}
+ */
+function extractCardDescriptors(text) {
+	const masked = maskStringLiterals(stripTsComments(text));
+	const rows = [];
+	const re = /configurationKey\s*:\s*(OLYMPIA_CONFIG_[A-Z0-9_]+)/g;
+	let m;
+	while ((m = re.exec(masked))) {
+		const open = enclosingBrace(masked, m.index);
+		if (open < 0) {
+			continue;
+		}
+		const block = balanced(masked, open, '{', '}');
+		if (!block) {
+			continue;
+		}
+		rows.push({ constName: m[1], block });
+	}
+	return rows;
+}
+
 /** 取某个配置键常量所在的行对象（用 `configurationKey: <常量名>` 定位）。 */
 function rowBlockFor(text, constantName) {
 	const idx = text.indexOf(`configurationKey: ${constantName}`);
@@ -843,6 +940,10 @@ const F_ONB_CONFIG = `${OLYMPIA_BROWSER_DIR}/olympiaOnboardingConfig.ts`;
 const F_ONB_JUDGE = `${OLYMPIA_BROWSER_DIR}/olympiaJudgeTargets.ts`;
 const F_ONB_CSS = `${OLYMPIA_BROWSER_DIR}/media/olympiaOnboarding.css`;
 const F_ONB_READY = `${OLYMPIA_BROWSER_DIR}/olympiaWelcomeReady.ts`;
+// 「每日题量」已整条链路删除：这三个文件是「删干净了没有」的证据面。
+const F_ONB_EXT_PKG = 'oss/extensions/olympia-onboarding/package.json';
+const F_ONB_SOLVE_LOG = 'oss/extensions/olympia-onboarding/src/solveLog.ts';
+const F_GEOM = 'scripts/oneoff/verify-onboarding-geometry.mjs';
 
 check('H1', `引导 overlay 挂在 layoutService.getContainer(mainWindow)，不挂 document.body`, () => {
 	const t = load(F_ONB);
@@ -1155,40 +1256,87 @@ check('H20', `卡片只通过 OLYMPIA_CONFIG_* 常量引用配置键（不写裸
 	const code = stripTsComments(t);
 	const literals = [...code.matchAll(/configurationKey\s*:\s*'([^']+)'/g)].map(m => m[1]);
 	if (literals.length) return `出现了裸配置键：${literals.join('，')} —— 键名必须走 olympiaOnboardingConfig.ts 的常量`;
-	const ids = [...code.matchAll(/configurationKey\s*:\s*([A-Za-z_$][\w$]*)/g)].map(m => m[1]);
+	// 接口声明里的 `readonly configurationKey: string;` 是**类型标注**不是赋值 —— 先排除。
+	const assignments = code.replace(/readonly\s+configurationKey\s*:\s*string\s*;/g, '');
+	const ids = [...assignments.matchAll(/configurationKey\s*:\s*([A-Za-z_$][\w$]*)/g)].map(m => m[1]);
+	if (!ids.length) return `卡片里一个 configurationKey 赋值都没找到 —— 三张卡必须各自绑一个配置键`;
 	const bad = ids.filter(k => !/^OLYMPIA_CONFIG_/.test(k));
 	if (bad.length) return `configurationKey 引用了非 OLYMPIA_CONFIG_* 的标识符：${bad.join('，')}`;
 	return null;
 });
 
-check('H21', `数字型配置（字号/行高/内存上限/每日题量）必须走 configValue（写字符串会被 schema 拒绝）`, () => {
+check('H21', `数字型配置（代码字号）必须走 configValue（写字符串会被 schema 拒绝）`, () => {
 	const t = load(F_ONB_CARDS);
 	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
-	for (const name of [
-		'OLYMPIA_CONFIG_EDITOR_FONT_SIZE',
-		'OLYMPIA_CONFIG_EDITOR_LINE_HEIGHT',
-		'OLYMPIA_CONFIG_JUDGE_MEMORY_LIMIT',
-		'OLYMPIA_CONFIG_TRAIN_DAILY_GOAL'
-	]) {
-		const block = rowBlockFor(t, name);
-		if (block === null) return `未找到 ${name} 所在的行对象`;
-		if (!/configValue/.test(block)) {
-			return `${name} 那一行没有 configValue —— 写字符串进 number 类型的键会被配置校验拒绝，用户的选择永远存不下`;
+	const cfg = load(F_ONB_CONFIG);
+	if (cfg === null) return `文件不存在（见上面的 MISSING ${F_ONB_CONFIG}）`;
+	const consts = parseConfigConstants(cfg);
+	const schema = loadExtensionSchema();
+	const editorTypes = { 'editor.fontSize': 'number', 'editor.lineHeight': 'number' };
+	const descriptors = extractCardDescriptors(t);
+	if (!descriptors.length) return `没从 ${F_ONB_CARDS} 里解析出任何卡片描述符`;
+	for (const d of descriptors) {
+		const key = consts.get(d.constName);
+		if (!key) return `无法解析 ${d.constName} 对应的配置键`;
+		let type = null;
+		if (key.startsWith('editor.')) {
+			type = editorTypes[key];
+			if (!type) return `断言脚本不知道 ${key} 的 schema 类型（请补进 editorTypes）`;
+		} else {
+			const s = schema.get(key);
+			if (!s) return `扩展的 package.json 里没有 ${key}`;
+			type = s.type;
+		}
+		if (type !== 'number') {
+			continue;
+		}
+		if (!/configValue/.test(d.block)) {
+			return `${key} 是 number 类型，选项必须带 configValue —— 写字符串会被配置校验拒绝，用户的选择永远存不下`;
+		}
+		for (const cv of [...d.block.matchAll(/configValue\s*:\s*([^,}\n]+)/g)].map(m => m[1].trim())) {
+			if (/^['"]/.test(cv)) {
+				return `${key} 是 number 类型，configValue 不能是字符串字面量（${cv}）—— 写字符串会被配置校验拒绝`;
+			}
 		}
 	}
 	return null;
 });
 
-check('H22', `枚举型开关（光标动画）必须走 toggleValues 写字符串`, () => {
+check('H22', `枚举型（string schema）配置必须写字符串值（写布尔/数字会被配置校验拒绝）`, () => {
 	const t = load(F_ONB_CARDS);
 	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
-	const block = rowBlockFor(t, 'OLYMPIA_CONFIG_EDITOR_SMOOTH_CARET');
-	if (block === null) return `未找到光标动画那一行`;
-	if (!/toggleValues/.test(block)) {
-		return `光标动画行没有 toggleValues —— 该键的 schema 是 off|explicit|on，写布尔会被配置校验拒绝`;
+	const cfg = load(F_ONB_CONFIG);
+	if (cfg === null) return `文件不存在（见上面的 MISSING ${F_ONB_CONFIG}）`;
+	const consts = parseConfigConstants(cfg);
+	const schema = loadExtensionSchema();
+	const editorTypes = { 'editor.fontSize': 'number', 'editor.lineHeight': 'number' };
+	const descriptors = extractCardDescriptors(t);
+	if (!descriptors.length) return `没从 ${F_ONB_CARDS} 里解析出任何卡片描述符`;
+	let sawString = 0;
+	for (const d of descriptors) {
+		const key = consts.get(d.constName);
+		if (!key) return `无法解析 ${d.constName} 对应的配置键`;
+		let type = null;
+		if (key.startsWith('editor.')) {
+			type = editorTypes[key];
+			if (!type) return `断言脚本不知道 ${key} 的 schema 类型（请补进 editorTypes）`;
+		} else {
+			const s = schema.get(key);
+			if (!s) return `扩展的 package.json 里没有 ${key}`;
+			type = s.type;
+		}
+		if (type !== 'string') {
+			continue;
+		}
+		sawString++;
+		for (const cv of [...d.block.matchAll(/configValue\s*:\s*([^,}\n]+)/g)].map(m => m[1].trim())) {
+			if (!/^['"]/.test(cv)) {
+				return `${key} 是 string 类型，configValue 必须是字符串（实际是 ${cv}）—— 写布尔或数字会被配置校验拒绝`;
+			}
+		}
 	}
-	if (!/on\s*:\s*'on'/.test(block) || !/off\s*:\s*'off'/.test(block)) {
-		return `toggleValues 的 on/off 值不对（应为 'on' / 'off'）`;
+	if (!sawString) {
+		return `一张 string 类型的卡片配置都没找到 —— 「枚举型配置必须写字符串」这条断言就没人管了`;
 	}
 	return null;
 });
@@ -1212,25 +1360,21 @@ check('H23', `core 侧的 olympia.* 默认值与两个扩展的 package.json 完
 	return null;
 });
 
-check('H24', `每个开关/选项写入的值类型必须与扩展 schema 的 type 一致`, () => {
+check('H24', `每个选项写入的值类型必须与扩展 schema 的 type 一致`, () => {
 	const cards = load(F_ONB_CARDS);
 	const cfg = load(F_ONB_CONFIG);
 	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
 	if (cfg === null) return `文件不存在（见上面的 MISSING ${F_ONB_CONFIG}）`;
 	const consts = parseConfigConstants(cfg);
 	const schema = loadExtensionSchema();
-	// editor.* 是 core 自己的键，类型由上游 editorOptions.ts 决定（不在扩展的 package.json 里）。
-	const editorTypes = {
-		'editor.fontSize': 'number',
-		'editor.lineHeight': 'number',
-		'editor.minimap.enabled': 'boolean',
-		'editor.cursorSmoothCaretAnimation': 'string'
-	};
-	const rows = extractConfigRows(cards);
-	if (!rows.length) return `没从 ${F_ONB_CARDS} 里解析出任何绑定了配置键的行`;
-	for (const row of rows) {
-		const key = consts.get(row.constName);
-		if (!key) return `无法解析 ${row.constName} 对应的配置键`;
+	const editorTypes = { 'editor.fontSize': 'number', 'editor.lineHeight': 'number' };
+	const descriptors = extractCardDescriptors(cards);
+	if (!descriptors.length) return `没从 ${F_ONB_CARDS} 里解析出任何卡片描述符`;
+	let sawNumber = 0;
+	let sawString = 0;
+	for (const d of descriptors) {
+		const key = consts.get(d.constName);
+		if (!key) return `无法解析 ${d.constName} 对应的配置键`;
 		let type = null;
 		if (key.startsWith('editor.')) {
 			type = editorTypes[key];
@@ -1240,33 +1384,28 @@ check('H24', `每个开关/选项写入的值类型必须与扩展 schema 的 ty
 			if (!s) return `扩展的 package.json 里没有 ${key}`;
 			type = s.type;
 		}
-		if (row.kind === 'toggle') {
-			if (type === 'boolean') {
-				if (/toggleValues/.test(row.block)) return `${key} 是 boolean 类型的开关，不该带 toggleValues`;
-			} else if (type === 'string') {
-				if (!/toggleValues/.test(row.block)) {
-					return `${key} 的 schema 是 string（枚举），当开关写必须带 toggleValues`;
+		const cvs = [...d.block.matchAll(/configValue\s*:\s*([^,}\n]+)/g)].map(m => m[1].trim());
+		if (type === 'number') {
+			sawNumber++;
+			if (!cvs.length) return `${key} 是 number 类型，必须走 configValue 写数字`;
+			for (const cv of cvs) {
+				if (/^['"]/.test(cv)) {
+					return `${key} 是 number 类型，configValue 不能是字符串字面量（${cv}）`;
 				}
-			} else {
-				return `${key} 的 schema 是 ${type}，不该当成开关`;
 			}
-		} else if (row.kind === 'options') {
-			if (type === 'number') {
-				if (!/configValue/.test(row.block)) return `${key} 是 number 类型，必须走 configValue 写数字`;
-				if (/(?<![A-Za-z0-9_])value\s*:\s*\d/.test(row.block)) {
-					return `${key} 的展示值写成了裸数字（应为字符串，数字只出现在 configValue 里）`;
+		} else if (type === 'string') {
+			sawString++;
+			for (const cv of cvs) {
+				if (!/^['"]/.test(cv)) {
+					return `${key} 是 string 类型，configValue 必须是字符串（实际是 ${cv}）`;
 				}
-			} else if (type === 'string') {
-				const cm = /configValue\s*:\s*([^,}\n]+)/.exec(row.block);
-				if (cm && !/^['"]/.test(cm[1].trim())) {
-					return `${key} 是 string 类型，configValue 必须是字符串（实际是 ${cm[1].trim()}）`;
-				}
-			} else {
-				return `${key} 的 schema 是 ${type}，不该用选项组`;
 			}
 		} else {
-			return `${row.constName} 的 kind 是 ${row.kind}，不是 options/toggle`;
+			return `${key} 的 schema 是 ${type}，引导里不该出现这种类型的选择项`;
 		}
+	}
+	if (!sawNumber || !sawString) {
+		return `卡片配置的类型覆盖不全（number=${sawNumber} / string=${sawString}）—— 两种类型的写入路径必须都被这条断言管住`;
 	}
 	return null;
 });
@@ -1384,87 +1523,19 @@ check('H29', `卡片层的本地状态要跟着写入走：pendingWrites 是「�
 //     → 子键写不进去，那个开关从来没生效过
 // ===========================================================================
 
-check('H30', `配置变化不得整片重建卡片行区（会把用户正按着的按钮换掉 = 硬切）`, () => {
+check('H30', `配置变化不得整片重建选择列表（会把用户正按着的按钮换掉 = 硬切）`, () => {
 	const t = load(F_ONB_CARDS);
 	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
 	const code = stripTsComments(t);
-	// 「刷新路径」= refresh() 以及它调用的 refreshRowStates()。
-	// 只盯 refresh() 一个函数是不够的：把重建挪到 refreshRowStates() 里，
-	// 每次刷新照样重建行区 —— 那还是硬切（这条断言就是这么被绕开过的）。
-	const refreshPath = [];
-	for (const sig of [
-		/(?:private\s+|public\s+|protected\s+)?refresh\s*\(\s*\)\s*:\s*void\s*\{/,
-		/private\s+refreshRowStates\s*\(\s*\)\s*:\s*void\s*\{/
-	]) {
-		const m = sig.exec(code);
-		if (!m) return `未找到 refresh() / refreshRowStates()`;
-		const body = balanced(code, code.indexOf('{', m.index), '{', '}');
-		if (!body) return `刷新路径上的函数体无法配对解析`;
-		refreshPath.push({ name: m[0].trim(), body });
-	}
-	for (const { name, body } of refreshPath) {
-		if (/bodyElements\[[^\]]*\]\s*\.replaceChildren/.test(body)) {
-			return `${name} 仍在整片重建行区 —— 配置一变就把 4 张卡的 DOM 全换掉，用户手指下的按钮会被换掉`;
-		}
-		if (/footerElements\[[^\]]*\]\s*\.replaceChildren/.test(body)) {
-			return `${name} 仍在重建页脚 —— 页脚只跟卡片序号有关，重建它只会换掉用户正按着的 CTA`;
+	for (const api of ['replaceChildren(', 'innerHTML', 'outerHTML', 'insertAdjacentHTML']) {
+		if (code.includes(api)) {
+			return `卡片层出现了 \`${api}\` —— 选择列表只在构造期建一次，运行期一个元素都不换：重建就意味着用户手指正按着的那个按钮被整个换掉，换掉的一瞬间就是硬切`;
 		}
 	}
-	if (!/rowsSignature/.test(code)) return `没有结构签名（rowsSignature）—— 每次刷新都会重建 DOM`;
-	if (!/updateRowState/.test(code)) return `没有就地更新状态的路径（updateRowState）—— 选中态/开关状态只能靠重建来刷`;
-
-	// 结构/状态两层分离必须在 updateRows 里真的成立：
-	// 先比结构签名，**变了**才重建；没变就地刷状态。
-	const um = /private\s+updateRows\s*\([^)]*\)\s*:\s*void\s*\{/.exec(code);
-	if (!um) return `未找到 updateRows()`;
-	const ubody = balanced(code, code.indexOf('{', um.index), '{', '}');
-	if (!ubody) return `updateRows() 的函数体无法配对解析`;
-	if (!/rowSignatures\s*\[[^\]]*\]\s*!==\s*signature/.test(ubody)) {
-		return `updateRows() 没有比较结构签名 —— 每次刷新都会重建 DOM`;
-	}
-	if (!/\brebuildRows\s*\(/.test(ubody)) {
-		return `updateRows() 里没有重建分支 —— 结构真变了也不会更新`;
-	}
-	if (!/\bupdateRowState\s*\(/.test(ubody)) {
-		return `updateRows() 没有就地更新状态的路径 —— 选中态/开关状态只能靠重建来刷`;
-	}
-
-	// **重建行区的入口只有 updateRows 一条**。
-	// 早先这里只判「refresh() 的函数体里没有 rebuildRows」—— 把重建挪到
-	// refreshRowStates() 里就绕开了，回归照样发生，断言却一直绿。
-	const decl = /private\s+rebuildRows\s*\(/.exec(code);
-	if (!decl) return `未找到 rebuildRows()`;
-	const declToken = code.indexOf('rebuildRows', decl.index);
-	const uStart = code.indexOf('{', um.index);
-	const uEnd = uStart + ubody.length;
-	for (const c of code.matchAll(/\brebuildRows\s*\(/g)) {
-		if (c.index === declToken) {
-			continue;   // 声明本身
-		}
-		if (c.index < uStart || c.index > uEnd) {
-			return `rebuildRows() 在 updateRows() 之外还有调用点 —— 配置一变就把 4 张卡的 DOM 全换掉，用户手指下的按钮会被换掉`;
-		}
-	}
-
-	// 「行区只允许在 rebuildRows() 里重建」必须**全文件**成立。
-	// 前面 clause ① 只盯 refresh() / refreshRowStates() 这两个**函数名**：
-	// 新开一个入口（renderRowsAgain() 之类）照样能绕过去，断言却一直绿。
-	// 断言要钉的是**行为**（行区在哪重建），不是名字。
-	const rbDecl = /private\s+rebuildRows\s*\(/.exec(code);
-	if (!rbDecl) return `未找到 rebuildRows()`;
-	const rbOpen = code.indexOf('{', rbDecl.index);
-	const rbBody = balanced(code, rbOpen, '{', '}');
-	if (!rbBody) return `rebuildRows() 的函数体无法配对解析`;
-	const rbEnd = rbOpen + rbBody.length;
-	for (const c of code.matchAll(/bodyElements\s*\[[^\]]*\]\s*\.\s*replaceChildren/g)) {
-		if (c.index < rbOpen || c.index > rbEnd) {
-			return `行区的整片重建出现在 rebuildRows() 之外 —— 配置一变就把 4 张卡的 DOM 全换掉，用户手指下的按钮会被换掉`;
-		}
-	}
-	// 行区只能拿 DOM API 拼：innerHTML 会把整棵子树重新解析一遍，
-	// 用户正按着的按钮等于被换掉了 —— 跟整片 replaceChildren 是一个效果。
-	if (/\binnerHTML\b/.test(code) || /\bouterHTML\b/.test(code) || /\binsertAdjacentHTML\b/.test(code)) {
-		return `行区用了 innerHTML / outerHTML / insertAdjacentHTML —— 整棵子树会被重新解析，用户正按着的按钮等于被换掉`;
+	const refresh = methodBodyDeep(code, /refresh\s*\(\s*\)\s*:\s*void/);
+	if (refresh === null) return `找不到 refresh()`;
+	if (!/updateCardStates\s*\(\s*\)/.test(refresh)) {
+		return `refresh() 没有调 updateCardStates() —— 配置变化后界面不会跟着更新`;
 	}
 	return null;
 });
@@ -1664,6 +1735,74 @@ function methodBody(code, signature) {
 }
 
 /**
+ * 取出一个具名方法（或函数）的函数体文本 —— **能处理「返回类型是对象字面量」的方法**。
+ *
+ * 为什么 methodBody 不够用：
+ *   methodBody 从签名之后第一个 `{` 开始配对。而
+ *     `private buildChoices(...): { container: HTMLElement; items: {...}[] } {`
+ *   的返回类型里就带 `{` —— methodBody 会把**返回类型**当成方法体，
+ *   截出来的是 `{ container: HTMLElement; items: {...}[] }`，
+ *   里面当然找不到方法体里的任何语句。
+ *   （这一节已经踩过一次：旧版的 buildRows 就是这个形状。）
+ *
+ * 这里改成「先跳过返回类型，再取方法体」：
+ *   ① 跳过参数列表；
+ *   ② 遇到 `:` 就把返回类型吃掉 —— 简单类型吃到 `{` 或 `;`，
+ *      对象字面量类型用括号配对整段吃掉；
+ *   ③ 剩下的第一个 `{` 就是方法体。
+ */
+function methodBodyDeep(code, signature) {
+	const m = signature.exec(code);
+	if (!m) {
+		return null;
+	}
+	// ① 参数列表：从签名里第一个 '(' 开始配对到它自己的 ')'。
+	//    这一步不能省 —— 参数列表里也有类型标注的冒号（`descriptor: XXX`），
+	//    不先跳过参数列表，那个冒号会被误当成「返回类型的冒号」。
+	let i = m.index;
+	while (i < code.length && code[i] !== '(') {
+		i++;
+	}
+	if (i >= code.length) {
+		return null;
+	}
+	const args = balanced(code, i, '(', ')');
+	if (!args) {
+		return null;
+	}
+	i += args.length;
+	// ② 返回类型：对象字面量类型用括号配对整段吃掉，简单类型吃到 '{' 或 ';'。
+	while (i < code.length && /\s/.test(code[i])) {
+		i++;
+	}
+	if (code[i] === ':') {
+		i++;
+		while (i < code.length && /\s/.test(code[i])) {
+			i++;
+		}
+		if (code[i] === '{') {
+			const type = balanced(code, i, '{', '}');
+			if (!type) {
+				return null;
+			}
+			i += type.length;
+		} else {
+			while (i < code.length && code[i] !== '{' && code[i] !== ';') {
+				i++;
+			}
+		}
+	}
+	// ③ 剩下的第一个 '{' 就是方法体。
+	while (i < code.length && /\s/.test(code[i])) {
+		i++;
+	}
+	if (code[i] !== '{') {
+		return null;
+	}
+	return balanced(code, i, '{', '}');
+}
+
+/**
  * 取「某个正则命中处开始的代码块」的**区间**。
  *
  * 为什么要区间而不只是文本：好几条断言要问的是
@@ -1752,19 +1891,22 @@ check('T3', `开始页永远不会出现时必须改走「不擦洞」的收场`
 	return null;
 });
 
-check('T4', `值行可能由别的配置项派生：点击后必须刷新整卡，不能只刷预览块`, () => {
+check('T4', `点选项后必须刷新整卡状态（不能只改自己那一个选项）`, () => {
 	const t = load(F_ONB_CARDS);
 	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
 	const code = stripTsComments(t);
-	for (const [label, sig] of [
-		['选项 chip', /chip\.addEventListener\(\s*'click'/],
-		['开关 toggle', /toggle\.addEventListener\(\s*'click'/],
-	]) {
-		const body = methodBody(code, sig);
-		if (!body) return `未找到 ${label} 的点击处理器`;
-		if (!/this\.refresh\s*\(/.test(body)) {
-			return `${label} 的点击处理器没有调 refresh() —— 只刷预览块的话，派生出来的值行会停在旧文本上（预览新、卡片旧），直到扩展注册完触发配置事件才跳变`;
-		}
+	const build = methodBodyDeep(code, /private\s+buildChoices\s*\(/);
+	if (build === null) return `找不到 buildChoices()`;
+	const iWrite = build.indexOf('this.writeConfig(');
+	const iRefresh = build.indexOf('this.refresh()');
+	if (iWrite < 0) {
+		return `点选项时没有写配置（writeConfig）`;
+	}
+	if (iRefresh < 0) {
+		return `点选项后没有调 this.refresh() —— 界面只会停在用户点的那一下，其他状态（比如「未保存」标记）不跟着更新`;
+	}
+	if (iRefresh < iWrite) {
+		return `this.refresh() 排在 this.writeConfig() 之前 —— 顺序反了会先刷出旧值（writeConfig 会同步把值记进 pendingWrites，卡片读的就是它）`;
 	}
 	return null;
 });
@@ -1817,30 +1959,15 @@ check('T6', `时间戳哨兵必须落在 rAF 合法域（非负）之外`, () =>
 	return null;
 });
 
-check('T7', `异步取值行落地后不得被状态刷新打回占位，也不得重复发请求`, () => {
-	const t = load(F_ONB_CARDS);
-	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
-	const code = stripTsComments(t);
-	const body = methodBody(code, /updateRowState\s*\([^)]*\)\s*:\s*void\s*\{/);
-	if (!body) return `未找到 updateRowState()`;
-	// 判据落在**代码**上：异步分支必须先看「值有没有落地」。
-	// 少了这个闸门，用户点一下别的选项，眼前这行就闪回「读取中…」，
-	// 后台还多跑一次 getRecentlyOpened()。
-	//
-	// 闸门条件写成 `valueResolved || valueFailed`（一个说「取到了」，一个说「确认取不到」）
-	// 也要算数 —— 这里判的是「拿 valueResolved 当早退闸门」这件事本身。
-	if (!/binding\.valueResolved/.test(body)) {
-		return `updateRowState() 里没有 valueResolved —— 异步取值行每次刷新都被打回占位（用户点一下别的选项，眼前这行就闪回「读取中…」），后台还重复调一次 getRecentlyOpened()`;
-	}
-	if (!/if\s*\([^)]*binding\.valueResolved[^)]*\)\s*\{?\s*break/.test(body)) {
-		return `valueResolved 没有被当成早退闸门 —— 只是读了一下，异步行照样每次刷新都重发请求`;
-	}
-	// 落地的那一刻必须把标记置上，否则闸门永远打不开。
-	if (!/binding\.valueResolved\s*=\s*true/.test(body)) {
-		return `异步值落地后没有置 valueResolved —— 闸门永远打不开，请求照旧每次重发`;
-	}
-	return null;
-});
+// [已退役 2026-10-23] T7「异步取值行落地后不得被状态刷新打回占位，也不得重复发请求」
+//
+//   异步取值整套（asyncValue / valueToken / valueResolved / valuePending /
+//   scheduleValueRetry / VALUE_RETRY_* / recentWorkspaceLabel …）随「每卡只留一个
+//   选择列表」的改造一起退役 —— 新模型里卡片层只从 IConfigurationService **同步**读值，
+//   没有任何一行是「异步落地」的。
+//
+//   退役不等于放弃：它原来守的那条事实（状态刷新不许把界面打回原形）现在由
+//   T30（进入动画期间冻结）+ H30（刷新不许重建结构）+ T101（选择列表只建一次）覆盖。
 
 check('T8', `「扩展还没注册」这条路径也必须消耗重试额度（否则永远重试下去）`, () => {
 	const t = load(F_ONB_CARDS);
@@ -1859,20 +1986,14 @@ check('T8', `「扩展还没注册」这条路径也必须消耗重试额度（�
 	return null;
 });
 
-check('T9', `放弃写入后必须把界面拉回真值（chip 高亮不能继续撒谎）`, () => {
+check('T9', `放弃写入后必须把界面拉回真值（选中高亮不能继续撒谎）`, () => {
 	const t = load(F_ONB_CARDS);
 	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
 	const code = stripTsComments(t);
-	const body = methodBody(code, /abandonWriteIfExhausted\s*\([^)]*\)\s*:\s*boolean\s*\{/);
-	if (!body) return `未找到 abandonWriteIfExhausted()`;
-	if (!/refreshRowStates/.test(body)) {
-		return `放弃写入后没有重刷行状态 —— chip 的高亮还停在用户刚点的那个选项上，而配置里其实什么都没写，界面在撒谎`;
-	}
-	if (!/refreshPreview/.test(body)) {
-		return `放弃写入后没有重刷预览 —— 预览区显示的还是用户刚点的那个（其实没写进去的）值`;
-	}
-	if (/this\.refresh\s*\(/.test(body)) {
-		return `放弃写入后走了 refresh() —— 它会再触发一轮 flushPendingWrites，形成递归`;
+	const body = methodBodyDeep(code, /private\s+abandonWriteIfExhausted\s*\(/);
+	if (body === null) return `找不到 abandonWriteIfExhausted()`;
+	if (!/updateCardStates\s*\(\s*\)/.test(body)) {
+		return `放弃写入后没有重刷卡片状态 —— 选中的高亮还停在用户刚点的那个选项上，而配置里其实什么都没写，界面在撒谎`;
 	}
 	return null;
 });
@@ -1940,57 +2061,10 @@ check('T11', `收场路径上不存在正在跑的进入动画，不得重置 en
 	return null;
 });
 
-check('T12', `异步取值的请求在途时不得重发（扩展注册配置项会连着触发 refresh）`, () => {
-	const t = load(F_ONB_CARDS);
-	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
-	const code = stripTsComments(t);
-	const body = methodBody(code, /updateRowState\s*\([^)]*\)\s*:\s*void\s*\{/);
-	if (!body) return `未找到 updateRowState()`;
-	// 「已落地就跳过」（T7）只挡得住**落地之后**的重发。
-	// 扩展注册 `olympia.*` 配置项时会连着触发一串 `onDidChangeConfiguration` → `refresh()`，
-	// 而这些 refresh 往往发生在第一次请求**还没回来**的时候 ——
-	// 那段时间里只靠 valueResolved 是挡不住的，getRecentlyOpened() 会被连着发好几次。
-	// 所以必须另有一道「在途就跳过」的闸门。
-	const issueAt = body.indexOf('row.asyncValue()');
-	if (issueAt < 0) {
-		return `updateRowState() 里找不到 row.asyncValue() 的调用点`;
-	}
-	const before = body.slice(0, issueAt);
-	const after = body.slice(issueAt);
-	if (!/if\s*\(\s*binding\.valuePending\s*\)\s*\{?\s*break/.test(before)) {
-		return `valuePending 没有被当成早退闸门 —— 请求在途期间的每次 refresh 都会重发一遍 getRecentlyOpened()`;
-	}
-	if (!/binding\.valuePending\s*=\s*true/.test(before)) {
-		return `发请求之前没有置 valuePending —— 闸门永远打不开，重复请求照旧`;
-	}
-	// 「在途」标记必须在**核对身份之后**才放掉。
-	//
-	// 放早了的话，更新的一次请求就失去了保护：它还没回来的时候又来一轮
-	// refresh()，闸门已经被自己关掉了，于是又发一次请求；两次请求里
-	// 后到的那个会顶掉先到的那个，顺序一乱这一行就可能永远停在「读取中…」。
-	//
-	// 失败那一侧由 T28 守（失败分支里也得放，而且必须放在「达到上限」
-	// 或「重试任务」之内），所以这里只盯成功侧的**顺序**。
-	//
-	// 为什么不能用「count >= 2」这种计数式判据：代码形态一变它就变松 ——
-	// 终态块里多一次「放掉」就足以凑够数，真正的顺序缺陷反而被放过。
-	const success = blockRange(after, /row\.asyncValue\(\)\s*\.\s*then\s*\(\s*text\s*=>\s*\{/);
-	if (!success) {
-		return `updateRowState() 里找不到异步取值的成功处理分支（形如 row.asyncValue().then(text => {）`;
-	}
-	const identityAt = success.text.search(/binding\.valueToken\s*!==\s*token/);
-	const releaseAt = success.text.search(/binding\.valuePending\s*=\s*false\s*;/);
-	if (identityAt < 0) {
-		return `成功处理分支里没有核对 valueToken —— 旧请求回来时会把新请求的结果顶掉`;
-	}
-	if (releaseAt < 0) {
-		return `成功处理分支里一次都没放掉 valuePending —— 这一行永远停在「请求中」，再也拿不到值`;
-	}
-	if (releaseAt < identityAt) {
-		return `成功处理分支在核对身份之前就放掉了 valuePending —— 更新的一次请求失去保护，会被又一轮 refresh 顶掉`;
-	}
-	return null;
-});
+// [已退役 2026-10-23] T12「异步取值的请求在途时不得重发」
+//
+//   同 T7：异步取值整套退役。「在途标记」还在（writingKeys 的代号机制），
+//   但那是**写入**的在途，不是取值的在途，写入侧由 T17 覆盖。
 
 check('T13', `写入在途也必须消耗重试额度（否则配额永远用不完）`, () => {
 	const t = load(F_ONB_CARDS);
@@ -2027,87 +2101,11 @@ check('T14', `放弃写入时必须把键从 writingKeys 里摘掉（否则卡�
 	return null;
 });
 
-check('T15', `异步取值的失败必须真的失败：不能被吞成「还没有」，也不能把整行冻住`, () => {
-	const t = load(F_ONB_CARDS);
-	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
-	const code = stripTsComments(t);
-	// ① 取值函数不许吞异常。
-	//    吞了的话一次失败会被伪装成「还没有」—— 那是一次**成功的 resolve**，
-	//    于是 valueResolved 被置上，这一行整个 overlay 生命周期都冻在假值上，
-	//    而「失败不标记 resolved、下轮重试」那条分支永远走不到。
-	const label = methodBody(code, /recentWorkspaceLabel\s*\(\s*\)\s*:\s*Promise<string>\s*\{/);
-	if (!label) return `未找到 recentWorkspaceLabel()`;
-	const catchM = /catch\s*(\([^)]*\))?\s*\{/.exec(label);
-	if (catchM) {
-		const catchBody = balanced(label, label.indexOf('{', catchM.index), '{', '}');
-		if (!catchBody) return `recentWorkspaceLabel() 的 catch 块无法配对解析`;
-		if (!/\bthrow\b/.test(catchBody)) {
-			return `recentWorkspaceLabel() 的 catch 块没有把失败抛出去 —— 一次失败被伪装成「还没有」，而这一行就此冻在假值上`;
-		}
-	}
-	// ② 失败分支必须留痕。
-	const state = methodBody(code, /updateRowState\s*\([^)]*\)\s*:\s*void\s*\{/);
-	if (!state) return `未找到 updateRowState()`;
-	const issueAt = state.indexOf('row.asyncValue()');
-	if (issueAt < 0) return `updateRowState() 里找不到 row.asyncValue() 的调用点`;
-	const after = state.slice(issueAt);
-	// `.then(成功分支, 失败分支)` —— 用「} , 参数 => {」来切，不依赖参数名。
-	const rejectM = /\}\s*,\s*(\w+)\s*=>\s*\{/.exec(after);
-	if (!rejectM) return `updateRowState() 里找不到异步取值的失败分支`;
-	const rejectBody = balanced(after, after.indexOf('{', rejectM.index), '{', '}');
-	if (!rejectBody) return `异步取值的失败分支无法配对解析`;
-	if (!/console\.warn/.test(rejectBody)) {
-		return `异步取值失败没有留痕 —— 用户点完卡片发现「最近工程」空着，而我们连原因都不知道`;
-	}
-	// ③ 失败不能被当成「取到了值」—— 那才是冻住整行的元凶。
-	if (/binding\.valueResolved\s*=\s*true/.test(rejectBody)) {
-		return `异步取值的失败分支置了 valueResolved —— 一次被吞掉的失败会被当成「取到了『还没有』」，这一行整个生命周期都冻在假值上`;
-	}
-	return null;
-});
+// [已退役 2026-10-23] T15「异步取值的失败必须真的失败」
+//   同 T7：异步取值整套退役。写入失败的「说给用户听」那条事实由 T61 覆盖。
 
-check('T16', `异步取值失败必须有界重试，到上限后如实报错（不能永远停在「读取中…」）`, () => {
-	const t = load(F_ONB_CARDS);
-	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
-	const code = stripTsComments(t);
-	const state = methodBody(code, /updateRowState\s*\([^)]*\)\s*:\s*void\s*\{/);
-	if (!state) return `未找到 updateRowState()`;
-	const issueAt = state.indexOf('row.asyncValue()');
-	if (issueAt < 0) return `updateRowState() 里找不到 row.asyncValue() 的调用点`;
-	const after = state.slice(issueAt);
-	const rejectM = /\}\s*,\s*(\w+)\s*=>\s*\{/.exec(after);
-	if (!rejectM) return `updateRowState() 里找不到异步取值的失败分支`;
-	const rejectBody = balanced(after, after.indexOf('{', rejectM.index), '{', '}');
-	if (!rejectBody) return `异步取值的失败分支无法配对解析`;
-	// ① 必须有界重试：失败要再试，但不能无限试。
-	//    存储服务在启动早期偶尔会抽风，一次失败就宣判「没有工程」是冤枉用户；
-	//    但无限重试又是一个永远停不下来的 IO 心跳。
-	if (!/scheduleValueRetry/.test(rejectBody)) {
-		return `异步取值失败后没有安排重试 —— 存储服务在启动早期偶尔会抽风，一次失败就宣判「没有工程」是冤枉用户`;
-	}
-	if (!/valueAttempts/.test(rejectBody)) {
-		return `异步取值失败没有计数 —— 重试没有上限，一个永远失败的取值会变成无限 IO`;
-	}
-	if (!/VALUE_RETRY_LIMIT/.test(rejectBody)) {
-		return `异步取值重试没有上限判定（VALUE_RETRY_LIMIT）—— 重试会一直试下去`;
-	}
-	// ② 到上限必须如实报错，不能永远停在「读取中…」。
-	if (!/valueFailed\s*=\s*true/.test(rejectBody)) {
-		return `重试到上限后没有标记终态 —— 这一行会永远停在「读取中…」，骗用户`;
-	}
-	if (!/olympia\.onboarding\.practice\.recent\.failed/.test(rejectBody)) {
-		return `重试到上限后没有显示失败文案 —— 这一行会永远停在「读取中…」，骗用户`;
-	}
-	// ③ 重试要有间隔，不能 busy loop。
-	//    注意签名正则不能写成 `\(\s*[^)]*\s*\)`：参数类型是 `() => void`，
-	//    里面自带一个右括号，`[^)]*` 会在那里截断，匹配不到声明。
-	const retry = methodBody(code, /private\s+scheduleValueRetry\s*\(/);
-	if (!retry) return `未找到 scheduleValueRetry()`;
-	if (!/VALUE_RETRY_INTERVAL/.test(retry)) {
-		return `scheduleValueRetry() 没有间隔（VALUE_RETRY_INTERVAL）—— 失败一次就立刻再试，等于 busy loop`;
-	}
-	return null;
-});
+// [已退役 2026-10-23] T16「异步取值失败必须有界重试」
+//   同 T7：异步取值整套退役。写入重试的有界性由 T5 / T10 / T32 / T33 覆盖。
 
 // ===========================================================================
 // T17~T19. 写入状态机的代际安全
@@ -2471,105 +2469,38 @@ function asyncValueBlocks(code) {
 	return { body, failHandler, terminal, retry };
 }
 
-check('T28', `异步取值失败后不得提前放掉「在途」标记（800ms 窗口里任何一次 refresh 都会重发请求并提前烧光重试预算）`, () => {
+// [已退役 2026-10-23] T28「异步取值失败后不得提前放掉在途标记」
+//   同 T7：异步取值整套退役。
+
+// [已退役 2026-10-23] T29「重试任务必须核对代号」
+//   同 T7：异步取值整套退役。写入侧「在途标记必须带代号」由 T17 覆盖。
+
+check('T30', `进入动画期间卡片区必须冻结（结构与状态都不许动）`, () => {
 	const t = load(F_ONB_CARDS);
 	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
 	const code = stripTsComments(t);
-	const b = asyncValueBlocks(code);
-	if (b.error) return b.error;
-	const releases = [...b.failHandler.text.matchAll(/binding\.valuePending\s*=\s*false\s*;/g)];
-	if (!releases.length) {
-		return `失败处理分支里一次都没放掉 valuePending —— 重试链再也起不了跑`;
+	const body = methodBodyDeep(code, /private\s+updateCardStates\s*\(\s*\)\s*:\s*void/);
+	if (body === null) return `找不到 updateCardStates()`;
+	const iEnter = body.indexOf('this.entering');
+	if (iEnter < 0) {
+		return `updateCardStates() 不看 this.entering —— 进入动画正在把卡片化成粒子的时候改选中态也是一次可见的跳变`;
 	}
-	for (const r of releases) {
-		const at = r.index;
-		const inTerminal = at >= b.terminal.start && at < b.terminal.end;
-		const inRetry = at >= b.retry.start && at < b.retry.end;
-		if (!inTerminal && !inRetry) {
-			return `失败处理分支在「达到上限」和「重试任务」之外还放了一次 valuePending（位置 ${at}）—— 放早了的话，从失败到重试真的起跑之间的 800ms 里，任何一次 refresh() 都会重发请求并把失败预算 +1；用户在 800ms 窗口里点一下别的选项，这一行就永久停在「读取失败」，而可存储服务其实早就好了`;
-		}
+	const iGuard = body.indexOf('return;', iEnter);
+	if (iGuard < 0) {
+		return `updateCardStates() 里没有提前 return —— this.entering 只是被读了一次，没有真的冻结`;
 	}
-	// 终态块里必须**两个标记一起收口**：放掉「在途」+ 置上「确认取不到」。
-	//
-	// 只断言「不许在这两块之外放」是不够的 —— 把终态块里那一次删掉，
-	// 重试块里那一次仍然落在允许范围内，T28 照样绿：那是**真空通过**。
-	// （这条是 T-029 复核 Q7 点出来的。）
-	if (!/binding\.valuePending\s*=\s*false\s*;/.test(b.terminal.text)) {
-		return `终态块里没有放掉 valuePending —— 账面上这一行永远「在途」；今天靠 valueFailed 短路兜着，那个短路哪天没了就露馅`;
+	const iToggle = body.indexOf("classList.toggle('selected'");
+	if (iToggle >= 0 && iToggle < iGuard) {
+		return `updateCardStates() 在 entering 守卫之前就改了选中态 —— 守卫等于没有`;
 	}
-	if (!/binding\.valueFailed\s*=\s*true\s*;/.test(b.terminal.text)) {
-		return `终态块里没有置上 valueFailed —— 这一行会永远停在「读取中…」骗用户`;
-	}
-	const retryBody = b.retry.text;
-	const relAt = retryBody.search(/binding\.valuePending\s*=\s*false\s*;/);
-	const updAt = retryBody.search(/this\.updateRowState\s*\(/);
-	if (relAt < 0) {
-		return `重试任务里没有放掉 valuePending —— 上面第 ③ 道闸门会把它自己挡住，重试永远起不了跑`;
-	}
-	if (updAt < 0) {
-		return `重试任务里没有重新调用 updateRowState() —— 重试排上了也刷不出值`;
-	}
-	if (relAt > updAt) {
-		return `重试任务里放掉 valuePending 的时机排在 updateRowState() 之后 —— 闸门会先把自己挡住`;
-	}
-	return null;
-});
-
-check('T29', `重试任务必须核对代号（更新的请求接管之后，旧的重试不得再动这一行）`, () => {
-	const t = load(F_ONB_CARDS);
-	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
-	const code = stripTsComments(t);
-	const b = asyncValueBlocks(code);
-	if (b.error) return b.error;
-	// 结构化比对：两个操作数**任意顺序**都算。
-	// 只认 `binding.valueToken !== token` 这个字面的话，
-	// 把等价写法 `token !== binding.valueToken` 判红就是在管写法不管行为。
-	// （T-029 复核 Q7 点的第二处。）
-	const cmp = /(?:binding\.valueToken\s*!==\s*token|token\s*!==\s*binding\.valueToken)/;
-	if (!cmp.test(b.retry.text)) {
-		return `重试任务里没有核对 valueToken（两个操作数任意顺序都算）—— 更新的请求已经接管这一行时，旧的重试会把这一行一起刷掉`;
-	}
-	return null;
-});
-
-check('T30', `进入动画期间卡片区结构必须冻结（行区与预览区都不得整片重建）`, () => {
-	const cards = load(F_ONB_CARDS);
-	const onb = load(F_ONB);
-	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
-	if (onb === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
-	const code = stripTsComments(cards);
-	const onbCode = stripTsComments(onb);
-	if (!/private\s+entering\s*=\s*false\s*;/.test(code)) {
-		return `卡片层没有「进入动画中」的标志 —— 没有它就没法冻结卡片区`;
-	}
-	const begin = methodBody(code, /beginEnterAnimation\s*\(\s*\)\s*:\s*void\s*\{/);
-	if (!begin) {
-		return `卡片层没有 beginEnterAnimation()`;
-	}
-	if (!/this\.entering\s*=\s*true\s*;/.test(begin)) {
-		return `beginEnterAnimation() 没有把 entering 置为 true`;
-	}
-	for (const [label, sig] of [['refreshPreview', /private\s+refreshPreview\s*\(/], ['rebuildRows', /private\s+rebuildRows\s*\(/]]) {
-		const body = methodBody(code, sig);
-		if (!body) return `未找到 ${label}()`;
-		const guardAt = body.search(/if\s*\(\s*this\.entering\s*\)/);
-		const replaceAt = body.search(/replaceChildren\s*\(/);
-		if (guardAt < 0) {
-			return `${label}() 里没有「进入动画中」的早退闸门 —— 动画期间它会整片重建 DOM，那一帧就是硬切`;
-		}
-		if (replaceAt < 0) {
-			return `${label}() 里找不到 replaceChildren()`;
-		}
-		if (guardAt > replaceAt) {
-			return `${label}() 的冻结闸门排在 replaceChildren 之后 —— 等于没有`;
-		}
-		const guardBody = blockRange(body, /if\s*\(\s*this\.entering\s*\)/);
-		if (!guardBody || !/\breturn\b/.test(guardBody.text)) {
-			return `${label}() 的冻结闸门里没有 return —— 闸门形同虚设`;
-		}
-	}
-	if (!onbCode.includes('this.cards.beginEnterAnimation()')) {
-		return `父层没有调用 beginEnterAnimation() —— 冻结永远不会被打开`;
+	// 冻结闸门必须真的被打开：父层得通知卡片层「进入动画开始」。
+	// 上面这条只证明闸门**装**在 updateCardStates 里；没人调 beginEnterAnimation()
+	// 的话 this.entering 永远是 false，闸门永远不生效 —— 卡片照样能在动画中改状态。
+	const host = load(F_ONB);
+	if (host === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
+	const hostCode = stripTsComments(host);
+	if (!/this\.cards\.beginEnterAnimation\s*\(\s*\)/.test(hostCode)) {
+		return `父层（olympiaOnboarding.ts）没有调 this.cards.beginEnterAnimation() —— 冻结闸门永远不会被打开，进入动画期间照样能改卡片状态`;
 	}
 	return null;
 });
@@ -2578,39 +2509,16 @@ check('T31', `放弃写入的收场路径不得递归触发写入（只刷状态
 	const t = load(F_ONB_CARDS);
 	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
 	const code = stripTsComments(t);
-	const body = methodBody(code, /private\s+abandonWriteIfExhausted\s*\(/);
-	if (!body) return `未找到 abandonWriteIfExhausted()`;
-	// 黑名单是「**整片重建**」的语义并集，不是某几个 API 名字。
-	// 只列 replaceChildren/innerHTML 这几个固定名字的话，
-	// 将来有人改用 appendChild / replaceWith / insertAdjacentHTML 就漏掉了。
-	// （T-029 复核 Q7 点的第三处。）
-	const REBUILD_PATTERNS = [
-		{ re: /\bthis\.refresh\s*\(/, name: 'this.refresh()' },
-		{ re: /\brebuildRows\s*\(/, name: 'rebuildRows()' },
-		{ re: /\bupdateRows\s*\(/, name: 'updateRows()' },
-		{ re: /\.replaceChildren\s*\(/, name: 'replaceChildren()' },
-		{ re: /\.innerHTML\s*=/, name: 'innerHTML =' },
-		{ re: /\.outerHTML\s*=/, name: 'outerHTML =' },
-		{ re: /\.insertAdjacentHTML\s*\(/, name: 'insertAdjacentHTML()' },
-		{ re: /\.appendChild\s*\(/, name: 'appendChild()' },
-		{ re: /\.insertBefore\s*\(/, name: 'insertBefore()' },
-		{ re: /\.removeChild\s*\(/, name: 'removeChild()' },
-		{ re: /\.replaceWith\s*\(/, name: 'replaceWith()' },
-		{ re: /\.append\s*\(/, name: 'append()' },
-		{ re: /\.prepend\s*\(/, name: 'prepend()' },
-		{ re: /\.after\s*\(/, name: 'after()' },
-		{ re: /\.before\s*\(/, name: 'before()' }
-	];
-	for (const p of REBUILD_PATTERNS) {
-		if (p.re.test(body)) {
-			return `放弃写入的路径里出现了 ${p.name} —— 它会再触发一轮写入/整片重建，形成递归`;
-		}
+	const body = methodBodyDeep(code, /private\s+abandonWriteIfExhausted\s*\(/);
+	if (body === null) return `找不到 abandonWriteIfExhausted()`;
+	if (/writeConfig\s*\(/.test(body)) {
+		return `放弃写入的收场路径里又调了 writeConfig() —— 那会递归触发写入，把额度烧光`;
 	}
-	if (!body.includes('this.refreshRowStates(')) {
-		return `放弃写入后没有刷行状态 —— chip 的高亮会继续停在用户点的那个选项上，界面在撒谎`;
+	if (/flushPendingWrites\s*\(/.test(body)) {
+		return `放弃写入的收场路径里又调了 flushPendingWrites() —— 那会递归触发写入，把额度烧光`;
 	}
-	if (!body.includes('this.refreshPreview(')) {
-		return `放弃写入后没有刷预览区 —— 预览会继续显示没生效的选择`;
+	if (!/updateCardStates\s*\(\s*\)/.test(body)) {
+		return `放弃写入后没有刷状态 —— 界面会一直停在用户刚点的那个选项上`;
 	}
 	return null;
 });
@@ -2722,33 +2630,9 @@ check('T35', `三条清理路径的职责必须分清（待写值 / 轮次 / 用
 	return null;
 });
 
-check('T36', `异步取值的重试队列必须先入队再判定时器，且定时器必须先清空句柄再取队列（否则新排上的重试没人触发）`, () => {
-	const t = load(F_ONB_CARDS);
-	if (t === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
-	const code = stripTsComments(t);
-	const body = methodBody(code, /private\s+scheduleValueRetry\s*\(/);
-	if (!body) return `未找到 scheduleValueRetry()`;
-	const pushAt = body.search(/this\.valueRetryQueue\.push\s*\(/);
-	const guardAt = body.search(/this\.valueRetryTimer\s*!==\s*null/);
-	if (pushAt < 0) return `scheduleValueRetry() 没有把任务放进队列`;
-	if (guardAt < 0) return `scheduleValueRetry() 没有判断定时器是否已经在跑`;
-	if (pushAt > guardAt) {
-		return `scheduleValueRetry() 先判定时器再入队 —— 定时器已经在跑的时候，任务会被挂进队列却没人触发`;
-	}
-	const clearAt = body.search(/this\.valueRetryTimer\s*=\s*null\s*;/);
-	const spliceAt = body.search(/this\.valueRetryQueue\.splice\s*\(/);
-	if (clearAt < 0) return `scheduleValueRetry() 里没有清掉定时器句柄 —— 之后排上的重试永远不会触发`;
-	if (spliceAt < 0) return `scheduleValueRetry() 里没有取走队列`;
-	if (clearAt > spliceAt) {
-		return `定时器句柄在取队列之后才清空 —— 队列里的任务想再排一次重试时会看到一个还活着的句柄，从而不再新建定时器，那条重试链就断了`;
-	}
-	const callAt = body.search(/\bitem\s*\(\s*\)/);
-	if (callAt < 0) return `scheduleValueRetry() 里没有执行队列里的任务`;
-	if (clearAt > callAt) {
-		return `定时器句柄在执行任务之后才清空 —— 任务里再排一次重试时看不到空句柄，那条链就断了`;
-	}
-	return null;
-});
+// [已退役 2026-10-23] T36「异步取值的重试队列必须先入队再判定时器」
+//   同 T7：异步取值整套退役。补写重试队列由 flushPendingWrites 承担，
+//   相关事实由 T5 / T8 / T10 / T13 覆盖。
 
 // ===========================================================================
 // Z. 断言编号唯一
@@ -3507,7 +3391,7 @@ check('T56', `轨道高度也必须用 min() 夹在视口内（最小窗口 400�
 	return null;
 });
 
-check('T57', `必须有矮窗口紧凑模式（预览让位 + 主按钮贴底，且必须覆盖产品最小窗高 270px）`, () => {
+check('T57', `必须有矮窗口紧凑模式（页脚贴底 + 选择列表一行都不许少）`, () => {
 	const raw = load(F_ONB_CSS);
 	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
 	const css = stripComments(raw);
@@ -3515,86 +3399,55 @@ check('T57', `必须有矮窗口紧凑模式（预览让位 + 主按钮贴底，
 	if (!blocks.length) {
 		return `CSS 里没有任何 @media (max-height: ...) 规则 —— 窗口一矮卡片就装不下（产品允许的最小窗口是 400×270）`;
 	}
-	// 算「270px 高时真正生效的值」：所有断点 ≥ 270 的档都会命中，写在后面的赢。
-	// 所以不能只看「有没有一档写了 display:none」—— 后来的一档把它改回 block 也照样生效，
-	// 那就是白写（这条断言就是被这种写法架空过一次）。
-	const previewDisplay = cssEffectiveDecl(blocks, '.olympia-onboarding-card-preview', 'display', 270)
-		?? cssDeclValue(cssRule(css, '.olympia-onboarding-card-preview'), 'display');
+	// 270px 高时：页脚必须钉底（margin-top:auto），不然主按钮会被裁掉。
 	const footerMargin = cssEffectiveDecl(blocks, '.olympia-onboarding-card-footer', 'margin-top', 270)
 		?? cssDeclValue(cssRule(css, '.olympia-onboarding-card-footer'), 'margin-top');
-	if (previewDisplay !== 'none') {
-		return `270px 高的窗口里 .olympia-onboarding-card-preview 的 display 生效值是 \`${previewDisplay}\` —— 必须是 none：预览块在极矮窗口里必须整块让位（主按钮被裁掉比预览没了严重得多；实测 330px 高的窗口里预览内区只剩 117px，管道图读不出）`;
-	}
 	if (footerMargin !== 'auto') {
 		return `270px 高的窗口里 .olympia-onboarding-card-footer 的 margin-top 生效值是 \`${footerMargin}\` —— 必须是 auto，让页脚钉在卡片底部，不然主按钮会被裁掉`;
 	}
-	return null;
-});
-
-check('T58', `代码样例必须自己裁切并做底部渐隐（硬切会像代码断在一半）`, () => {
-	const raw = load(F_ONB_CSS);
-	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
-	const body = cssRule(stripComments(raw), '.olympia-onboarding-code');
-	if (body === null) return `未找到 .olympia-onboarding-code 规则块`;
-	if (!/overflow\s*:\s*hidden/.test(body)) {
-		return `代码盒子没有 overflow: hidden —— 溢出的代码会直接压到面板外面`;
+	// 270px 高时：选择列表必须还在（它是功能内容，不是装饰）。
+	const choicesDisplay = cssEffectiveDecl(blocks, '.olympia-onboarding-choices', 'display', 270)
+		?? cssDeclValue(cssRule(css, '.olympia-onboarding-choices'), 'display');
+	if (choicesDisplay === 'none') {
+		return `270px 高的窗口里选择列表被整块 display:none —— 选择列表是功能内容（用户要在这儿做选择），藏掉它用户就不知道自己还有一项没选；矮窗口只许收间距和字号`;
 	}
-	if (!/min-height\s*:\s*0/.test(body)) {
-		return `代码盒子没有 min-height: 0 —— 它不肯收缩，flex 也压不下它，超出的部分还是会被硬切`;
-	}
-	if (!/mask-image\s*:\s*linear-gradient/.test(body)) {
-		return `代码盒子没有底部渐隐（mask-image: linear-gradient）—— 样例比可视高度长，硬切看着像代码断在一半`;
+	// 至少有一档真的收紧过选项行。
+	const tight = blocks.filter(b => cssRule(b.body, '.olympia-onboarding-choice') !== null);
+	if (!tight.length) {
+		return `没有任何紧凑档收紧过 .olympia-onboarding-choice —— 窗口一矮卡片就装不下`;
 	}
 	return null;
 });
 
-check('T59', `光标必须落在还看得见的最后一行（否则用户根本看不见光标）`, () => {
-	const cards = load(F_ONB_CARDS);
-	const onb = load(F_ONB);
-	const tl = load(F_ONB_TIMELINE);
-	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
-	if (onb === null) return `文件不存在（见上面的 MISSING ${F_ONB}）`;
-	if (tl === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
-	const code = stripTsComments(cards);
-	const body = methodBody(code, /private\s+placeCodeCarets\s*\(\s*\)/);
-	if (body === null) {
-		return `卡片层里没有 placeCodeCarets() —— 光标永远挂在样例最后一行，而那行在底部渐隐区里，用户看不见光标，「编辑器手感」这张卡就白做了`;
-	}
-	if (!/clientHeight/.test(code)) {
-		return `卡片层没有量可视高度（clientHeight）—— 不知道哪一行还看得见，光标就无处安放`;
-	}
-	if (!/scrollHeight/.test(code)) {
-		return `卡片层没有量内容总高（scrollHeight）—— 分不清「整体放得下」和「被裁了」，光标会落在一条早就看不见的行上`;
-	}
-	const zone = constValue(stripTsComments(tl), 'OLYMPIA_ONBOARDING_CODE_CARET_ZONE');
-	if (zone === null) {
-		return `时间线里找不到 OLYMPIA_ONBOARDING_CODE_CARET_ZONE —— 光标能停的范围必须是常量（它跟 CSS 里渐隐区的起点是一对，代码里写死就必然对不上）`;
-	}
-	if (!(zone > 0 && zone <= 1)) {
-		return `OLYMPIA_ONBOARDING_CODE_CARET_ZONE = ${zone} 不在 (0, 1] 内`;
-	}
-	const onbCode = stripTsComments(onb);
-	if (!/this\.cards\.handleViewportResize\s*\(\s*\)/.test(onbCode)) {
-		return `窗口尺寸变化时没有调用 cards.handleViewportResize() —— 窗口一变，预览块变矮，能显示的代码行数变了，光标却还停在那儿`;
-	}
-	return null;
-});
+// [已退役 2026-10-23] T58「代码样例必须自己裁切并做底部渐隐」
+//
+//   代码样例（.olympia-onboarding-code）随「预览整族」一起退役 ——
+//   卡上不再有任何代码样例，也就不存在「样例比可视高度长」这回事。
+//
+//   替代事实：选项行的裁切由 T69 / T83 / T85（选择列表不可伸不可缩）覆盖，
+//   真机裁切由几何门的 L-choices 覆盖。
 
-check('T60', `预览面板必须能分配空间（flex 纵向列 + 三块内容各自撑开居中）`, () => {
+// [已退役 2026-10-23] T59「光标必须落在还看得见的最后一行」
+//
+//   代码光标（placeCodeCarets / OLYMPIA_ONBOARDING_CODE_CARET_ZONE）随代码样例一起退役。
+//   唯一还留着的「选中标记」是选项行的 20px 圆点（CSS 里 .olympia-onboarding-choice-marker），
+//   它不需要测量可视高度 —— 它就在选项里，永远看得见。
+
+check('T60', `选择列表必须能分配空间（flex 纵向列 + 自身不可伸不可缩）`, () => {
 	const raw = load(F_ONB_CSS);
 	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
 	const css = stripComments(raw);
-	const preview = cssRule(css, '.olympia-onboarding-card-preview');
-	if (preview === null) return `未找到 .olympia-onboarding-card-preview 规则块`;
-	if (!/display\s*:\s*flex/.test(preview) || !/flex-direction\s*:\s*column/.test(preview)) {
-		return `预览面板不是 flex 纵向列 —— 面板里的内容没法分配剩余空间，内容短的那几张卡底部会空出小半个面板，看着像没画完`;
+	const body = cssRule(css, '.olympia-onboarding-choices');
+	if (body === null) return `未找到 .olympia-onboarding-choices 规则块`;
+	if (!/display\s*:\s*flex/.test(body) || !/flex-direction\s*:\s*column/.test(body)) {
+		return `选择列表不是 flex 纵向列 —— 一行一个选项的竖排列表必须是 column，row 会横着排一排`;
 	}
-	for (const selector of ['.olympia-onboarding-pipe', '.olympia-onboarding-flow', '.olympia-onboarding-directory']) {
-		const body = cssRule(css, selector);
-		if (body === null) return `未找到 ${selector} 规则块`;
-		if (!/flex\s*:\s*1\b/.test(body)) {
-			return `${selector} 没有 flex: 1 —— 它不撑开剩余空间，内容就还是吊在面板顶部，底部留白照旧`;
-		}
+	const flex = cssFlexTriple(body);
+	if (flex === null) {
+		return `选择列表没有显式声明 flex —— 默认可压缩，矮窗口里会被静默裁掉`;
+	}
+	if (flex.shrink !== 0) {
+		return `选择列表的 flex 是 \`${flex.raw}\` —— shrink 不为 0，它会被压扁再被 overflow:hidden 静默裁掉`;
 	}
 	return null;
 });
@@ -3615,7 +3468,7 @@ check('T61', `写入失败必须有一条「说给用户听」的路径（只写
 	const cards = load(F_ONB_CARDS);
 	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
 	const code = stripTsComments(cards);
-	const body = methodBody(code, /private\s+abandonWriteIfExhausted\s*\(/);
+	const body = methodBodyDeep(code, /private\s+abandonWriteIfExhausted\s*\(/);
 	if (body === null) {
 		return `卡片层里没有 abandonWriteIfExhausted —— 写入放弃的收场路径没了`;
 	}
@@ -3628,13 +3481,13 @@ check('T61', `写入失败必须有一条「说给用户听」的路径（只写
 	if (iDel < 0 || iLast < 0 || !(iDel < iSet && iSet < iLast)) {
 		return `「没保存上」的记录不在「用户还没改过」那个分支里 —— 用户后来又点了一次的话，新值还在写，旧值的失败不该算到新值头上`;
 	}
-	const unsaved = methodBody(code, /private\s+updateRowUnsavedState\s*\(/);
+	const unsaved = methodBodyDeep(code, /private\s+updateCardUnsavedState\s*\(/);
 	if (unsaved === null) {
 		return `没有把「没保存上」写到界面上的方法`;
 	}
-	const visible = /status\.textContent\s*=\s*localize\(\s*'olympia\.onboarding\.row\.unsaved'\s*,\s*"([^"]*)"\s*\)/.exec(unsaved);
+	const visible = /unsavedElement\.textContent\s*=\s*localize\(\s*'olympia\.onboarding\.row\.unsaved'\s*,\s*"([^"]*)"\s*\)/.exec(unsaved);
 	if (!visible) {
-		return `「没保存上」没有写成行内可见文本 —— 光记在 map 里没人看得见`;
+		return `「没保存上」没有写成可见文本 —— 光记在 map 里没人看得见`;
 	}
 	if (!visible[1].trim()) {
 		return `「未保存」的文案是空的 —— 界面上一个字都不显示，等于没告诉用户`;
@@ -3642,39 +3495,33 @@ check('T61', `写入失败必须有一条「说给用户听」的路径（只写
 	return null;
 });
 
-check('T62', `未保存标记必须在 switch 之前刷（三个分支都有提前 return，放在后面就刷不到）`, () => {
+check('T62', `一次状态刷新必须把「选中态」和「未保存标记」一起刷（只刷一个界面就在撒谎）`, () => {
 	const cards = load(F_ONB_CARDS);
 	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
 	const code = stripTsComments(cards);
-	const body = methodBody(code, /private\s+updateRowState\s*\(/);
-	if (body === null) return `没有 updateRowState`;
-	const iMark = body.indexOf('updateRowUnsavedState(');
-	const iSwitch = body.indexOf('switch (row.kind)');
-	if (iMark < 0) return `updateRowState 里没有刷「没保存上」的标记`;
-	if (iSwitch < 0) return `updateRowState 里找不到 switch (row.kind)`;
-	if (iMark > iSwitch) {
-		return `「没保存上」的标记刷在 switch 之后 —— 三个分支里都有提前 return 的写法，那些行就永远刷不到标记`;
+	const body = methodBodyDeep(code, /private\s+updateCardStates\s*\(\s*\)\s*:\s*void/);
+	if (body === null) return `没有 updateCardStates`;
+	const iFor = body.indexOf('for (let index');
+	if (iFor < 0) return `updateCardStates 里没有逐卡循环`;
+	const open = body.indexOf('{', iFor);
+	const loopBody = balanced(body, open, '{', '}');
+	if (!loopBody) return `读不出 updateCardStates 的逐卡循环体`;
+	if (!loopBody.includes("classList.toggle('selected'")) {
+		return `选中态没在逐卡循环里刷 —— 有些卡片的选中态会停在旧值上`;
+	}
+	if (!loopBody.includes('updateCardUnsavedState(')) {
+		return `「没保存上」的标记没在逐卡循环里刷 —— 放到循环外就漏掉了没绑定的卡`;
 	}
 	return null;
 });
 
-check('T63', `进入动画期间不许再动布局（handleViewportResize 必须先看 this.entering）`, () => {
-	const cards = load(F_ONB_CARDS);
-	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
-	const code = stripTsComments(cards);
-	const body = methodBody(code, /handleViewportResize\s*\(\s*\)\s*:/);
-	if (body === null) return `没有 handleViewportResize`;
-	const iEnter = body.indexOf('this.entering');
-	const iPlace = body.indexOf('placeCodeCarets(');
-	if (iEnter < 0) {
-		return `handleViewportResize 不看 this.entering —— 进入动画正在把卡片化成粒子的时候去量高度、挪光标，就是「全程没有断点」要防的那一帧硬切`;
-	}
-	if (iPlace < 0) return `handleViewportResize 里没有 placeCodeCarets()`;
-	if (iEnter > iPlace) {
-		return `this.entering 的判断排在 placeCodeCarets 之后 —— 守卫等于没有`;
-	}
-	return null;
-});
+// [已退役 2026-10-23] T63「进入动画期间不许再动布局（handleViewportResize 必须先看 this.entering）」
+//
+//   handleViewportResize() 随预览/代码样例整套退役 —— 卡片层现在没有任何
+//   「量高度、挪光标」的动作，卡片外框是 height:100%，跟着轨道走。
+//
+//   它守的那条事实（进入动画期间不许动卡片区）现在由 T30 覆盖：
+//   updateCardStates() 必须先看 this.entering 再改任何状态。
 
 check('T64', `跳过按钮的文案必须说清是「跳过剩下的」（点行就已经写盘了）`, () => {
 	const cards = load(F_ONB_CARDS);
@@ -3698,38 +3545,37 @@ check('T65', `卡片层不许用选择器取元素（元素要直接持有引用
 	return null;
 });
 
-check('T66', `未保存的行必须在界面上看得出来（标签变红 + 状态位只在有内容时占位）`, () => {
+check('T66', `未保存必须在界面上看得出来（标记变红 + 空的时候不占位）`, () => {
 	const raw = load(F_ONB_CSS);
 	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
 	const css = stripComments(raw);
-	const unsaved = cssRule(css, '.olympia-onboarding-row-unsaved .olympia-onboarding-row-label');
-	if (unsaved === null) return `CSS 里没有「未保存的行把标签变红」的规则`;
-	if (!/color\s*:\s*var\(--vscode-errorForeground\)/.test(unsaved)) {
-		return `未保存的标签没有用 errorForeground 着色 —— 只有一个不显眼的标记等于没告诉用户`;
+	const unsaved = cssRule(css, '.olympia-onboarding-card-unsaved');
+	if (unsaved === null) return `CSS 里没有「未保存标记」的规则`;
+	if (!/color\s*:\s*(?:#D64545|var\(--vscode-errorForeground\))/i.test(unsaved)) {
+		return `未保存标记没有用错误色 —— 只有一个不显眼的标记等于没告诉用户`;
 	}
-	const status = cssRule(css, '.olympia-onboarding-row-status');
-	if (status === null) return `CSS 里没有状态位的规则`;
-	if (!/font-style\s*:\s*normal/.test(status)) {
-		return `状态位是 <i> 元素，不把斜体关掉，字形跟正文不一致`;
-	}
-	const notEmpty = cssRule(css, '.olympia-onboarding-row-status:not(:empty)');
-	if (notEmpty === null) return `状态位没有「非空才占位」的规则 —— 空的时候也留间距，所有行标签右边都会多一截`;
-	if (!/margin-left\s*:/.test(notEmpty)) {
-		return `状态位非空时没有左间距 —— 「未保存」会紧贴标签文字`;
+	const notEmpty = cssRule(css, '.olympia-onboarding-card-unsaved:not(:empty)');
+	if (notEmpty === null) return `未保存标记没有「非空才占位」的规则 —— 空的时候也留间距，卡片顶部会多一截空白`;
+	if (!/margin-top\s*:/.test(notEmpty)) {
+		return `未保存标记非空时没有上间距 —— 「未保存」会紧贴上面的描述文字`;
 	}
 	return null;
 });
 
-check('T67', `未保存的状态位必须挂在行标签里（三种行类型没有共同的「值元素」）`, () => {
+check('T67', `未保存标记必须挂在卡片上（不在某个选项上）`, () => {
 	const cards = load(F_ONB_CARDS);
 	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
 	const code = stripTsComments(cards);
-	// 构造顺序必须是「造状态位 → 挂到行标签 → 行标签挂到行容器」。
-	// 挂到行容器上的话，选项组会被挤开一截（行容器是 flex + space-between）。
-	// 这里不用 methodBody 取 buildRows 的方法体 —— 它的返回类型里带 {},
-	// methodBody 从第一个 { 开始配对，会把返回类型当成方法体。
-	if (!/status\.className\s*=\s*'olympia-onboarding-row-status';[\s\S]{0,200}?label\.appendChild\(\s*status\s*\);[\s\S]{0,200}?container\.appendChild\(\s*label\s*\);/.test(code)) {
-		return `状态位没有挂在行标签上（或者行标签没挂到行容器上）—— 挂到行容器里的话，选项组会被挤开一截`;
+	const upd = methodBodyDeep(code, /private\s+updateCardUnsavedState\s*\(/);
+	if (upd === null) return `找不到 updateCardUnsavedState()`;
+	if (!/binding\.element\.classList\.(add|remove)\(\s*'olympia-onboarding-card-has-unsaved'\s*\)/.test(upd)) {
+		return `未保存标记没有挂到卡片容器上 —— 一张卡只有一个配置项，「没保存上」说的是这一整张卡的事`;
+	}
+	if (!/binding\.unsavedElement\.textContent\s*=/.test(upd)) {
+		return `未保存标记没有写进卡片自己的标记元素`;
+	}
+	if (/choice\.element\.classList\.(add|remove)\(\s*'[^']*unsaved/.test(code)) {
+		return `未保存标记挂到了选项上 —— 选项列表一旦被替换，提示会跟着消失`;
 	}
 	return null;
 });
@@ -3837,8 +3683,14 @@ check('T68', `标记必须能被撤掉（重新点一次 / 写成功了都不该
 	*   flex: auto    → 1 1 auto
 	*   flex: initial → 0 1 auto
 	*/
-	function cssFlexTriple(body) {
-		const raw = cssDeclValue(body, 'flex');
+	/**
+	 * 把 flex 三元组的解析拆成「直接解析值字符串」的形态。
+	 *
+	 * T85/T88 要问的是**生效值**，而生效值是一个字符串（可能来自 base 回落，
+	 * 也可能来自档内最后一条规则）—— 解析口径必须与声明值那套完全一致，
+	 * 所以这里拆出「解析值字符串」的一层，cssFlexTriple 变成它的薄壳。
+	 */
+	function cssFlexTripleValue(raw) {
 		if (raw === null) {
 			return null;
 		}
@@ -3863,6 +3715,12 @@ check('T68', `标记必须能被撤掉（重新点一次 / 写成功了都不该
 			return { grow: Number(parts[0]), shrink: 1, basis: '0%', raw: s };
 		}
 		return null;
+	}
+
+	/** 声明值形态的薄壳：既有调用点零改动。 */
+	function cssFlexTriple(body) {
+		const raw = cssDeclValue(body, 'flex');
+		return raw === null ? null : cssFlexTripleValue(raw);
 	}
 
 /**
@@ -3902,7 +3760,8 @@ check('T68', `标记必须能被撤掉（重新点一次 / 写成功了都不该
 			if (b.maxHeight < height) {
 				continue;
 			}
-			const body = cssRule(b.body, selector);
+			// 同档写两遍时生效的是后一条 —— 首匹配会读错。
+			const body = cssLastRule(b.body, selector);
 			if (body === null) {
 				continue;
 			}
@@ -3914,7 +3773,84 @@ check('T68', `标记必须能被撤掉（重新点一次 / 写成功了都不该
 		return value;
 	}
 
-check('T69', `矮窗口档里配置行区不许被压扁（flex 的 shrink 因子必须是 0）`, () => {
+/**
+ * 所有 @media 块在全文里的区间（含两端括号），用来区分「base 规则」和「档内规则」。
+ */
+function cssMediaRanges(css) {
+	const out = [];
+	const re = /@media\b/gi;
+	let m;
+	while ((m = re.exec(css))) {
+		const braceIdx = css.indexOf('{', m.index + m[0].length);
+		if (braceIdx < 0) {
+			continue;
+		}
+		const body = balanced(css, braceIdx, '{', '}');
+		if (body === null) {
+			continue;
+		}
+		out.push([braceIdx, braceIdx + body.length]);
+	}
+	return out;
+}
+
+/**
+ * 取某个选择器**不在任何 @media 块内**的规则体（base 规则）；找不到返回 null。
+ *
+ * 绝不按「第一次出现 + 字符窗口」找 —— `.olympia-onboarding-card-body` 在
+ * CSS 里出现多次（base + 三个紧凑档），第一次出现恰好是 base 纯属运气。
+ */
+function cssBaseRule(css, selector) {
+	const ranges = cssMediaRanges(css);
+	let from = 0;
+	for (;;) {
+		const idx = css.indexOf(selector, from);
+		if (idx < 0) {
+			return null;
+		}
+		from = idx + selector.length;
+		const m = /^\s*\{/.exec(css.slice(from));
+		if (!m) {
+			continue;   // 是别的选择器的一部分
+		}
+		const braceIdx = from + m[0].length - 1;
+		if (ranges.some(([s, e]) => braceIdx > s && braceIdx < e)) {
+			continue;   // 档内规则，跳过
+		}
+		const body = balanced(css, braceIdx, '{', '}');
+		if (body) {
+			return body.slice(1, -1);
+		}
+	}
+}
+
+/**
+ * 取作用域内**最后一条**该选择器的规则体。
+ *
+ * 同档写两遍时生效的是后一条 —— cssRule 取第一条会读错。
+ * 「逐档查声明值」和「这一段高度里浏览器实际用哪个」是两件事。
+ */
+function cssLastRule(scope, selector) {
+	let found = null;
+	let from = 0;
+	for (;;) {
+		const idx = scope.indexOf(selector, from);
+		if (idx < 0) {
+			return found;
+		}
+		from = idx + selector.length;
+		const m = /^\s*\{/.exec(scope.slice(from));
+		if (!m) {
+			continue;
+		}
+		const body = balanced(scope, from + m[0].length - 1, '{', '}');
+		if (body) {
+			found = body.slice(1, -1);
+		}
+	}
+}
+
+check('T69', `矮窗口档里选择列表不许被压扁（flex 的 shrink 因子必须是 0）`, () => {
 	const raw = load(F_ONB_CSS);
 	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
 	const blocks = cssMaxHeightMediaBlocks(stripComments(raw));
@@ -3924,7 +3860,7 @@ check('T69', `矮窗口档里配置行区不许被压扁（flex 的 shrink 因�
 	}
 	let pinned = 0;
 	for (const b of short) {
-		const body = cssRule(b.body, '.olympia-onboarding-card-body');
+		const body = cssRule(b.body, '.olympia-onboarding-choices');
 		if (body === null) {
 			continue;
 		}
@@ -3934,81 +3870,118 @@ check('T69', `矮窗口档里配置行区不许被压扁（flex 的 shrink 因�
 		}
 		pinned++;
 		if (flex.shrink !== 0) {
-			return `max-height:${b.maxHeight}px 档里 .olympia-onboarding-card-body 的 flex 是 \`${flex.raw}\` —— shrink 因子不为 0，行区会被压扁再被 overflow:hidden 静默裁掉（实测 330px 高的窗口里行区只剩 50px、内容 120px，「光标动画」整行不可见，连滚动条都没有）；行区是功能内容（能点的选项、开关），预览只是「看一眼后果」，压缩必须全部交给预览块`;
+			return `max-height:${b.maxHeight}px 档里 .olympia-onboarding-choices 的 flex 是 \`${flex.raw}\` —— shrink 因子不为 0，选择列表会被压扁再被 overflow:hidden 静默裁掉；选择列表是功能内容（用户要在这儿做选择），压缩必须全部交给标题/描述/间距`;
 		}
 	}
 	if (!pinned) {
-		return `所有 max-height ≤ 420px 的紧凑档都没有显式声明 .olympia-onboarding-card-body 的 flex —— 行区默认可压缩，矮窗口里会被静默裁掉`;
+		return `所有 max-height ≤ 420px 的紧凑档都没有显式声明 .olympia-onboarding-choices 的 flex —— 逐档检查形同虚设（只读 base 的声明就看不到哪一档放开了伸缩）`;
 	}
 	return null;
 });
 
-check('T70', `矮窗口档里配置行区不许声明 min-height: 0（那等于允许被压到内容以下）`, () => {
+check('T70', `矮窗口档里选择列表不许声明 min-height: 0（那等于允许被压到内容以下）`, () => {
 	const raw = load(F_ONB_CSS);
 	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
 	const blocks = cssMaxHeightMediaBlocks(stripComments(raw));
+	let checked = 0;
 	for (const b of blocks.filter(x => x.maxHeight <= 420)) {
-		const body = cssRule(b.body, '.olympia-onboarding-card-body');
-		if (body === null) {
-			continue;
+		for (const sel of ['.olympia-onboarding-choices', '.olympia-onboarding-choice']) {
+			const body = cssRule(b.body, sel);
+			if (body === null) {
+				continue;
+			}
+			const minH = cssDeclValue(body, 'min-height');
+			if (minH === null) {
+				continue;
+			}
+			checked++;
+			if (/^0(px|%)?$/.test(minH.trim())) {
+				return `max-height:${b.maxHeight}px 档里 ${sel} 声明了 min-height: ${minH} —— 这会让 flex 把选择列表压到内容高度以下，配合 overflow:hidden 就是静默裁掉选项`;
+			}
 		}
-		const minH = cssDeclValue(body, 'min-height');
-		if (minH !== null && /^0(px|%)?$/.test(minH.trim())) {
-			return `max-height:${b.maxHeight}px 档里 .olympia-onboarding-card-body 声明了 min-height: ${minH} —— 这会让 flex 把行区压到内容高度以下，配合 overflow:hidden 就是静默裁掉配置行`;
+	}
+	// 守卫：一条都没读到 = 这条断言什么都没检查。
+	// （旧版指向已删除的 .olympia-onboarding-card-body，循环体永远 continue，永远绿。）
+	if (!checked) {
+		return `所有 max-height ≤ 420px 的紧凑档都没有给 .olympia-onboarding-choices / .olympia-onboarding-choice 声明 min-height —— 逐档检查形同虚设（读不到声明就等于没检查）`;
+	}
+	return null;
+});
+
+check('T71', `必须有一档让选项副说明让位（≤385px），且选择列表本身一行都不许少`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const css = stripComments(raw);
+	const blocks = cssMaxHeightMediaBlocks(css);
+	// ① 必须有一档把选项**副说明**整块让位（藏的是解释，不是功能）
+	let yieldBlock = null;
+	for (const b of blocks) {
+		const body = cssRule(b.body, '.olympia-onboarding-choice-description');
+		if (body === null) continue;
+		if (cssDeclValue(body, 'display') === 'none') {
+			yieldBlock = b;
+			break;
+		}
+	}
+	if (!yieldBlock) {
+		return `没有一档把 .olympia-onboarding-choice-description 整块 display:none —— 极矮窗口里主标题（选哪个）和副说明（什么意思）都留着，四档字号就只是整体缩小，读起来还是挤`;
+	}
+	if (yieldBlock.maxHeight > 385) {
+		return `副说明让位档的断点是 ${yieldBlock.maxHeight}px —— 必须 ≤385px：产品允许的最小窗口高是 270px，断点太宽就有一段窗口既没进让位档也没进更紧的档`;
+	}
+	// ② 选择列表本身在任何一档都不得整块让位
+	for (const b of blocks) {
+		const body = cssRule(b.body, '.olympia-onboarding-choices');
+		if (body === null) continue;
+		if (cssDeclValue(body, 'display') === 'none') {
+			return `max-height:${b.maxHeight}px 档把整个选择列表 display:none —— 选择列表是功能内容（用户要在这儿做选择），藏掉它用户就不知道自己还有一项没选`;
 		}
 	}
 	return null;
 });
 
-check('T71', `必须有一档「预览整块让位」（断点 360~420px 之间，预览 display:none）`, () => {
+check('T72', `矮窗口各档必须把页脚钉在底部（margin-top: auto），不然中间那段留白像内容被挤掉了`, () => {
 	const raw = load(F_ONB_CSS);
 	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
-	const blocks = cssMaxHeightMediaBlocks(stripComments(raw));
-	if (!cssYieldBlock(blocks)) {
-		return `没有一档在 360~420px 之间把 .olympia-onboarding-card-preview 整块 display:none —— 实测 card0 预览内区在 386px 高时只剩 100.5px（管道图被压到 27.3px，读不出），420px 高时也只剩 134.5px；预览切一半比整块没有更难看，必须整块让位`;
+	const css = stripComments(raw);
+	const blocks = cssMaxHeightMediaBlocks(css);
+	const base = cssRule(css, '.olympia-onboarding-card-footer');
+	if (base === null) return `未找到 .olympia-onboarding-card-footer 的 base 规则`;
+	if (cssDeclValue(base, 'margin-top') !== 'auto') {
+		return `base 规则里页脚的 margin-top 不是 auto —— 页脚必须钉在卡片底部`;
+	}
+	for (const b of blocks) {
+		const body = cssRule(b.body, '.olympia-onboarding-card-footer');
+		if (body === null) continue;
+		const mt = cssDeclValue(body, 'margin-top');
+		if (mt !== null && mt.trim() !== 'auto') {
+			return `max-height:${b.maxHeight}px 档里页脚的 margin-top 是 \`${mt}\` —— 必须是 auto，让页脚钉在卡片底部`;
+		}
 	}
 	return null;
 });
 
-check('T72', `预览让位那一档必须把页脚钉在底部（margin-top: auto），不然中间那段留白像内容被挤掉了`, () => {
+check('T73', `矮窗口各档不许把选择列表拉开（不许 space-*，也不许列表自己去长高）`, () => {
 	const raw = load(F_ONB_CSS);
 	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
-	const blocks = cssMaxHeightMediaBlocks(stripComments(raw));
-	const y = cssYieldBlock(blocks);
-	if (!y) {
-		return `没有预览让位档（先修 T71）`;
+	const css = stripComments(raw);
+	const blocks = cssMaxHeightMediaBlocks(css);
+	let checked = 0;
+	for (const b of blocks) {
+		const body = cssRule(b.body, '.olympia-onboarding-choices');
+		if (body === null) continue;
+		checked++;
+		const jc = cssDeclValue(body, 'justify-content');
+		if (jc !== null && /^space-/.test(jc.trim())) {
+			return `max-height:${b.maxHeight}px 档里选择列表用了 justify-content: ${jc} —— 多出来的空白会把选项拉开（行间空几十 px，读起来像内容散架）`;
+		}
+		const flex = cssFlexTriple(body);
+		if (flex !== null && flex.grow >= 1) {
+			return `max-height:${b.maxHeight}px 档里选择列表的 flex 是 \`${flex.raw}\` —— grow ≥ 1 会让列表去吃多出来的空白，把选项拉开`;
+		}
 	}
-	const body = cssRule(y.body, '.olympia-onboarding-card-footer');
-	if (body === null) {
-		return `让位档里没有 .olympia-onboarding-card-footer 规则 —— 页脚必须钉在卡片底部（margin-top: auto），不然预览让位后中间空一大段，读起来像内容被挤掉了`;
-	}
-	const mt = cssDeclValue(body, 'margin-top');
-	if (mt !== 'auto') {
-		return `让位档里页脚的 margin-top 是 \`${mt}\` —— 必须是 auto，让页脚钉在卡片底部`;
-	}
-	return null;
-});
-
-check('T73', `预览让位那一档不许把配置行拉开（不许 space-between，也不许行区自己去长高）`, () => {
-	const raw = load(F_ONB_CSS);
-	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
-	const blocks = cssMaxHeightMediaBlocks(stripComments(raw));
-	const y = cssYieldBlock(blocks);
-	if (!y) {
-		return `没有预览让位档（先修 T71）`;
-	}
-	const body = cssRule(y.body, '.olympia-onboarding-card-body');
-	if (body === null) {
-		// 让位档根本没碰行区 —— 行区保持默认的紧凑状态，正是我们要的。
-		return null;
-	}
-	const jc = cssDeclValue(body, 'justify-content');
-	if (jc !== null && /^space-/.test(jc.trim())) {
-		return `让位档里行区用了 justify-content: ${jc} —— 预览让位后多出来的空白会把配置行拉开（实测 330px 高的窗口里行间空 47px、末行又贴页脚，读起来像内容散架）`;
-	}
-	const flex = cssFlexTriple(body);
-	if (flex !== null && flex.grow >= 1) {
-		return `让位档里行区的 flex 是 \`${flex.raw}\` —— grow ≥ 1 会让行区去吃多出来的空白，把配置行拉开`;
+	if (!checked) {
+		return `没有任何紧凑档碰过 .olympia-onboarding-choices —— 矮窗口下选择列表一行都不许少，紧凑档必须显式收紧它`;
 	}
 	return null;
 });
@@ -4083,6 +4056,414 @@ check('T82', `所有含 max-height 的 @media 块都必须被紧凑档提取器�
 	}
 	return null;
 });
+// ---------------------------------------------------------------------------
+// 断言层空窗补齐（T83~T88）
+//
+// 这一组断言补的是同一类洞：**「声明值」被读到了，但「生效值」不是它**。
+//
+// 三种形态：
+//   · T83/T85/T88 —— 同一档里写了两遍、或更窄的档把值覆盖回来，
+//     逐档查声明值的断言（T69/T72/T73）看不见，浏览器却用的是另一个值。
+//   · T84/T86 —— 量具本身被拆了（比较关系被改成常量、容差的下限被删），
+//     判据还在，但已经不测任何东西了。
+//   · T87 —— 媒体条件里混进第二个特征，「该档覆盖一切更矮窗口」的模型悄悄失真。
+//
+// 规格来源：ZCode/GLM-5.3 的 T-045 报告（只读分析，未落码）。
+// ---------------------------------------------------------------------------
+
+check('T83', `默认档（>420px）选择列表不可伸不可缩：base 规则必须显式钉死 flex（grow=0、shrink=0）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const css = stripComments(raw);
+	const base = cssBaseRule(css, '.olympia-onboarding-choices');
+	if (base === null) return `未找到 .olympia-onboarding-choices 的 base 规则（@media 之外的规则块）`;
+	const flex = cssFlexTriple(base);
+	if (flex === null) {
+		return `base 规则没有声明 flex —— 默认档选择列表回落 flex:initial（0 1 auto，可压缩）；轨道(100vh−16px)比卡片自然高度矮，被压掉的会是选项行，overflow:hidden 让它无声无息`;
+	}
+	if (flex.grow !== 0 || flex.shrink !== 0) {
+		return `base 规则的 flex 是 \`${flex.raw}\`（grow=${flex.grow}, shrink=${flex.shrink}）—— ${flex.grow !== 0 ? '选择列表会被拉伸，选项散开；' : ''}${flex.shrink !== 0 ? '选择列表会被压缩，选项行被裁；' : ''}默认档的伸缩必须全部交给标题/描述/间距`;
+	}
+	// 将来若有人加「宽断点」档（max-height > 420px 的块），同样不许放开伸缩。
+	for (const b of cssMaxHeightMediaBlocks(css)) {
+		if (b.maxHeight <= 420) continue;
+		const body = cssLastRule(b.body, '.olympia-onboarding-choices');
+		if (body === null) continue;
+		const f = cssFlexTriple(body);
+		if (f !== null && (f.grow !== 0 || f.shrink !== 0)) {
+			return `max-height:${b.maxHeight}px 档（>420px，属默认档范围）里选择列表 flex 是 \`${f.raw}\` —— 默认档选择列表不可伸不可缩`;
+		}
+	}
+	return null;
+});
+
+check('T84', `「选择列表被裁」必须有可测信号：几何门的三路裁切信号（内容高/逐项下沿/可见高下限）与显式容差，缺一路都不行`, () => {
+	/* raw-ok: .mjs 不在 load() 的剥注释清单里；该文件头部注释就写着 scrollHeight ≤ clientHeight，必须读原文后自行剥掉再匹配 */
+	const raw = loadRaw(F_GEOM);
+	if (raw === null) return `文件不存在：${F_GEOM}`;
+	const code = stripTsComments(raw);
+	// ① 测量端：必须真的读 DOM 的 scrollHeight / clientHeight，且锚在选择列表/选项两个选择器上
+	if (!code.includes(`.olympia-onboarding-choices'`) || !code.includes(`.olympia-onboarding-choice'`)) {
+		return `几何门不再锚在 .olympia-onboarding-choices / .olympia-onboarding-choice 上量 —— overflow:hidden 只让裁切无声无息，量具没了就是「裁了也没人知道」`;
+	}
+	if (!/scrollH:\s*list\.scrollHeight/.test(code) || !/clientH:\s*list\.clientHeight/.test(code)) {
+		return `几何门不再读选择列表的 scrollHeight / clientHeight —— 「内容装不装得下」这个可测信号没了`;
+	}
+	// ② 判据端：三路信号都要被**拿来比**（不是出现一下就算数），容差显式来自 TH.card
+	const judge = methodBody(code, /function\s+judgeCardChoices\s*\(\s*m\s*\)\s*\{/);
+	if (!judge) return `几何门里找不到 judgeCardChoices()`;
+	if (!/clipped\s*>\s*TH\.card\.choicesClipTol/.test(judge)) return `judgeCardChoices 不再拿「内容高−可见高」跟 choicesClipTol 比 —— 信号①没了牙齿`;
+	if (!/overflowChoices\s*>\s*TH\.card\.choicesClipTol/.test(judge)) return `judgeCardChoices 不再拿「选项下沿越界量」跟 choicesClipTol 比 —— 信号②没了牙齿`;
+	if (!/clientH\s*<\s*TH\.card\.choicesMinHeight/.test(judge)) return `judgeCardChoices 不再拿「列表可见高」跟 choicesMinHeight 比 —— 信号③没了牙齿`;
+	// ③ 容差值本身不许放宽：1px 是亚像素口径、32px 是「一个选项行还放得下」的下限（几何门自己的推导）
+	const tol = /choicesClipTol\s*:\s*(\d+(?:\.\d+)?)/.exec(code);
+	const floor = /choicesMinHeight\s*:\s*(\d+(?:\.\d+)?)/.exec(code);
+	if (!tol || Number(tol[1]) > 1) return `choicesClipTol 现值 ${tol ? tol[1] : '缺失'} —— 超过 1px 就会把真裁切当亚像素放过去`;
+	if (!floor || Number(floor[1]) < 32) return `choicesMinHeight 现值 ${floor ? floor[1] : '缺失'} —— 低于 32px 等于允许整个选择列表被压没`;
+	// ④ 判据必须被接线（挂 L-choices 真跑），不能是死代码
+	if (!/L-choices/.test(code) || (code.match(/judgeCardChoices/g) || []).length < 2) {
+		return `judgeCardChoices 没接进卡片判据清单（L-choices）—— 量了不判等于没量`;
+	}
+	return null;
+});
+
+check('T85', `矮窗口全段的选择列表 flex 必须「生效值」不可伸不可缩（按层叠算，不是读源码第一条声明）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const css = stripComments(raw);
+	const blocks = cssMaxHeightMediaBlocks(css);
+	const base = cssBaseRule(css, '.olympia-onboarding-choices');
+	if (base === null) return `未找到 .olympia-onboarding-choices 的 base 规则（先修 T83）`;
+	const heights = new Set([270]);
+	for (const b of blocks) { if (b.maxHeight <= 420) heights.add(b.maxHeight); }
+	for (const h of [...heights].sort((a, b) => a - b)) {
+		// 生效值 = base 声明被所有「命中该高度」的档按源码顺序逐个覆盖后的最终值
+		let value = cssDeclValue(base, 'flex');
+		for (const b of blocks) {
+			if (b.maxHeight < h) continue;   // 这一档在该高度下不命中
+			const body = cssLastRule(b.body, '.olympia-onboarding-choices');
+			if (body === null) continue;
+			const v = cssDeclValue(body, 'flex');
+			if (v !== null) value = v;
+		}
+		const flex = value === null ? null : cssFlexTripleValue(value);
+		if (flex === null) {
+			return `视口高 ${h}px 段里选择列表 flex 既无 base 声明也无档内声明 —— 回落 initial(0 1 auto)，可被压缩`;
+		}
+		if (flex.grow !== 0 || flex.shrink !== 0) {
+			return `视口高 ${h}px 段（该断点以下直到下一档）里选择列表 flex 的**生效值**是 \`${flex.raw}\`（grow=${flex.grow}, shrink=${flex.shrink}）—— 不是某一条声明值：可能被更窄的档覆盖了回来，或同档内重复声明让逐档断言读走了第一条；这段高度里选项行会被拉伸/压缩`;
+		}
+	}
+	return null;
+});
+
+// T86（2026-10-23 退役）：预览「溢出量」的双量具 —— 面板界 / 内容界同测 + 空白量双轨容差。
+// 这条断言守的是旧卡片里的**预览面板**（管道图 / 目录树）。三屏改造里预览整块退役，
+// 量具（judgeCardPreview / previewTolMin / previewTolRatio）也跟着没了 ——
+// 主体消失就退役，不改成「必须保持绿」：那等于给一条没人守的事实盖章。
+// 新的对应物是 T84 的「选择列表三路裁切信号」。
+
+check('T87', `每个紧凑档的媒体条件必须是「纯 max-height」：混进第二个特征会让整套生效值断言的覆盖模型悄悄失真`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const css = stripComments(raw);
+	const re = /@media\b/gi;
+	let m;
+	while ((m = re.exec(css))) {
+		const braceIdx = css.indexOf('{', m.index + m[0].length);
+		if (braceIdx < 0) continue;
+		const cond = css.slice(m.index + m[0].length, braceIdx);
+		if (!/\bmax-height\s*:\s*\d+(?:\.\d+)?px\b/i.test(cond)) continue;   // 非 max-height 块不参与紧凑档断言（T82 口径）
+		const leftover = cond
+			.replace(/screen/ig, '')
+			.replace(/\band\b/ig, '')
+			.replace(/\(\s*max-height\s*:\s*\d+(?:\.\d+)?px\s*\)/ig, '')
+			.replace(/[\s,()]/g, '');
+		if (leftover !== '') {
+			return `@media 条件 \`${cond.trim()}\` 在 max-height 之外还带着 \`${leftover}\` —— T57/T69~T75/T85/T88 全按「该档覆盖一切更矮窗口」建模：条件多一个特征，某段窗口下这档根本不命中，生效值全算错，而所有断言照样绿`;
+		}
+	}
+	return null;
+});
+
+check('T88', `每个高度段：页脚生效钉底（margin-top:auto）、选择列表生效不被拉开（非 space-*、grow=0）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const css = stripComments(raw);
+	const blocks = cssMaxHeightMediaBlocks(css);
+	const baseFooter = cssBaseRule(css, '.olympia-onboarding-card-footer');
+	const baseChoices = cssBaseRule(css, '.olympia-onboarding-choices');
+	if (baseFooter === null) return `未找到 .olympia-onboarding-card-footer 的 base 规则`;
+	if (baseChoices === null) return `未找到 .olympia-onboarding-choices 的 base 规则`;
+	const heights = new Set([270]);
+	for (const b of blocks) heights.add(b.maxHeight);
+	// h 作为参数传入，别闭包捕获循环变量。
+	const eff = (sel, prop, base, h) => {
+		let v = base === null ? null : cssDeclValue(base, prop);
+		for (const b of blocks) {
+			if (b.maxHeight < h) continue;
+			const body = cssLastRule(b.body, sel);
+			if (body === null) continue;
+			const dv = cssDeclValue(body, prop);
+			if (dv !== null) v = dv;
+		}
+		return v;
+	};
+	for (const h of [...heights].sort((a, b) => a - b)) {
+		const mt = eff('.olympia-onboarding-card-footer', 'margin-top', baseFooter, h);
+		if (mt !== 'auto') {
+			return `视口高 ${h}px 段里页脚 margin-top 的**生效值**是 \`${mt}\` —— 不是 auto：页脚不钉在卡片底部，中间会空一大段，读起来像内容被挤掉了（多半是更窄的档把它改了回来，T72 只读自己的声明看不见）`;
+		}
+		const jc = eff('.olympia-onboarding-choices', 'justify-content', baseChoices, h);
+		if (jc !== null && /^space-/.test(jc.trim())) {
+			return `视口高 ${h}px 段里选择列表 justify-content 的**生效值**是 \`${jc}\` —— 多出的空白会把选项拉开（行间空几十 px，读起来像内容散架）`;
+		}
+		const flexRaw = eff('.olympia-onboarding-choices', 'flex', baseChoices, h);
+		const flex = flexRaw === null ? null : cssFlexTripleValue(flexRaw);
+		if (flex !== null && flex.grow !== 0) {
+			return `视口高 ${h}px 段里选择列表 flex 的**生效值**是 \`${flex.raw}\`（grow=${flex.grow}）—— 列表会去吃空白，把选项拉开`;
+		}
+	}
+	return null;
+});
+
+check('T100', `引导必须是三屏（评测环境 / 代码字号 / 练习目录），卡片数常量必须是 3`, () => {
+	const tl = load(F_ONB_TIMELINE);
+	const cards = load(F_ONB_CARDS);
+	if (tl === null) return `文件不存在（见上面的 MISSING ${F_ONB_TIMELINE}）`;
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const n = constValue(stripTsComments(tl), 'OLYMPIA_ONBOARDING_CARD_COUNT');
+	if (n === null) return `时间线里找不到 OLYMPIA_ONBOARDING_CARD_COUNT`;
+	if (n !== 3) {
+		return `OLYMPIA_ONBOARDING_CARD_COUNT = ${n} —— 引导是三屏（评测环境 / 代码字号 / 练习目录）；4 会多出一屏空白，2 会少一件事`;
+	}
+	const code = stripTsComments(cards);
+	for (const [id, factory] of [['compile', 'compileCard'], ['editor', 'editorCard'], ['practice', 'practiceCard']]) {
+		if (!new RegExp(`id\\s*:\\s*'${id}'`).test(code)) {
+			return `卡片描述符里没有 id: '${id}' —— 三屏分别是评测环境 / 代码字号 / 练习目录`;
+		}
+		if (!new RegExp(`private\\s+${factory}\\s*\\(`).test(code)) {
+			return `找不到 ${factory}() —— 三屏必须各有各的描述符`;
+		}
+	}
+	const dispatch = methodBodyDeep(code, /private\s+descriptorFor\s*\(/);
+	if (!dispatch) return `找不到 descriptorFor()`;
+	for (const factory of ['compileCard', 'editorCard', 'practiceCard']) {
+		if (!dispatch.includes(factory)) {
+			return `descriptorFor() 没有分派到 ${factory}() —— 有一张卡会拿到别人的内容`;
+		}
+	}
+	return null;
+});
+
+check('T101', `每张卡必须恰好一个竖排单选列表（role=radiogroup + 每个选项 role=radio + aria-checked），且列表只建一次`, () => {
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	if (!/setAttribute\(\s*'role'\s*,\s*'radiogroup'\s*\)/.test(code)) {
+		return `选择列表容器没有 role="radiogroup" —— 一个竖排单选列表必须在无障碍上是一组单选`;
+	}
+	if (!/setAttribute\(\s*'role'\s*,\s*'radio'\s*\)/.test(code)) {
+		return `选项没有 role="radio" —— 屏幕阅读器会把它读成普通按钮`;
+	}
+	if (!/setAttribute\(\s*'aria-checked'\s*,/.test(code)) {
+		return `选项没有 aria-checked —— 选中状态读不出来`;
+	}
+	const calls = (code.match(/this\.buildChoices\s*\(/g) || []).length;
+	if (calls !== 1) {
+		return `buildChoices() 被调用了 ${calls} 次 —— 选择列表只在构造期建一次，运行期重建就意味着用户手指正按着的那个按钮被整个换掉`;
+	}
+	return null;
+});
+
+check('T102', `旧结构必须彻底退役（预览面板 / 行区 / 胶囊 / 开关 / 命令行 / 目录树 / 代码样例 一个都不许再出现）`, () => {
+	const cards = load(F_ONB_CARDS);
+	const raw = load(F_ONB_CSS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const code = stripTsComments(cards);
+	const css = stripComments(raw);
+	const retired = [
+		'card-preview', 'card-body', 'olympia-onboarding-row', 'olympia-onboarding-code',
+		'olympia-onboarding-pipe', 'olympia-onboarding-flow', 'olympia-onboarding-directory',
+		'olympia-onboarding-toggle', 'olympia-onboarding-chip', 'olympia-onboarding-command',
+		'olympia-onboarding-caption'
+	];
+	for (const r of retired) {
+		if (code.includes(r)) return `卡片层还留着 \`${r}\` —— 旧结构必须彻底退役`;
+		if (css.includes(r)) return `CSS 里还留着 \`${r}\` —— 旧结构必须彻底退役`;
+	}
+	return null;
+});
+
+check('T103', `卡片面板必须是浅色纯色不透明（不许渐变 / 透明 / 玻璃 / 跟主题）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const css = stripComments(raw);
+	const card = cssRule(css, '.olympia-onboarding-card');
+	if (card === null) return `未找到 .olympia-onboarding-card 规则块`;
+	const bg = cssDeclValue(card, 'background');
+	if (bg === null) {
+		return `卡片没有声明 background —— 面板必须是不透明的纯色，不能透出底下的极光`;
+	}
+	if (/gradient/i.test(bg)) {
+		return `卡片的 background 是 \`${bg}\` —— 必须是纯色：极光本身在动，面板上再叠一层渐变就永远压着一层会动的底`;
+	}
+	if (/transparent/i.test(bg)) {
+		return `卡片的 background 是 \`${bg}\` —— 必须不透明`;
+	}
+	if (/var\(--vscode-/.test(bg)) {
+		return `卡片的 background 用了主题变量 \`${bg}\` —— 面板必须写死不跟主题（深色主题下浅底浅字会看不见）`;
+	}
+	if (!/^#[0-9A-Fa-f]{3,8}$/.test(bg.trim())) {
+		return `卡片的 background 是 \`${bg}\` —— 必须是固定的浅色纯色`;
+	}
+	if (/backdrop-filter/i.test(css)) {
+		return `CSS 里还有 backdrop-filter —— 玻璃面板在动态极光上永远压着一层会动的底`;
+	}
+	return null;
+});
+
+check('T104', `选择列表必须竖排单列（flex-direction: column，一行一个选项）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const css = stripComments(raw);
+	const body = cssRule(css, '.olympia-onboarding-choices');
+	if (body === null) return `未找到 .olympia-onboarding-choices 规则块`;
+	if (!/flex-direction\s*:\s*column/.test(body)) {
+		return `选择列表没有 flex-direction: column —— 一个竖排单选列表必须是一行一个选项`;
+	}
+	const choice = cssRule(css, '.olympia-onboarding-choice');
+	if (choice === null) return `未找到 .olympia-onboarding-choice 规则块`;
+	if (!/display\s*:\s*flex/.test(choice)) {
+		return `选项行不是 flex —— 圆点标记和文字没法并排`;
+	}
+	return null;
+});
+
+check('T105', `每日题量必须整条链路删干净（引导 / core 默认值 / 扩展设置项 / 扩展读值）`, () => {
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	if (/OLYMPIA_CONFIG_TRAIN_DAILY_GOAL/.test(code)) {
+		return `卡片层又引用了 OLYMPIA_CONFIG_TRAIN_DAILY_GOAL —— 每日题量已经整屏删掉了，它不该再出现在引导里`;
+	}
+	const cfg = load(F_ONB_CONFIG);
+	if (cfg === null) return `文件不存在（见上面的 MISSING ${F_ONB_CONFIG}）`;
+	if (/OLYMPIA_CONFIG_TRAIN_DAILY_GOAL|olympia\.train\.dailyGoal/.test(cfg)) {
+		return `core 配置表里还留着每日题量（olympia.train.dailyGoal）—— 整条链路都要删干净：引导不引用、core 不留默认值、扩展不注册设置项、扩展不读这个值`;
+	}
+	const pkg = load(F_ONB_EXT_PKG);
+	if (pkg === null) return `文件不存在（见上面的 MISSING ${F_ONB_EXT_PKG}）`;
+	if (/"olympia\.train\.dailyGoal"/.test(pkg)) {
+		return `扩展 package.json 里还注册着 olympia.train.dailyGoal —— 用户在设置页还能看见「每日题量」`;
+	}
+	const log = load(F_ONB_SOLVE_LOG);
+	if (log === null) return `文件不存在（见上面的 MISSING ${F_ONB_SOLVE_LOG}）`;
+	if (/dailyGoal/.test(log)) {
+		return `扩展还在读每日题量（dailyGoal）—— 面板那一行会继续显示「今日 x/N」`;
+	}
+	return null;
+});
+
+check('T106', `评测环境那张卡的选项必须由评测机表生成（不许在卡上写死 GCC 版本号）`, () => {
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	const body = methodBodyDeep(code, /private\s+compileCard\s*\(/);
+	if (body === null) return `找不到 compileCard()`;
+	if (!/OLYMPIA_JUDGE_TARGETS/.test(body)) {
+		return `评测环境那张卡的选项没有走 OLYMPIA_JUDGE_TARGETS —— 表里没有的版本号不许出现在卡上（用户会照着它对版本，对不上就以为装坏了）`;
+	}
+	if (/GCC\s*\d/.test(body)) {
+		return `compileCard() 里写死了 GCC 版本号 —— 必须来自评测机表`;
+	}
+	return null;
+});
+
+check('T107', `三张卡的标题与描述必须逐字钉死（文案是产品决定的，不许顺手改）`, () => {
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	const expect = [
+		['olympia.onboarding.compile.title', '选择评测环境'],
+		['olympia.onboarding.compile.description', '你写的代码会交给评测机编译和运行。选一个你平时比赛用的环境就够了。'],
+		['olympia.onboarding.editor.title', '调整代码字号'],
+		['olympia.onboarding.editor.description', '编辑器里代码显示多大，直接影响你长时间写代码时眼睛的舒适度。'],
+		['olympia.onboarding.practice.title', '选择练习目录'],
+		['olympia.onboarding.practice.description', '你的题目和解题代码会放在这个文件夹里。放哪都行，找得到就好。']
+	];
+	for (const [key, text] of expect) {
+		const anchor = `localize('${key}', "`;
+		const idx = code.indexOf(anchor);
+		if (idx < 0) {
+			return `找不到 localize('${key}') —— 三张卡的文案必须齐全`;
+		}
+		const start = idx + anchor.length;
+		const end = code.indexOf('"', start);
+		if (end < 0) {
+			return `localize('${key}') 的默认文案没有闭合`;
+		}
+		const got = code.slice(start, end);
+		if (got !== text) {
+			return `localize('${key}') 的默认文案是「${got}」，应为「${text}」`;
+		}
+	}
+	return null;
+});
+
+check('T108', `页脚的「还有几张」必须是算出来的（写死会在第二张卡上说错）`, () => {
+	const cards = load(F_ONB_CARDS);
+	if (cards === null) return `文件不存在（见上面的 MISSING ${F_ONB_CARDS}）`;
+	const code = stripTsComments(cards);
+	const body = methodBodyDeep(code, /private\s+buildFooter\s*\(/);
+	if (body === null) return `找不到 buildFooter()`;
+	if (!/OLYMPIA_ONBOARDING_CARD_COUNT\s*-\s*1\s*-\s*index/.test(body)) {
+		return `页脚的「还有几张」不是算出来的 —— 必须由 OLYMPIA_ONBOARDING_CARD_COUNT - 1 - index 推导，写死会在卡片数变化时说错`;
+	}
+	return null;
+});
+check('T109', `几何门不许把「不适用」当成通过：ok===null 必须被收集起来，并由每个场景的 L-applicable 判据钉死「不适用条数 == 0」`, () => {
+	/* raw-ok: .mjs 不在 load() 的剥注释清单里 */
+	const raw = loadRaw(F_GEOM);
+	if (raw === null) return `文件不存在：${F_GEOM}`;
+	const code = stripTsComments(raw);
+	// ① 「不适用」必须被收集，而不是被吞掉
+	if (!/ok\s*===\s*null/.test(code) || !/notApplicable\.push\(/.test(code)) {
+		return `几何门不再收集 ok===null 的判据 —— 「没测到」会静悄悄变成「通过」`;
+	}
+	// ② 每个场景都要有一条 L-applicable 判据，把本场景的不适用条数钉成 0
+	if (!/L-applicable/.test(code)) {
+		return `几何门里没有 L-applicable 判据 —— 没有任何东西要求「本场景全都测到了」`;
+	}
+	if (!/naHere\.length\s*===\s*0/.test(code)) {
+		return `L-applicable 判据没有把「本场景不适用条数 == 0」当成通过条件 —— 有判据没被测到也算绿`;
+	}
+	// ③ 汇总里必须点名「有 N 条判据不适用」，不能悄悄吞掉
+	if (!/notApplicable\.length/.test(code)) {
+		return `几何门汇总里不再报告「不适用」的条数 —— 漏测会没有任何提示`;
+	}
+	return null;
+});
+
+check('T110', `卡片必须绝对定位在轨道原点（position:absolute + left:0 + top:0）—— 少了定位，三张卡会竖着叠，横向轮播直接塌掉`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const css = stripComments(raw);
+	const base = cssBaseRule(css, '.olympia-onboarding-card');
+	if (base === null) return `未找到 .olympia-onboarding-card 的 base 规则`;
+	for (const [prop, want] of [['position', 'absolute'], ['left', '0'], ['top', '0']]) {
+		const v = cssDeclValue(base, prop);
+		if (v === null) {
+			return `卡片 base 规则里没有 ${prop} —— 卡片退回静态位置，3 张卡会在轨道里竖着叠（横向轮播塌掉）`;
+		}
+		if (v !== want) {
+			return `卡片 base 规则的 ${prop} 是 \`${v}\`，应该是 \`${want}\``;
+		}
+	}
+	return null;
+});
+
 // ===========================================================================
 // 汇总
 // ===========================================================================

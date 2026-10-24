@@ -41,6 +41,7 @@ const CHECK_SCRIPT = path.join(REPO, 'scripts', 'oneoff', 'check-olympia-start-p
 
 /** 体检脚本读到的所有文件（相对仓库根）。少一个就会 MISSING。 */
 const NEEDED = [
+	'scripts/oneoff/verify-onboarding-geometry.mjs',
 	'oss/src/vs/workbench/contrib/olympia/browser/olympiaWelcomeInput.ts',
 	'oss/src/vs/workbench/contrib/olympia/browser/olympiaWelcomePage.ts',
 	'oss/src/vs/workbench/contrib/olympia/browser/olympiaWelcome.contribution.ts',
@@ -60,7 +61,8 @@ const NEEDED = [
 	'oss/extensions/olympia-onboarding/package.json',
 	'oss/extensions/olympia-contest/package.json',
 	'oss/extensions/olympia-coach/package.json',
-	'oss/extensions/olympia-onboarding/src/ojTargets.ts'
+	'oss/extensions/olympia-onboarding/src/ojTargets.ts',
+	'oss/extensions/olympia-onboarding/src/solveLog.ts'
 ];
 
 const OL = 'oss/src/vs/workbench/contrib/olympia/browser/';
@@ -111,7 +113,129 @@ const OL = 'oss/src/vs/workbench/contrib/olympia/browser/';
 		return text.slice(0, braceIdx + 1) + newBody + text.slice(j - 1);
 	}
 
+/**
+	* 在指定 max-height 档的正文**末尾**（配对结束括号前）追加一条规则。
+	*  与 replaceInMaxHeightBlock 同样的定位方式；用于制造「同档内第二条同选择器规则」——
+	*  生效的是后一条，而 cssRule 首匹配的断言读的是前一条。 */
+	function appendRuleInMaxHeightBlock(text, maxHeight, rule) {
+		const re = new RegExp(String.raw`@media\s*\(max-height:\s*${maxHeight}px\)`);
+		const m = re.exec(text);
+		if (!m) {
+			return text;
+		}
+		const braceIdx = text.indexOf('{', m.index + m[0].length);
+		if (braceIdx < 0) {
+			return text;
+		}
+		let depth = 1;
+		let j = braceIdx + 1;
+		while (j < text.length && depth > 0) {
+			const ch = text[j];
+			if (ch === '{') {
+				depth++;
+			} else if (ch === '}') {
+				depth--;
+			}
+			j++;
+		}
+		return text.slice(0, j - 1) + rule + '\n' + text.slice(j - 1);
+	}
+
+	/**
+	 * 在**不在任何 @media 块内**的那条规则（base 规则）里替换第一处匹配。
+	 *
+	 * 为什么不能直接 t.replace('flex: 0 0 auto;', ...)：
+	 * CSS 里 `flex: 0 0 auto;` 有 8 处（card-header、card-icon、card-body、row-label、
+	 * toggle、flow-step kbd、card-footer、cta），裸 replace 只改**第一处**（card-header）——
+	 * 想打的是行区（card-body）时，裸 replace 改了另一个元素，断言当然不会红，
+	 * 而结论会变成「断言没用」，其实是被变异绕开了。
+	 *
+	 * 定位口径与体检脚本的 cssBaseRule 一致：选择器后面紧跟 `{`，
+	 * 且这个 `{` 不落在任何 @media 区间内。
+	 */
+	function replaceInBaseRule(text, selector, find, replace) {
+		const mediaRanges = [];
+		const mediaRe = /@media\b/gi;
+		let mm;
+		while ((mm = mediaRe.exec(text))) {
+			const bIdx = text.indexOf('{', mm.index + mm[0].length);
+			if (bIdx < 0) {
+				continue;
+			}
+			let depth = 1;
+			let k = bIdx + 1;
+			while (k < text.length && depth > 0) {
+				const ch = text[k];
+				if (ch === '{') {
+					depth++;
+				} else if (ch === '}') {
+					depth--;
+				}
+				k++;
+			}
+			mediaRanges.push([bIdx, k]);
+		}
+		let from = 0;
+		for (;;) {
+			const idx = text.indexOf(selector, from);
+			if (idx < 0) {
+				return text;
+			}
+			from = idx + selector.length;
+			const m = /^\s*\{/.exec(text.slice(from));
+			if (!m) {
+				continue;   // 是别的选择器的一部分
+			}
+			const braceIdx = from + m[0].length - 1;
+			if (mediaRanges.some(([s, e]) => braceIdx > s && braceIdx < e)) {
+				continue;   // 档内规则
+			}
+			let depth = 1;
+			let j = braceIdx + 1;
+			while (j < text.length && depth > 0) {
+				const ch = text[j];
+				if (ch === '{') {
+					depth++;
+				} else if (ch === '}') {
+					depth--;
+				}
+				j++;
+			}
+			const body = text.slice(braceIdx + 1, j - 1);
+			const k = body.indexOf(find);
+			if (k < 0) {
+				return text;
+			}
+			const newBody = body.slice(0, k) + replace + body.slice(k + find.length);
+			return text.slice(0, braceIdx + 1) + newBody + text.slice(j);
+		}
+	}
+
 const MUTATIONS = [
+
+	// ===========================================================================
+	// [已退役 2026-10-23] 三屏卡片改造后失去被测对象的变异
+	//
+	// 下面这些 ID 的**事实主体整族消失** —— 不是「断言变松了」，是**没有东西可测**：
+	//   M36 M41 M42 M43 M50 M51 M52 M53 M54 M69 M70 M71 M79 M80 M81 M82
+	//     异步取值行与它的重试任务（旧卡片结构里「读工程目录」那一整套）。
+	//     新卡片是「标题 + 描述 + 一个竖排单选列表」，没有异步取值行，也没有重试任务。
+	//   M119 M120 M121 M122
+	//     代码盒渐隐、光标定位、量高度量具 —— 全都挂在预览/代码样例上，已退役。
+	//   M123
+	//     预览面板里的编译管道图 —— 预览面板整块退役。
+	//   M129
+	//     handleViewportResize —— 预览/代码样例退役后卡片层不再自己量高度。
+	//   M151 M152
+	//     预览「溢出量」的双量具（面板界 / 内容界同测 + 空白量双轨容差）—— 预览面板整块退役，量具跟着没了；
+	//     对应的断言 T86 同期退役。新的对应物是 T84 的「选择列表三路裁切信号」。
+	//
+	// 处置：不改成「必须保持绿」（那等于给一条已经没人守的事实盖章），
+	//      也不留着空转（锚点没了 = 变异不生效 = 报告里永远一条 FAIL）。
+	//      直接退役；它们守过的事实由现在这些断言接手：
+	//      写入与重试 → T9 / T62 / T67；结构不可重建 → H30；
+	//      紧凑档的压缩边界 → T69 / T70 / T71 / T72 / T73 / T85 / T88。
+	// ===========================================================================
 	{
 		id: 'M1', expect: 'H1',
 		desc: 'overlay 改挂 document.body',
@@ -198,23 +322,24 @@ const MUTATIONS = [
 		mutate: t => t.replace('OLYMPIA_ONBOARDING_Z_INDEX = 2530', 'OLYMPIA_ONBOARDING_Z_INDEX = 2531')
 	},
 	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M13', expect: 'H21',
-		desc: '字号行不再用 configValue',
+		desc: '字号选项不再带 configValue —— 数字型配置（editor.fontSize）必须走 configValue，写字符串会被 schema 拒绝',
 		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace('options: [12, 13, 14, 16].map(value => ({ label: String(value), value: String(value), configValue: value }))',
-			'options: [12, 13, 14, 16].map(value => ({ label: String(value), value: String(value) }))')
+		mutate: t => t.replace('\t\t\t\tconfigValue: entry.size\n', '')
 	},
 	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M14', expect: 'H22',
-		desc: '光标动画开关不再用 toggleValues',
+		desc: '评测环境那张卡的选项写了非字符串 configValue —— 枚举型（string schema）配置写数字会被配置校验拒绝',
 		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace("toggleValues: { on: 'on', off: 'off' }", 'toggleValues: undefined')
+		mutate: t => t.replace('\t\t\t\tvalue: candidate.id\n', '\t\t\t\tvalue: candidate.id,\n\t\t\t\tconfigValue: 0\n')
 	},
 	{
 		id: 'M15', expect: 'H23',
 		desc: 'core 默认值与扩展不一致',
 		file: OL + 'olympiaOnboardingConfig.ts',
-		mutate: t => t.replace('[OLYMPIA_CONFIG_TRAIN_DAILY_GOAL]: 3', '[OLYMPIA_CONFIG_TRAIN_DAILY_GOAL]: 5')
+		mutate: t => t.replace('[OLYMPIA_CONFIG_TRAIN_RECORD_SOLVES]: true', '[OLYMPIA_CONFIG_TRAIN_RECORD_SOLVES]: false')
 	},
 	{
 		id: 'M16', expect: 'H25',
@@ -248,10 +373,11 @@ const MUTATIONS = [
 		mutate: t => t.replace('OLYMPIA_ONBOARDING_VIGNETTE_FALL_END = 2.25', 'OLYMPIA_ONBOARDING_VIGNETTE_FALL_END = 5.90')
 	},
 	{
-		id: 'M21', expect: 'H30',
-		desc: 'refresh 改回「每次都重建行区」',
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
+		id: 'M21', expect: 'T101',
+		desc: 'refresh 改回「每次都重建选择列表」—— 用户手指正按着的那个按钮会被整个换掉',
 		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace('this.updateRows(index, descriptor.rows);', "this.rebuildRows(index, descriptor.rows, '');")
+		mutate: t => t.replace('\trefresh(): void {\n\t\tthis.updateCardStates();\n', '\trefresh(): void {\n\t\tthis.buildChoices(this.descriptorFor(0));\n\t\tthis.updateCardStates();\n')
 	},
 	{
 		id: 'M22', expect: 'H31',
@@ -332,10 +458,11 @@ const MUTATIONS = [
 		mutate: t => t.replace('olympiaWelcomeReady.isFailed', 'olympiaWelcomeReady.isReady')
 	},
 	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M32', expect: 'T4',
-		desc: '点击后只刷预览块（派生值行停在旧文本上：预览新、卡片旧）',
+		desc: '点选项后不再刷新整卡（只改自己那一个选项）—— 其他状态（比如「未保存」标记）不跟着更新',
 		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace('\n\t\t\t\t\t\t\tthis.refresh();', '\n\t\t\t\t\t\t\tthis.refreshPreview();')
+		mutate: t => t.replace('\t\t\t\tthis.refresh();\n', '')
 	},
 	{
 		id: 'M33', expect: 'T5',
@@ -362,12 +489,6 @@ const MUTATIONS = [
 	// 自己的变异，那就是假断言 —— 和当初 M9 打在注释上导致 H13 假绿是同一类错误。
 	// ---------------------------------------------------------------------------
 	{
-		id: 'M36', expect: 'T7',
-		desc: '异步取值行的「已落地就跳过」闸门被去掉（每次刷新都打回占位 + 重发请求）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace('if (binding.valueResolved || binding.valueFailed) {', 'if (false) {')
-	},
-	{
 		id: 'M37', expect: 'T8',
 		desc: '「扩展还没注册」那条路径不再消耗重试额度（永远重试下去）',
 		file: OL + 'olympiaOnboardingCards.ts',
@@ -376,13 +497,11 @@ const MUTATIONS = [
 			'abandonWrite(key, `配置 ${key} 尚未注册')
 	},
 	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M38', expect: 'T9',
-		desc: '放弃写入后不再刷新界面（chip 高亮继续撒谎：显示用户点的，配置里其实没写）',
+		desc: '放弃写入后不再把界面拉回真值 —— 选中的高亮还停在用户刚点的那个选项上，而配置里其实什么都没写',
 		file: OL + 'olympiaOnboardingCards.ts',
-		// 锚点带上 `return true;` 才唯一 —— `refresh()` 里也有同样两行。
-		mutate: t => t.replace(
-			'\t\tthis.refreshRowStates();\n\t\tthis.refreshPreview();\n\t\treturn true;',
-			'\t\treturn true;')
+		mutate: t => t.replace('\t\tthis.writingKeys.delete(key);\n\t\tthis.updateCardStates();\n', '\t\tthis.writingKeys.delete(key);\n')
 	},
 	{
 		id: 'M39', expect: 'T10',
@@ -399,50 +518,18 @@ const MUTATIONS = [
 			"this.enterStart = null;\n\t\tthis.rootElement.classList.add('olympia-onboarding-fading');")
 	},
 	{
-		id: 'M41', expect: 'T12',
-		desc: '去掉「请求在途就跳过」的闸门（扩展注册配置项的那段时间里 getRecentlyOpened() 被连着发好几次）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'\t\t\t\t\tif (binding.valuePending) {\n\t\t\t\t\t\tbreak;\n\t\t\t\t\t}',
-			'\t\t\t\t\t// (gate removed)')
-	},
-	{
-		id: 'M42', expect: 'T12',
-		desc: '取值成功后先放掉「在途」标记再核对身份（更新的那次请求失去保护，会被又一轮 refresh 顶掉）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'\t\t\t\t\t\tif (binding.valueToken !== token || binding.valueElement !== value) {\n\t\t\t\t\t\t\treturn;\n\t\t\t\t\t\t}\n\t\t\t\t\t\tbinding.valuePending = false;',
-			'\t\t\t\t\t\tbinding.valuePending = false;\n\t\t\t\t\t\tif (binding.valueToken !== token || binding.valueElement !== value) {\n\t\t\t\t\t\t\treturn;\n\t\t\t\t\t\t}')
-	},
-	{
-		id: 'M43', expect: 'T12',
-		desc: '发请求之前不置「在途」标记（闸门永远打不开，重复请求照旧）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace('binding.valuePending = true;', '// (not set)')
-	},
-	// ---------------------------------------------------------------------------
-	// T-026 复核之后新增的变异。
-	//
-	// 上一轮 Qoder 复核指出：断言光「写对」不够，还得**看得见**自己防的回归。
-	// 这批变异对应本轮加固的四处：H30（行区重建的全文件约束）、
-	// T10（只有定时器能消耗额度）、T13/T14（写入在途也消耗额度、放弃时摘键）、
-	// T15/T16（异步取值的失败必须真失败、必须有界重试）。
-	// ---------------------------------------------------------------------------
-	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M44', expect: 'H30',
-		desc: '在 rebuildRows() 之外再加一处行区整片重建（旧断言只盯 refresh/refreshRowStates 两个函数名，看不见新入口）',
+		desc: 'refresh 里多一处整片重建选择列表（replaceChildren）—— 只盯某个函数名就看不见新入口',
 		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'\t\t\tthis.previewElements[index].replaceChildren(...descriptor.preview());',
-			'\t\t\tthis.previewElements[index].replaceChildren(...descriptor.preview());\n\t\t\tthis.bodyElements[index].replaceChildren();')
+		mutate: t => t.replace('\trefresh(): void {\n\t\tthis.updateCardStates();\n', '\trefresh(): void {\n\t\tthis.cardElements.forEach(element => element.replaceChildren());\n\t\tthis.updateCardStates();\n')
 	},
 	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M45', expect: 'H30',
-		desc: '行区改用 innerHTML 重建（整棵子树重新解析 = 用户按着的按钮被换掉）',
+		desc: 'refresh 里用 innerHTML 整片重建（整棵子树重新解析 = 用户按着的按钮被换掉）',
 		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'\t\tthis.bodyElements[index].replaceChildren(...built.elements);',
-			'\t\tthis.bodyElements[index].innerHTML = \'\';')
+		mutate: t => t.replace('\trefresh(): void {\n\t\tthis.updateCardStates();\n', '\trefresh(): void {\n\t\tthis.cardElements.forEach(element => { element.innerHTML = \'\'; });\n\t\tthis.updateCardStates();\n')
 	},
 	{
 		id: 'M46', expect: 'T10',
@@ -469,44 +556,6 @@ const MUTATIONS = [
 		desc: '放弃写入时不把键从 writingKeys 里摘掉（卡死的写入永久挡住用户后来的点击）',
 		file: OL + 'olympiaOnboardingCards.ts',
 		mutate: t => t.replace('\n\t\tthis.writingKeys.delete(key);', '\n\t\t// (不摘键)')
-	},
-	{
-		id: 'M50', expect: 'T15',
-		desc: '把「取不到」重新吞成「还没有」（失败被伪装成成功，这一行整个生命周期冻在假值上）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'\t\tconst recent = await this.workspacesService.getRecentlyOpened();',
-			'\t\tlet recent;\n\t\ttry {\n\t\t\trecent = await this.workspacesService.getRecentlyOpened();\n\t\t} catch {\n\t\t\treturn empty;\n\t\t}')
-	},
-	{
-		id: 'M51', expect: 'T15',
-		desc: '取值失败时置 valueResolved（把失败当成「取到了值」= 冻住整行的元凶）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace('\t\t\t\t\t\t\tbinding.valueFailed = true;', '\t\t\t\t\t\t\tbinding.valueResolved = true;')
-	},
-	{
-		id: 'M52', expect: 'T16',
-		desc: '取值失败后不再重试（存储服务启动早期抽风一次就宣判「没有工程」）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			/\t\t\t\t\t\tthis\.scheduleValueRetry\(\(\) => \{[\s\S]*?\t\t\t\t\t\t\}\);/,
-			'\t\t\t\t\t\t// (不重试)')
-	},
-	{
-		id: 'M53', expect: 'T16',
-		desc: '重试上限判定改成永假（永远到不了上限 = 永远停在「读取中…」骗用户）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'if (attempts >= OlympiaOnboardingCards.VALUE_RETRY_LIMIT) {',
-			'if (attempts >= 999999) {')
-	},
-	{
-		id: 'M54', expect: 'T15',
-		desc: '异步取值失败不留痕（console.warn 降级成 console.log）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'console.warn(`[Olympia] 取「最近工程」失败（第 ${attempts} 次）：${error}`);',
-			'console.log(`[Olympia] 取「最近工程」失败（第 ${attempts} 次）：${error}`);')
 	},
 	{
 		id: 'M55', expect: 'T17',
@@ -621,52 +670,25 @@ const MUTATIONS = [
 			'return offset * (extent + band) + extent / 2 - band / 2;')
 	},
 	{
-		id: 'M69', expect: 'T28',
-		desc: '异步取值失败后立刻放掉「在途」标记（800ms 窗口里任何一次 refresh 都会重发请求并提前烧光重试预算）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'if (attempts >= OlympiaOnboardingCards.VALUE_RETRY_LIMIT) {',
-			'binding.valuePending = false;\n\t\t\t\t\t\tif (attempts >= OlympiaOnboardingCards.VALUE_RETRY_LIMIT) {')
-	},
-	{
-		id: 'M70', expect: 'T28',
-		desc: '重试任务里不放掉「在途」标记（第 ③ 道闸门把自己挡住，重试永远起不了跑）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'binding.valuePending = false;\n\t\t\t\t\t\t\tthis.updateRowState(row, binding);',
-			'this.updateRowState(row, binding);')
-	},
-	{
-		id: 'M71', expect: 'T29',
-		desc: '重试任务不再核对代号（更新的请求接管之后，旧的重试会把这一行一起刷掉）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'if (binding.valueToken !== token) {',
-			'if (false) {')
-	},
-	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M72', expect: 'T30',
-		desc: '预览区在进入动画期间不再冻结（动画中整片 replaceChildren = 一帧硬切）',
+		desc: '进入动画期间不再冻结状态 —— 卡片正在化成粒子的时候改选中态也是一次可见的跳变',
 		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'private refreshPreview(): void {\n\t\tif (this.entering) {',
-			'private refreshPreview(): void {\n\t\tif (false) {')
+		mutate: t => t.replace('\t\t// 状态都改不得 —— 选中态一变也是一次可见的跳变。\n\t\tif (this.entering) {\n\t\t\treturn;\n\t\t}\n', '\t\t// 状态都改不得 —— 选中态一变也是一次可见的跳变。\n')
 	},
 	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M73', expect: 'T30',
-		desc: '父层不再通知卡片层「进入动画开始」（冻结闸门永远不会被打开）',
+		desc: '父层不再通知卡片层「进入动画开始」—— 冻结闸门永远不会被打开',
 		file: OL + 'olympiaOnboarding.ts',
-		mutate: t => t.replace(
-			'\n\t\tthis.cards.beginEnterAnimation();\n',
-			'')
+		mutate: t => t.replace('\t\tthis.cards.beginEnterAnimation();\n', '')
 	},
 	{
-		id: 'M74', expect: 'T31',
-		desc: '放弃写入时改成重建行区（触发递归写入，动画期还是一帧硬切）',
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
+		id: 'M74', expect: 'H30',
+		desc: '放弃写入的收场路径改成整片重建选择列表（replaceChildren）',
 		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'this.writingKeys.delete(key);\n\t\tthis.refreshRowStates();',
-			'this.writingKeys.delete(key);\n\t\tthis.rebuildRows(0, [], "");')
+		mutate: t => t.replace('\t\tthis.writingKeys.delete(key);\n\t\tthis.updateCardStates();\n', '\t\tthis.writingKeys.delete(key);\n\t\tthis.cardElements.forEach(element => element.replaceChildren());\n\t\tthis.updateCardStates();\n')
 	},
 	{
 		id: 'M75', expect: 'T32',
@@ -701,50 +723,11 @@ const MUTATIONS = [
 			'this.pendingWrites.delete(key);\n\t\t\t\tthis.lastIntended.delete(key);\n\t\t\t\tthis.pendingWriteRounds.delete(key);')
 	},
 	{
-		id: 'M79', expect: 'T36',
-		desc: '定时器句柄在执行队列任务之后才清空（任务里再排一次重试时没人触发，那条链断了）',
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
+		id: 'M83', expect: 'H30',
+		desc: '放弃写入的收场路径改成整片清空选择列表（innerHTML 赋值也是整片重建 —— 只列固定 API 名的黑名单会漏掉它）',
 		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'this.valueRetryTimer = null;\n\t\t\tconst queue = this.valueRetryQueue.splice(0, this.valueRetryQueue.length);\n\t\t\tfor (const item of queue) {\n\t\t\t\titem();\n\t\t\t}',
-			'const queue = this.valueRetryQueue.splice(0, this.valueRetryQueue.length);\n\t\t\tfor (const item of queue) {\n\t\t\t\titem();\n\t\t\t}\n\t\t\tthis.valueRetryTimer = null;')
-	},
-	{
-		// T-029 Q7：T28 原来只断言「不许在终态/重试之外放标记」，
-		// 把终态里那一次删掉它照样绿 —— 真空通过。这条补上那个缺口。
-		id: 'M80', expect: 'T28',
-		desc: '终态只置上 valueFailed 却没放掉「在途」标记（账面上这一行永远是在途；今天靠 valueFailed 短路兜着，那个短路哪天没了就露馅）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'\t\t\t\t\t\t\tbinding.valuePending = false;\n\t\t\t\t\t\t\tbinding.valueFailed = true;',
-			'\t\t\t\t\t\t\tbinding.valueFailed = true;')
-	},
-	{
-		// 「不该变红」型变异：证明 T29 判的是**语义**（有没有核对代号），
-		// 而不是某一种写法（两个操作数的顺序）。
-		id: 'M81', expectGreen: ['T29'],
-		desc: '重试任务的代号核对换成等价写法 token !== binding.valueToken —— T29 不该判红',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'\t\t\t\t\t\t\tif (binding.valueToken !== token) {\n\t\t\t\t\t\t\t\t// 已经有更新的一次请求接管了这一行',
-			'\t\t\t\t\t\t\tif (token !== binding.valueToken) {\n\t\t\t\t\t\t\t\t// 已经有更新的一次请求接管了这一行')
-	},
-	{
-		id: 'M82', expect: 'T29',
-		desc: '重试任务的代号核对把「不等」写成「相等」（更新的请求接管之后，旧的重试照样会动这一行）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'\t\t\t\t\t\t\tif (binding.valueToken !== token) {\n\t\t\t\t\t\t\t\t// 已经有更新的一次请求接管了这一行',
-			'\t\t\t\t\t\t\tif (binding.valueToken === token) {\n\t\t\t\t\t\t\t\t// 已经有更新的一次请求接管了这一行')
-	},
-	{
-		// T-029 Q7：T31 原来只黑名单几个固定 API 名，
-		// 换用别的整片重建 API 就漏掉了。这条用 innerHTML 赋值来证明扩表有牙。
-		id: 'M83', expect: 'T31',
-		desc: '放弃写入的收场路径改成整片清空行区（innerHTML 赋值也是整片重建 —— 只列固定 API 名的黑名单会漏掉它）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			"\t\tthis.writingKeys.delete(key);\n\t\tthis.refreshRowStates();",
-			"\t\tthis.writingKeys.delete(key);\n\t\tthis.rowArea.innerHTML = '';\n\t\tthis.refreshRowStates();")
+		mutate: t => t.replace('\t\tthis.writingKeys.delete(key);\n\t\tthis.updateCardStates();\n', '\t\tthis.writingKeys.delete(key);\n\t\tthis.cardElements.forEach(element => { element.innerHTML = \'\'; });\n\t\tthis.updateCardStates();\n')
 	},
 	{
 		// T-030 Q3：粒子起飞必须晚于卡片消散结束 —— 两者重叠就是重影。
@@ -847,9 +830,13 @@ const MUTATIONS = [
 		id: 'M95', expect: 'T48',
 		desc: '越界粒子的 local 被夹进 [0,1]（窗口一关粒子永远停在起点）',
 		file: OL + 'olympiaOnboarding.ts',
+		// 锚点跟着 renderParticles() 的实现走：粒子物理重写之后，
+		// 「算 local」这一行从 const 变成了可重写的形式，锚点必须跟着更新，
+		// 否则这条变异会「锚点没匹配上」而被判失败 —— 那是测试自身坏了，
+		// 不是被测代码坏了。
 		mutate: t => t.replace(
-			'\t\t\tconst eased = olympiaOnboardingEaseOutCubic(local);',
-			'\t\t\tconst clamped = olympiaOnboardingClamp(local, 0, 1);\n\t\t\tconst eased = olympiaOnboardingEaseOutCubic(clamped);')
+			'\t\t\tconst local = (seconds - particle.delay) / particle.duration;',
+			'\t\t\tlet local = (seconds - particle.delay) / particle.duration;\n\t\t\tlocal = olympiaOnboardingClamp(local, 0, 1);')
 	},
 	{
 		id: 'M96', expect: 'T49',
@@ -985,20 +972,11 @@ const MUTATIONS = [
 			'const elapsedMs = timestamp - this.lastTimestamp;\n\t\tconst delta = this.lastTimestamp === 0 ? 0 : Math.min(0.05, Math.max(0, elapsedMs * 0.001));')
 	},
 	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M128', expect: 'T62',
-		desc: '把「未保存」标记的刷新挪到 switch 之后（有提前 return 的行就刷不到）',
+		desc: '一次状态刷新只刷选中态、不刷「未保存」标记 —— 只刷一个界面就在撒谎',
 		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'\t\tthis.updateRowUnsavedState(row, binding);\n\t\tswitch (row.kind) {',
-			'\t\tswitch (row.kind) {')
-	},
-	{
-		id: 'M129', expect: 'T63',
-		desc: '删掉 handleViewportResize 里的 entering 守卫（进入动画期间还在动布局）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			/\t\tif \(this\.entering\) \{\n\t\t\treturn;\n\t\t\}\n(\t\tthis\.placeCodeCarets\(\);)/,
-			'$1')
+		mutate: t => t.replace('\t\t\tthis.updateCardUnsavedState(descriptor, binding);\n', '')
 	},
 	{
 		id: 'M130', expect: 'T64',
@@ -1007,12 +985,11 @@ const MUTATIONS = [
 		mutate: t => t.replace('"跳过剩余引导"', '"跳过引导"')
 	},
 	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M131', expect: 'T65',
-		desc: '卡片层又用选择器取元素了（预览区整片重建，回头找会找到 detached 的旧元素）',
+		desc: '卡片层又用选择器取元素了 —— 元素被替换后回头找很容易找到 detached 的旧元素',
 		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'\tprivate placeCodeCarets(): void {',
-			'\tprivate placeCodeCarets(): void {\n\t\tconst stale = document.querySelector(\'.olympia-onboarding-code\');')
+		mutate: t => t.replace('\t\t\tconst current = this.readConfig(descriptor.configurationKey);\n', '\t\t\tconst current = this.readConfig(descriptor.configurationKey);\n\t\t\tvoid this.element.querySelector(\'.olympia-onboarding-card\');\n')
 	},
 	{
 		id: 'M132', expect: 'T61',
@@ -1023,12 +1000,11 @@ const MUTATIONS = [
 			'')
 	},
 	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M133', expect: 'T66',
-		desc: 'CSS 里删掉「未保存的行把标签变红」的规则（只剩一个不显眼的标记）',
+		desc: 'CSS 里删掉「未保存标记用错误色」的规则 —— 只有一个不显眼的标记等于没告诉用户',
 		file: OL + 'media/olympiaOnboarding.css',
-		mutate: t => t.replace(
-			/\.olympia-onboarding-row-unsaved \.olympia-onboarding-row-label \{[^}]*\}/,
-			'.olympia-onboarding-row-unsaved .olympia-onboarding-row-label { }')
+		mutate: t => t.replace('\tcolor: #D64545;\n', '')
 	},
 	{
 		id: 'M134', expect: 'T61',
@@ -1039,12 +1015,13 @@ const MUTATIONS = [
 			' localize(\'olympia.onboarding.row.unsaved\', "")')
 	},
 	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M135', expect: 'T67',
-		desc: '状态位挂到行容器上而不是行标签里（选项组会被挤开一截）',
+		desc: '未保存标记挂到选项上而不是卡片上 —— 选项列表一旦被替换，提示会跟着消失',
 		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace(
-			'\t\t\tlabel.appendChild(status);',
-			'\t\t\tcontainer.appendChild(status);')
+		mutate: t => t
+			.replace('\t\t\tbinding.element.classList.add(\'olympia-onboarding-card-has-unsaved\');\n', '\t\t\tbinding.choices[0].element.classList.add(\'olympia-onboarding-choice-has-unsaved\');\n')
+			.replace('\t\tbinding.element.classList.remove(\'olympia-onboarding-card-has-unsaved\');\n', '\t\tbinding.choices[0].element.classList.remove(\'olympia-onboarding-choice-has-unsaved\');\n')
 	},
 	{
 		id: 'M136', expect: 'T68',
@@ -1085,46 +1062,18 @@ const MUTATIONS = [
 		mutate: t => t.replace(/transform:\s*translate\(-50%,\s*-50%\s*\);/, 'margin-left: -176px; margin-top: -215px;')
 	},
 	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M117', expect: 'T56',
-		desc: '轨道高度写死 472px（矮窗口里上下都被裁）',
+		desc: '轨道高度写死 432px（不再夹在视口内）—— 矮窗口里上下都被裁',
 		file: OL + 'media/olympiaOnboarding.css',
-		mutate: t => t.replace(/height:\s*min\(472px,\s*calc\(100vh\s*-\s*16px\)\s*\);/, 'height: 472px;')
+		mutate: t => t.replace('\theight: min(432px, calc(100vh - 16px));', '\theight: 432px;')
 	},
 	{
-		id: 'M118', expect: 'T57',
-		desc: '紧凑模式整体不再隐藏预览块（所有档的 display:none 都删掉）',
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
+		id: 'M118', expect: 'T71',
+		desc: '没有一档让选项副说明让位 —— 主标题（选哪个）和副说明（什么意思）都留着，四档字号就只是整体缩小',
 		file: OL + 'media/olympiaOnboarding.css',
-		mutate: t => t.replace(/\.olympia-onboarding-card-preview\s*\{[^}]*?display:\s*none;/g, '.olympia-onboarding-card-preview { display: block;')
-	},
-	{
-		id: 'M119', expect: 'T58',
-		desc: '代码盒去掉底部渐隐（裁切处变成硬边，像代码断在一半）',
-		file: OL + 'media/olympiaOnboarding.css',
-		mutate: t => t.replace(/mask-image:\s*linear-gradient\(180deg,[^;]*\)/, '')
-	},
-	{
-		id: 'M120', expect: 'T59',
-		desc: '窗口尺寸变化时不再重算光标位置（窗口一变光标就停在看不见的行上）',
-		file: OL + 'olympiaOnboarding.ts',
-		mutate: t => t.replace('this.cards.handleViewportResize();', '')
-	},
-	{
-		id: 'M121', expect: 'T59',
-		desc: '量可视高度改成 offsetHeight（含边框，判不准哪一行看得见）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace('code.clientHeight', 'code.offsetHeight')
-	},
-	{
-		id: 'M122', expect: 'T59',
-		desc: '量内容总高改成 offsetHeight（分不清「放得下」和「被裁了」）',
-		file: OL + 'olympiaOnboardingCards.ts',
-		mutate: t => t.replace('code.scrollHeight', 'code.offsetHeight')
-	},
-	{
-		id: 'M123', expect: 'T60',
-		desc: '预览里的编译管道图不撑开剩余空间（内容又吊在面板顶部）',
-		file: OL + 'media/olympiaOnboarding.css',
-		mutate: t => t.replace(/\.olympia-onboarding-pipe\s*(\{[^}]*?)flex:\s*1 1 auto;/, '.olympia-onboarding-pipe $1')
+		mutate: t => t.replace('\t.olympia-onboarding-choice-description {\n\t\tdisplay: none;\n\t}\n', '\t.olympia-onboarding-choice-description {\n\t\tfont-size: 12px;\n\t}\n')
 	},
 	{
 		id: 'M124', expectGreen: ['T53'],
@@ -1144,12 +1093,12 @@ const MUTATIONS = [
 		file: OL + 'media/olympiaOnboarding.css',
 		mutate: t => t.replace('@media (max-height: 320px)', '@media (max-height: 200px)')
 	},
-
 	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M127', expect: 'T56',
 		desc: '轨道高度按视口宽度夹而不是视口高度（vh 写成 vw，矮窗口里卡片照样顶出去）',
 		file: OL + 'media/olympiaOnboarding.css',
-		mutate: t => t.replace('height: min(472px, calc(100vh - 16px));', 'height: min(472px, calc(100vw - 16px));')
+		mutate: t => t.replace('calc(100vh - 16px)', 'calc(100vw - 16px)')
 	},
 	{
 		id: 'M137', expect: 'T69',
@@ -1158,28 +1107,32 @@ const MUTATIONS = [
 		mutate: t => replaceInMaxHeightBlock(t, 420, 'flex: 0 0 auto;', 'flex: 0 1 auto;')
 	},
 	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M138', expect: 'T70',
-		desc: '矮窗口档给行区加 min-height: 0（等于允许 flex 把行区压到内容高度以下）',
+		desc: '矮窗口档给选择列表加 min-height: 0（等于允许 flex 把它压到内容高度以下）',
 		file: OL + 'media/olympiaOnboarding.css',
-		mutate: t => replaceInMaxHeightBlock(t, 420, 'flex: 0 0 auto;', 'flex: 0 0 auto;\n\t\tmin-height: 0;')
+		mutate: t => t.replace('\t.olympia-onboarding-choices {\n\t\tmargin-top: 12px;\n', '\t.olympia-onboarding-choices {\n\t\tmin-height: 0;\n\t\tmargin-top: 12px;\n')
 	},
 	{
-		id: 'M139', expect: 'T71',
-		desc: '预览让位档的断点从 385px 改成 200px（断点乱跑，预览在 386~420px 区间又被切成一半）',
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
+		id: 'M139', expect: 'T74',
+		desc: '让位档的断点从 385px 改成 200px —— 档序乱跑，386~420px 区间既没进让位档也没进更紧的档',
 		file: OL + 'media/olympiaOnboarding.css',
-		mutate: t => t.replace('@media (max-height: 385px)', '@media (max-height: 200px)')
+		mutate: t => t.replace('@media (max-height: 385px) {', '@media (max-height: 200px) {')
 	},
 	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M140', expect: 'T72',
-		desc: '预览让位档不再把页脚钉底（margin-top: auto 删掉，中间空一大段）',
+		desc: '让位档不再把页脚钉底（margin-top: auto 删掉）—— 中间空一大段，读起来像内容被挤掉了',
 		file: OL + 'media/olympiaOnboarding.css',
-		mutate: t => replaceInMaxHeightBlock(t, 385, 'margin-top: auto;', '')
+		mutate: t => t.replace('\t.olympia-onboarding-card-footer {\n\t\tpadding-top: 8px;\n\t}\n', '\t.olympia-onboarding-card-footer {\n\t\tpadding-top: 8px;\n\t\tmargin-top: 0;\n\t}\n')
 	},
 	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
 		id: 'M141', expect: 'T73',
-		desc: '预览让位档把配置行拉开（给行区加 justify-content: space-between）',
+		desc: '让位档把选择列表拉开（justify-content: space-between）—— 行间空几十 px，读起来像内容散架',
 		file: OL + 'media/olympiaOnboarding.css',
-		mutate: t => replaceInMaxHeightBlock(t, 385, '.olympia-onboarding-card-preview {', '.olympia-onboarding-card-body {\n\t\tjustify-content: space-between;\n\t}\n\n\t.olympia-onboarding-card-preview {')
+		mutate: t => t.replace('\t.olympia-onboarding-choices {\n\t\tmargin-top: 10px;\n', '\t.olympia-onboarding-choices {\n\t\tmargin-top: 10px;\n\t\tjustify-content: space-between;\n')
 	},
 	{
 		id: 'M142', expect: 'T74',
@@ -1219,6 +1172,197 @@ const MUTATIONS = [
 		file: OL + 'media/olympiaOnboarding.css',
 		mutate: t => t.replace('@media (max-height: 320px) {', '@media screen and (max-height: 320px) {')
 	},
+	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
+		id: 'M145', expect: 'T83',
+		desc: '默认档的选择列表改回可压缩（base 规则 flex: 0 0 auto → 0 1 auto）—— 421~487px 高的窗口里被压掉的是选项行',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace('.olympia-onboarding-choices {\n\tdisplay: flex;\n\tflex-direction: column;\n\tflex: 0 0 auto;\n', '.olympia-onboarding-choices {\n\tdisplay: flex;\n\tflex-direction: column;\n\tflex: 0 1 auto;\n')
+	},
+	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
+		id: 'M146', expect: 'T83',
+		desc: '默认档的选择列表根本不声明 flex（base 规则里删掉）—— 回落 flex:initial（0 1 auto），列表可被压缩',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace('.olympia-onboarding-choices {\n\tdisplay: flex;\n\tflex-direction: column;\n\tflex: 0 0 auto;\n', '.olympia-onboarding-choices {\n\tdisplay: flex;\n\tflex-direction: column;\n')
+	},
+	{
+		id: 'M147', expect: 'T84',
+		desc: '几何门把「选项下沿越界」判据架空（if (worst.overflowChoices > choicesClipTol) → if (false)）—— 信号②没了牙齿，量具还在但不测任何东西',
+		file: 'scripts/oneoff/verify-onboarding-geometry.mjs',
+		mutate: t => t.replace('if (worst.overflowChoices > TH.card.choicesClipTol) {', 'if (false) {')
+	},
+	{
+		id: 'M148', expect: 'T84',
+		desc: '几何门把选择列表的内容高换成可见高（scrollH: list.scrollHeight → list.clientHeight）—— scrollH === clientH 恒成立，信号①恒绿',
+		file: 'scripts/oneoff/verify-onboarding-geometry.mjs',
+		mutate: t => t.replace('scrollH: list.scrollHeight,', 'scrollH: list.clientHeight,')
+	},
+	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
+		id: 'M149', expect: 'T85',
+		desc: '420 档末尾追加第二条选择列表规则（flex: 0 1 auto）—— T69 读首匹配仍是 0 0 auto（绿），生效值却是 0 1 auto：「断言读声明值、实际生效值被档内后者覆盖」的最小复现',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => appendRuleInMaxHeightBlock(t, 420, '\n\t.olympia-onboarding-choices {\n\t\tflex: 0 1 auto;\n\t}')
+	},
+	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
+		id: 'M150', expect: 'T85',
+		desc: '让位档起选择列表生效 grow=1（385 档追加 flex: 1 0 auto）—— 列表去吃空白，把选项拉开',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => appendRuleInMaxHeightBlock(t, 385, '\n\t.olympia-onboarding-choices {\n\t\tflex: 1 0 auto;\n\t}')
+	},
+	{
+		id: 'M153', expect: 'T87',
+		desc: '420 档的媒体条件混进 min-height（@media (min-height: 386px) and (max-height: 420px)）—— 该档在 386px 以下根本不命中，整套生效值断言的覆盖模型高估',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace('@media (max-height: 420px)', '@media (min-height: 386px) and (max-height: 420px)')
+	},
+	{
+		id: 'M154', expect: 'T87',
+		desc: '420 档的媒体条件用逗号并列（@media (max-height: 420px), (max-width: 900px)）—— 窄宽窗也命中该档，覆盖模型完全失真',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace('@media (max-height: 420px)', '@media (max-height: 420px), (max-width: 900px)')
+	},
+	{
+		// 2026-10-23 三屏卡片改造：锚点跟着新结构走（事实不变，位置变了）
+		id: 'M155', expect: 'T88',
+		desc: '更窄的档把选择列表拉开（320 档追加 justify-content: space-between）—— T73 读 385 档自己的声明（绿），270~320px 段生效值被拉开',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => appendRuleInMaxHeightBlock(t, 320, '\n\t.olympia-onboarding-choices {\n\t\tjustify-content: space-between;\n\t}')
+	},
+	{
+		id: 'M156', expect: 'T88',
+		desc: '更窄的档把页脚改回不钉底（320 档追加 margin-top: 0）—— 270~320px 段页脚浮起来，T72 读让位档自己的声明看不见',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => appendRuleInMaxHeightBlock(t, 320, '\n\t.olympia-onboarding-card-footer {\n\t\tmargin-top: 0;\n\t}')
+	},
+	{
+		// 2026-10-23 新增：三屏卡片的新事实（T100-T108 一族）原来一条变异都没有
+		id: 'M157', expect: 'T100',
+		desc: '引导改成四屏（卡片数常量从 3 改成 4）',
+		file: OL + 'olympiaOnboardingTimeline.ts',
+		mutate: t => t.replace('export const OLYMPIA_ONBOARDING_CARD_COUNT = 3;', 'export const OLYMPIA_ONBOARDING_CARD_COUNT = 4;')
+	},
+	{
+		// 2026-10-23 新增：三屏卡片的新事实（T100-T108 一族）原来一条变异都没有
+		id: 'M158', expect: 'T101',
+		desc: '选择列表容器去掉 role="radiogroup" —— 一个竖排单选列表必须在无障碍上是一组单选',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('\t\tcontainer.setAttribute(\'role\', \'radiogroup\');\n', '')
+	},
+	{
+		// 2026-10-23 新增：三屏卡片的新事实（T100-T108 一族）原来一条变异都没有
+		id: 'M159', expect: 'T101',
+		desc: '选项去掉 role="radio" —— 屏幕阅读器会把它读成普通按钮',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('\t\t\tbutton.setAttribute(\'role\', \'radio\');\n', '')
+	},
+	{
+		// 2026-10-23 新增：三屏卡片的新事实（T100-T108 一族）原来一条变异都没有
+		id: 'M160', expect: 'T102',
+		desc: '旧结构复活：选项又用回 .olympia-onboarding-row 类名',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('\t\t\tbutton.className = \'olympia-onboarding-choice\';', '\t\t\tbutton.className = \'olympia-onboarding-row\';')
+	},
+	{
+		// 2026-10-23 新增：三屏卡片的新事实（T100-T108 一族）原来一条变异都没有
+		id: 'M161', expect: 'T103',
+		desc: '卡片面板改回渐变底 —— 极光本身在动，面板上再叠一层渐变就永远压着一层会动的底',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace('\tbackground: #F6F7F9;', '\tbackground: linear-gradient(180deg, #FFFFFF, #F6F7F9);')
+	},
+	{
+		// 2026-10-23 新增：三屏卡片的新事实（T100-T108 一族）原来一条变异都没有
+		id: 'M162', expect: 'T104',
+		desc: '选择列表改横排（flex-direction: column → row）—— 一行一个选项的竖排单列没了',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace('\tdisplay: flex;\n\tflex-direction: column;\n\tflex: 0 0 auto;', '\tdisplay: flex;\n\tflex-direction: row;\n\tflex: 0 0 auto;')
+	},
+	{
+		// 2026-10-23 新增：三屏卡片的新事实（T100-T108 一族）原来一条变异都没有
+		id: 'M163', expect: 'T105',
+		desc: '每日题量又回到引导（重新引用 OLYMPIA_CONFIG_TRAIN_DAILY_GOAL）',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('\tOLYMPIA_CONFIG_PROBLEMS_DIR,\n', '\tOLYMPIA_CONFIG_PROBLEMS_DIR,\n\tOLYMPIA_CONFIG_TRAIN_DAILY_GOAL,\n')
+	},
+	{
+		// 2026-10-23 新增：三屏卡片的新事实（T100-T108 一族）原来一条变异都没有
+		id: 'M164', expect: 'T106',
+		desc: '评测环境那张卡把 GCC 版本号写死在卡上 —— 表里没有的版本号不许出现在卡上',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('\t\t\tchoices: OLYMPIA_JUDGE_TARGETS.map(candidate => ({', '\t\t\tchoices: [{ label: \'洛谷 GNU C++\', description: \'GCC 12.2 · C++20\', value: \'luogu\' }].map(candidate => ({')
+	},
+	{
+		// 2026-10-23 新增：三屏卡片的新事实（T100-T108 一族）原来一条变异都没有
+		id: 'M165', expect: 'T107',
+		desc: '改标题文案（「选择评测环境」→「选一个评测环境」）—— 文案是产品决定的，不许顺手改',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('localize(\'olympia.onboarding.compile.title\', "选择评测环境")', 'localize(\'olympia.onboarding.compile.title\', "选一个评测环境")')
+	},
+	{
+		// 2026-10-23 新增：三屏卡片的新事实（T100-T108 一族）原来一条变异都没有
+		id: 'M166', expect: 'T108',
+		desc: '页脚的「还有几张」写死成 2 —— 在第二张卡上会说错',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('const remaining = OLYMPIA_ONBOARDING_CARD_COUNT - 1 - index;', 'const remaining = 2;')
+	},
+	{
+		// 2026-10-23 新增：三屏卡片的新事实（T100-T108 一族）原来一条变异都没有
+		id: 'M167', expect: 'H24',
+		desc: '字号选项的 configValue 写成字符串字面量 —— 数字型配置写字符串会被 schema 拒绝',
+		file: OL + 'olympiaOnboardingCards.ts',
+		mutate: t => t.replace('\t\t\t\tconfigValue: entry.size\n', '\t\t\t\tconfigValue: \'14\'\n')
+	},
+	{
+		// 2026-10-23 新增：三屏卡片的新事实（T100-T108 一族）原来一条变异都没有
+		id: 'M168', expect: 'T69',
+		desc: '420 档把选择列表改成可压缩（flex: 0 0 auto → 0 1 auto）—— 矮窗口里选项行被压扁再被 overflow:hidden 静默裁掉',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace('\t.olympia-onboarding-choices {\n\t\tmargin-top: 12px;\n\t\t/* 选择列表是功能内容：自己不可伸不可缩，压缩只能靠间距和字号。 */\n\t\tflex: 0 0 auto;\n\t}\n', '\t.olympia-onboarding-choices {\n\t\tmargin-top: 12px;\n\t\t/* 选择列表是功能内容：自己不可伸不可缩，压缩只能靠间距和字号。 */\n\t\tflex: 0 1 auto;\n\t}\n')
+	},
+	{
+		// 2026-10-23 新增：三屏卡片的新事实（T100-T108 一族）原来一条变异都没有
+		id: 'M169', expect: 'T71',
+		desc: '320 档把整个选择列表 display:none —— 用户就不知道自己还有一项没选',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace('\t.olympia-onboarding-choices {\n\t\tmargin-top: 8px;\n', '\t.olympia-onboarding-choices {\n\t\tdisplay: none;\n\t\tmargin-top: 8px;\n')
+	},
+	{
+		// 2026-10-23 新增：几何门「不适用 ≠ 通过」的守卫（对应 T109）
+		id: 'M170', expect: 'T109',
+		desc: '几何门把「不适用」的收集清空（notApplicable.push(...) → notApplicable.length = 0）—— 没被测到的判据被悄悄丢掉，L-applicable 永远数到 0 条，于是全场景全绿',
+		file: 'scripts/oneoff/verify-onboarding-geometry.mjs',
+		mutate: t => t.replace('notApplicable.push({ id, desc, detail });', 'notApplicable.length = 0;')
+	},
+	{
+		// 2026-10-23 新增：卡片必须绝对定位在轨道原点（对应 T110）
+		id: 'M171', expect: 'T110',
+		desc: '卡片去掉绝对定位（base 规则里删掉 position: absolute）—— 三张卡退回流内块级元素，在轨道里竖着叠，横向轮播直接塌掉',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => replaceInBaseRule(t, '.olympia-onboarding-card', 'position: absolute;', '')
+	},
+	{
+		// 2026-10-24 新增：「每日题量」整条链路删除的三处证据面，各配一条变异
+		id: 'M172', expect: 'T105',
+		desc: '扩展 package.json 里把「每日题量」设置项注册回来 —— 用户在设置页又看得见它',
+		file: 'oss/extensions/olympia-onboarding/package.json',
+		mutate: t => t.replace('"olympia.debug.showEntryPoints": {', '"olympia.train.dailyGoal": {\n\t\t\t\t\t"type": "number",\n\t\t\t\t\t"default": 3\n\t\t\t\t},\n\t\t\t\t"olympia.debug.showEntryPoints": {')
+	},
+	{
+		// 2026-10-24 新增：core 默认值那一侧
+		id: 'M173', expect: 'T105',
+		desc: 'core 配置表里把每日题量的默认值加回来 —— 引导那张表和扩展又会漂移',
+		file: OL + 'olympiaOnboardingConfig.ts',
+		mutate: t => t.replace('\t[OLYMPIA_CONFIG_TRAIN_RECORD_SOLVES]: true,', '\t[OLYMPIA_CONFIG_TRAIN_DAILY_GOAL]: 3,\n\t[OLYMPIA_CONFIG_TRAIN_RECORD_SOLVES]: true,')
+	},
+	{
+		// 2026-10-24 新增：扩展读值那一侧
+		id: 'M174', expect: 'T105',
+		desc: '扩展又把每日题量读回来 —— 面板那一行会显示「今日 x/N」',
+		file: 'oss/extensions/olympia-onboarding/src/solveLog.ts',
+		mutate: t => t.replace('export function solvesToday(', 'export function dailyGoal(): number {\n\treturn 3;\n}\n\nexport function solvesToday(')
+	},
 ];
 
 function buildTree(dest) {
@@ -1242,6 +1386,9 @@ function stripForFile(rel, text) {
 	}
 	if (rel.endsWith('.css')) {
 		return stripComments(text);
+	}
+	if (rel.endsWith('.mjs')) {
+		return stripTsComments(text);
 	}
 	return text;
 }

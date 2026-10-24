@@ -1,5 +1,20 @@
 # 你的新一代 IDE:Olympia IDE
 
+> **⚠ 历史归档：本文描述的是 Olympia IDE v0.1.0（2026-09-10），该产品形态已被重写。**
+>
+> v1.0.0 起，Olympia IDE 不再是「Tauri 2 + React 19 + Rust 的自研外壳」，而是**基于 Microsoft Visual Studio Code 1.140.0 内核的 fork**。下面这些说法**只对 v0.1.0 成立**，别当成当前版本：
+>
+> | 项 | 本文（v0.1.0） | 当前（v1.0.0） |
+> |---|---|---|
+> | 技术栈 | Tauri 2 + React 19 + Rust + Monaco | VS Code 1.140.0 内核 |
+> | 包体积 | 精简版约 6 MB / 完整版约 49 MB | 完整包 264 MiB（另有 1.8 MB 引导器） |
+> | 内置工具链 | MinGW 13.1.0，精简版另从镜像下载 | MinGW-w64 GCC 15.2.0，整个打进安装器，不改系统 PATH |
+> | 安装 | 需要管理员权限 | 不需要管理员权限，装到 `%LOCALAPPDATA%\Programs\Olympia IDE` |
+> | 许可证 | MIT | 分层：Olympia 的修改 GPL-3.0-or-later，内置 VS Code 内核 MIT |
+> | 编译与评测 | 保存即编译，自动跑样例判 AC / WA / TLE / MLE / RE | 保存时只做体检（`g++ -fsyntax-only` 查会在评测机上失败的写法）；判 AC 要手动跑样例；编译并运行 F9 |
+>
+> 当前版本请以官网 <https://olympia.dpdns.org> 与 [v1.0.0 发布贴](olympia-ide-launch-v1.0.0-luogu.md) 为准。
+
 在这个充满寓意着的日子里,我们正式宣布:**Olympia IDE v0.1.0 现已发布!**一款专为 OIer 打造的桌面 IDE,把"刷题 → 写题 → 调题 → 复盘"这条流水线上所有的脏活累活自动化。完全开源(MIT)。
 
 ## 产品简介

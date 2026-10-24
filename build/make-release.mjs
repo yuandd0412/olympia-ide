@@ -241,12 +241,24 @@ if (fs.existsSync(deployPath)) {
 	// 「总计」那句早就换了写法、脚本一句没改，check-website 又在发版前一把逮住——
 	// 这条脚本存在的意义就是不再靠人手抄，跳过等于回到手抄。
 	const missed = [];
+	// 全量替换，不是只换第一处。
+	// 只换第一处的代价在 2026-10-24 付过一次：同一个「总字节」在文档里出现两处
+	// （一处是分卷表那段，另一处是「线上核对」清单里手抄的一行），第一处被脚本换成新数，
+	// 第二处留在原地——正好是 check-website 抓到的那个 FAIL。改成全量替换 + 报出命中次数，
+	// 同一个数字就不可能只改一半。
 	const swap = (label, re, to) => {
-		if (!re.test(doc)) { missed.push(label); return; }
-		doc = doc.replace(re, to);
-		rewrote.push(label);
+		const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
+		const hits = doc.match(g);
+		if (!hits || hits.length === 0) { missed.push(label); return; }
+		// 这里必须用字符串替换而不是回调：`to` 里带着 $1 / $2 的反向引用
+		//（分卷表行和引导器行都靠它保住前缀后缀），回调形式会把 $1 当成字面量。
+		doc = doc.replace(g, to);
+		rewrote.push(`${label}×${hits.length}`);
 	};
 	swap('开头的实测总量', /安装器实测 [\d,]+ B（[\d.]+ MiB，[^）]* 编译）/, `安装器实测 ${docTotal} B（${(total / MIB).toFixed(1)} MiB，${stamp} 编译）`);
+	// 「线上核对」清单里那行手抄的总字节，和分卷表那段说的是同一个数。
+	// 以前没人管它，于是每次发版它都留在上一轮的数上，直到 check-website 发版前才 FAIL。
+	swap('线上核对清单里的总字节', /(总字节 )[\d,]+( B)/, '$1' + docTotal + '$2');
 	// 分卷表前面那段话：出分卷时刻、产品版本、总字节、文件数、最大一片、分卷编号全是脚本
 	// 已知的事实。原文里还写过「跑了 9.4 分钟」和「13:49 收发布目录」——前者只有 gulp 知道，
 	// 留着它就等于留一个必然过期又没人核对的数字，所以整段按已知事实重生成。

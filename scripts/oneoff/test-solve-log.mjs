@@ -12,8 +12,13 @@ import { createRequire } from 'module';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 
-const outDir = new URL('../../oss/extensions/olympia-onboarding/out/', import.meta.url);
+// 正常跑指向出厂的编译产物；OLYMPIA_SOLVE_LOG_OUT 是漂移自检用的——
+// 它把检查台指向一份「标签被人改歪了」的产物副本，逼出那几条断言。
+const outDir = process.env.OLYMPIA_SOLVE_LOG_OUT
+	? new URL(pathToFileURL(process.env.OLYMPIA_SOLVE_LOG_OUT).href + '/')
+	: new URL('../../oss/extensions/olympia-onboarding/out/', import.meta.url);
 const SOLVE_COMMAND = 'olympia.train.solveLog';
 
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'olympia solves '));
@@ -78,6 +83,13 @@ Module._load = function (request, parent, isMain) {
 };
 
 const requireOnboarding = createRequire(new URL('solveLog.js', outDir));
+// 这一份读的是编译产物。没编译过时给一句人话，别抛 ENOENT 让人以为记录逻辑坏了——
+// 它现在挂在 check-all 的门里，跑不动的门必须自己说清楚为什么跑不动。
+if (!fs.existsSync(new URL('solveLog.js', outDir))) {
+	console.log(`FAIL 缺编译产物：${fileURLToPath(new URL('solveLog.js', outDir))}\n     先跑：npm run gulp -- compile-extension:olympia-onboarding`);
+	process.exit(1);
+}
+
 const solveLog = requireOnboarding('./solveLog.js');
 Module._load = originalLoad;
 
@@ -184,18 +196,10 @@ await check('面板那一行：没记过时说「还没 AC 过题」', async () 
 	const summary = solveLog.solveSummary([record('A', localAt(0)), record('B', localAt(1))]);
 	assert.match(summary, /2 题/, `题目数没出现在这一行：${summary}`);
 	assert.match(summary, /连续 2 天/, `连续天数没出现在这一行：${summary}`);
-	assert.match(summary, /今日 1\/3/, `今日进度没出现在这一行：${summary}`);
-});
-
-await check('每日目标只认合理值：0、负数、乱码都回到 3', async () => {
-	for (const bad of [0, -4, 'x']) {
-		settings['olympia.train.dailyGoal'] = bad;
-		assert.equal(solveLog.dailyGoal(), 3, `${JSON.stringify(bad)} 应该退回 3`);
-	}
-	settings['olympia.train.dailyGoal'] = 7;
-	assert.equal(solveLog.dailyGoal(), 7);
-	settings['olympia.train.dailyGoal'] = 4.8;
-	assert.equal(solveLog.dailyGoal(), 4, '小数要向下取整');
+	assert.match(summary, /今日 1 题/, `今日题数没出现在这一行：${summary}`);
+	// 「每日题量」整条链路删掉了：这一行只报题数，不许再出现「今日 x/N」那种分母。
+	// 分母一回来，设置项就回来了（面板得知道分母是多少），所以这里钉死。
+	assert.doesNotMatch(summary, /今日 \d+\/\d+/, `这一行又出现分母了：${summary}`);
 });
 
 await check('题面标题取第一行标题，没有就空着', () => {

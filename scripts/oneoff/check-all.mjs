@@ -32,6 +32,8 @@ const GATES = [
 	{ file: 'scripts/oneoff/test-palette-trim.mjs', 保证: '命令面板裁剪（OI 用不到的条目不在）' },
 	{ file: 'scripts/oneoff/test-noise-trim.mjs', 保证: '首屏噪声裁剪' },
 	{ file: 'scripts/oneoff/test-practice-list.mjs', 保证: '集训清单：写盘/读回/时长/勾题/开始这一场（要扩展已编译）' },
+	{ file: 'scripts/oneoff/test-solve-log.mjs', 保证: '解题记录与连续打卡：写盘/读回/200 上限/坏文件退回空/本地日连续/跨年/面板那一行不出现分母（要扩展已编译）' },
+	{ file: 'scripts/oneoff/test-solve-log-drift.mjs', 保证: '上面那条门自己有牙：标签漂移后正好那几条断言变红（要扩展已编译）' },
 	{ file: 'scripts/oneoff/check-website-keys.mjs', 保证: '官网键表 = 出厂键位（双向，写了没绑和绑了没写都算错）' },
 	{ file: 'build/verify-product-extensions.mjs', 保证: '出厂的三个扩展是最新编译的', needsBuild: true },
 	{ file: 'build/verify-product-workbench.mjs', 保证: '出厂的 workbench bundle / NLS / CSS 就是当前源码（防 -SkipBundle 静默出货旧代码）', needsBuild: true },

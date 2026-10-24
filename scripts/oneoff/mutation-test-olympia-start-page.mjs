@@ -68,6 +68,25 @@ const NEEDED = [
 const OL = 'oss/src/vs/workbench/contrib/olympia/browser/';
 
 /**
+ * 需要**整目录镜像**进沙箱的路径（相对仓库根）。
+ *
+ * 为什么不能只靠上面的文件清单：体检脚本会扫描整个 olympia/browser 目录，
+ * 而有些断言（例如 F4 的常量表）依赖「定义文件」和「使用文件」**同时**在扫描范围内。
+ * 手列清单一旦落后于产品源码（新增文件、文件搬迁），沙箱就会缺文件 ——
+ * 症状是「同一条断言在真树绿、在沙箱红」，也就是基线假红：
+ * 整套变异证明（一百多条）根本没机会跑，check-all 恒红。
+ *
+ * 2026-10-25 实测就是这个形态：olympiaHomeEmptyState.ts 里定义的
+ * OLYMPIA_HOME_EMPTY_STATE_CONFIGURATION_KEY，被 olympiaWelcome.contribution.ts
+ * 用计算属性名 `[OLYMPIA_HOME_EMPTY_STATE_CONFIGURATION_KEY]` 引用 ——
+ * 清单里只有使用处，没有定义处。补一行能修好这一条，
+ * 但下一次再搬文件还会复发；镜像整个目录 = 从根上消灭这一类缺陷。
+ */
+const NEEDED_DIRS = [
+	'oss/src/vs/workbench/contrib/olympia/browser',
+];
+
+/**
  * 变异清单：每条说明「把什么改坏」+「哪条断言必须因此变红」。
  * mutate 返回值必须与入参不同，否则判「锚点没命中」。
  *
@@ -1371,6 +1390,14 @@ function buildTree(dest) {
 		const dst = path.join(dest, ...rel.split('/'));
 		fs.mkdirSync(path.dirname(dst), { recursive: true });
 		fs.copyFileSync(src, dst);
+	}
+	// 目录镜像放在最后：它会覆盖上面逐文件复制进来的同名文件（内容同源，无妨），
+	// 保证沙箱里的目录状态与真树**完全一致**，而不是「清单说有几个就有几个」。
+	for (const rel of NEEDED_DIRS) {
+		const src = path.join(REPO, ...rel.split('/'));
+		const dst = path.join(dest, ...rel.split('/'));
+		fs.mkdirSync(dst, { recursive: true });
+		fs.cpSync(src, dst, { recursive: true });
 	}
 }
 

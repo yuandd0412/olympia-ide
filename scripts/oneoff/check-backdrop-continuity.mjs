@@ -159,6 +159,19 @@ const MIN_FLOW_FRAMES = 8;
  */
 const FLOW_MIN = 0.04;
 /**
+ * 背景「连续停滞」的上限（ms）。
+ *
+ * 为什么不能只看窗口均值（FLOW_MIN）：均值会把「前面在流、后面冻住」稀释掉。
+ * 冻结注入实测：窗口均值 0.05/100ms > FLOW_MIN(0.04) —— 侥幸判绿；
+ * 而真机上「进入动画中段背景卡住约 1 秒」恰恰就是这种「开头流、后面停」的形态。
+ * 连续停滞长度对这种形态才有牙（真实样本实测最长停滞 0ms，注入 59 帧 ≈ 985ms）。
+ *
+ * 用毫秒而不是帧数：帧率因机器而异，写死帧数等于把门禁绑死在某台机器的刷新率上
+ * （与本文件「变化率必须按时间归一化」的立场一致）。
+ * 取 400ms —— 低于「肉眼可见的卡顿」阈值，又远高于真实样本的 0ms。
+ */
+const MAX_STALL_MS = 400;
+/**
  * 帧级「大面积亮度突变」的上限（每 100ms 的平均亮度变化，0~255 尺度）。
  *
  * 归一化到时间的原因和 FLOW_MIN 一样：逐帧差正比于帧间隔，不归一化就会绑死刷新率。
@@ -341,6 +354,40 @@ function flow(samples, from, to) {
 }
 
 /**
+ * 窗口内的「最长连续停滞」：连续多长时间里，帧级亮度变化都低于 threshold。
+ *
+ * 这是 C2b（窗口均值）的补充，不是替代：
+ * 均值回答「整体在不在流」，连续停滞回答「有没有哪一段彻底停住」。
+ * 真实故障形态（背景冻结 ~1 秒）被均值稀释成绿灯，只有这条能抓住。
+ *
+ * 「没采到完整块」的帧（frameDelta 返回 null）按**未知**处理：它会中断连续计数，
+ * 而不是被当成「静止」—— 没数据不等于知道它停住了。
+ */
+function maxStallRun(samples, from, to, threshold) {
+	let best = { ms: 0, frames: 0, from: -1, to: -1 };
+	let runFrames = 0, runMs = 0, runFrom = -1;
+	for (let i = Math.max(1, from); i < to && i < samples.length; i++) {
+		const d = frameDelta(samples, i);
+		if (!d) {
+			runFrames = 0; runMs = 0; runFrom = -1;
+			continue;
+		}
+		const dt = samples[i].t - samples[i - 1].t;
+		if (d.rate < threshold) {
+			if (runFrames === 0) { runFrom = i; }
+			runFrames++;
+			runMs += dt;
+			if (runMs > best.ms) {
+				best = { ms: runMs, frames: runFrames, from: runFrom, to: i };
+			}
+		} else {
+			runFrames = 0; runMs = 0; runFrom = -1;
+		}
+	}
+	return best;
+}
+
+/**
  * 判定一整段采样。
  * @param {object} data 采样数据
  * @param {object} opts  { injectRebuild, injectFreeze, injectBlackout }
@@ -377,9 +424,14 @@ export function judge(data, opts = {}) {
 	}
 
 	// ---- 注入：模拟「背景被冻结」（时钟不涨，画面卡住）
+	//
+	// 注入点必须在**评估窗之内**：C2b/C2c 的窗口是 [trigIdx+1, postTo]，
+	// 而 postTo 由「洞擦满」截断 —— 若注入点落在窗口之外（例如 aliveLimit 很早），
+	// 冻结区就没有任何判据看得见，注入必然判绿。
+	// 所以从触发点后**第一帧**就冻：这样无论窗口多短，冻结区都在窗内。
 	if (opts.injectFreeze) {
 		const idx = samples.findIndex(s => s.t >= triggerAt);
-		const at = idx >= 0 ? idx + 6 : Math.floor(samples.length / 2);
+		const at = idx >= 0 ? idx + 1 : Math.floor(samples.length / 2);
 		const frozen = samples[at].lm.slice();
 		for (let i = at; i < samples.length; i++) {
 			samples[i].lm = frozen.slice();
@@ -457,6 +509,17 @@ export function judge(data, opts = {}) {
 	push('C2b', '进入动画期间背景仍在流动',
 		c2b,
 		`平均亮度变化 ${round2(postFlow.value)}/100ms（下限 ${FLOW_MIN}），参与 ${postFlow.frames} 帧（需 ≥${MIN_FLOW_FRAMES}），窗口到 frame ${postTo}`);
+	// ---- C2c 进入动画期间背景没有长时间停滞
+	//
+	// C2b 看的是**窗口均值**：均值会把「开头在流、后面冻住」稀释掉。
+	// 冻结注入实测均值 0.05/100ms > FLOW_MIN(0.04) —— 侥幸判绿；
+	// 而真机「进入动画中段背景卡住约 1 秒」正是这种形态。
+	// 这里补一条「最长连续停滞」：连续停滞超过 MAX_STALL_MS 即红。
+	const stall = maxStallRun(samples, trigIdx + 1, postTo, FLOW_MIN);
+	const c2c = stall.ms <= MAX_STALL_MS;
+	push('C2c', '进入动画期间背景无长时间停滞',
+		c2c,
+		`最长连续停滞 ${round2(stall.ms)}ms（${stall.frames} 帧 @frame ${stall.from}→${stall.to}，上限 ${MAX_STALL_MS}ms）`);
 
 	// ---- C3 无大面积亮度突变（背景没有被清空 / 闪白 / 换成别的图）
 	//
@@ -506,7 +569,7 @@ function synth(opts = {}) {
 	// 取值必须让「正常相邻帧差」远小于突变阈值（SURGE_MAX = 5/100ms，
 	// 帧间隔 16.7ms → 相当于每帧 0.83 luma），否则自检用例本身是假绿。
 	// 取 omega = 0.02 → 正常每帧差 ≤ 0.16 luma（≈ 0.96/100ms），余量 5 倍。
-	const { frames = 60, amplitude = 8, omega = 0.02, holeGrow = 0, freeze = false, rebuild = false, blackout = false, jump = 0, rebuiltAt = -1, thinFlow = false } = opts;
+	const { frames = 60, amplitude = 8, omega = 0.02, holeGrow = 0, freeze = false, freezeAfter = -1, rebuild = false, blackout = false, jump = 0, rebuiltAt = -1, thinFlow = false } = opts;
 	const samples = [];
 	for (let i = 0; i < frames; i++) {
 		const lm = [];
@@ -514,7 +577,10 @@ function synth(opts = {}) {
 		for (let k = 0; k < NB; k++) {
 			const base = 20 + (k % 7) * 3;
 			const phase = k * 0.3;
-			let v = freeze ? base : base + Math.sin(phase + i * omega) * amplitude;
+			// freeze = 从头冻到尾（合成自检 S3）；
+			// freezeAfter = 中段才冻（前段在流、后段停住）—— 真机故障的真实形态。
+			const stopped = freeze || (freezeAfter >= 0 && i >= freezeAfter);
+			let v = stopped ? base : base + Math.sin(phase + i * omega) * amplitude;
 			if (blackout && i === 30) { v = 0; } // 背景被清空
 			if (jump && i === 30) { v = base + 60; } // 大面积突变
 			lm.push(v);
@@ -552,6 +618,10 @@ function runSelftest() {
 		// 第五颗牙：参与统计的帧数不足（窗口被截得很短）必须红，
 		// 不能只靠一两帧的平均值就给绿灯。
 		{ id: 'S8', title: '参与帧数不足必须红', data: synth({ holeGrow: 0.9, frames: 60, thinFlow: true }), expect: false, expectCheck: 'C2b' },
+		// 第九颗牙：背景在动画**中段**才冻结（前段在流、后段停住）。
+		// 这正是真机上「进入动画中段背景卡住约 1 秒」的形态 ——
+		// 旧的窗口均值判据会被前段的流动帧稀释成绿灯，只有 C2c 抓得住。
+		{ id: 'S9', title: '背景中段冻结必须红', data: synth({ holeGrow: 0.0, freezeAfter: 30 }), expect: false, expectCheck: 'C2c' },
 	];
 	let failed = 0;
 	console.log('=== 背景连续性 · 合成自检 ===');

@@ -73,6 +73,35 @@ for (const ext of olympiaExts) {
 assert.ok(staleExts.length === 0, `这些内置扩展没随本次改动重编：\n        ${staleExts.join('\n        ')}`);
 console.log(`ok    ${olympiaExts.length} 个内置扩展都比源码新`);
 
+/**
+ * workbench 主包的新鲜度：**跑产物门禁，不看 mtime**。
+ *
+ * 为什么不能沿用上面的 mtime 口径：
+ *   - 「mtime 变过」不等于「里面是这次的字节」—— 打包中途失败会留下旧文件，
+ *     而打包脚本一路 EXITCODE=0，看起来完全正常；
+ *   - workbench 主包是 webpack 出来的 40MB 单文件，mtime 既不精确也不可靠
+ *     （一次 checkout / 一次复制就能把时间戳刷掉）。
+ *
+ * 为什么必须卡这一段（2026-10-25 两边独立确认的缺陷）：
+ *   出包是两步 —— 先 oss-package.ps1 拼产品目录，再 gulp vscode-win32-x64-user-setup
+ *   把它压进安装器。上面那段只卡了 olympia-* 扩展的 out/ 与 src/ 的新旧，
+ *   **管不到 workbench 主包**。于是「扩展是新的、主包是旧的」这种混搭
+ *   能一路走到 Gitee 附件上 —— 用户装到的是上一次的首页 / 设置页。
+ *
+ * 判据是内容不是时间：verify-product-workbench.mjs 从源码现推自研面的
+ * 类名 / 字面量 / 本地化文案，逐条比对产物里的**真实字节**（120 条）。
+ */
+const workbenchGate = spawnSync(process.execPath, [path.join(repoRoot, 'build', 'verify-product-workbench.mjs')], {
+	encoding: 'utf8',
+	cwd: repoRoot
+});
+if (workbenchGate.status !== 0) {
+	const detail = `${workbenchGate.stdout || ''}${workbenchGate.stderr || ''}`.trim();
+	assert.fail('workbench 主包不是本次源码的产物（产物门禁报红）—— 安装器分卷里会装进上一次的首页 / 设置页。\n'
+		+ detail);
+}
+console.log(`ok    workbench 主包通过产物门禁（内容判据）: ${(workbenchGate.stdout || '').trim()}`);
+
 const GITEE_ATTACH_LIMIT = 100_000_000;   // Gitee 附件按十进制 100 MB 卡，一片都不能超
 const MB = 1e6, MIB = 1024 * 1024;
 

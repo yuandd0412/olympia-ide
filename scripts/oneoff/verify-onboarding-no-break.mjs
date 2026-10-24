@@ -46,7 +46,7 @@ const STAMP = new Date().toISOString().replace(/[:.]/g, '-');
 const OUT = arg('--out', path.join(os.tmpdir(), 'olympia-verify-' + STAMP));
 const CDP_PORT = PORT;
 
-// 验证路径：normal = 走完 4 张卡再开始；skip = 直接点「跳过剩余引导」。
+// 验证路径：normal = 走完全部卡再开始；skip = 直接点「跳过剩余引导」。
 // 两条路径都要跑到同一套像素判据上 —— 用户最先按的很可能就是「跳过」，
 // 而「等待期跳过按钮还能不能按」正是这轮修的东西，只测 normal 等于没测。
 //
@@ -59,6 +59,50 @@ if (!['normal', 'skip', 'both'].includes(PATH_KIND)) {
 	console.error('用法：node verify-onboarding-no-break.mjs [--product <产品目录>] [--port 9223] [--path normal|skip|both]');
 	process.exit(2);
 }
+
+// ---------------------------------------------------------------- 现读产品期望
+
+/**
+ * 从产品源码**现读**引导的期望值。
+ *
+ * 为什么必须现读、不能把期望写死在门禁里：
+ * 2026-10-24 的 commit 09e4b1f9（「rebuild the reveal cards」）把引导从
+ * **4 张卡改成 3 张**，并把卡上的「整条编译命令」换成「评测机表里的真实值摘要」
+ * （源码注释写明：不是设计稿里手写的数字 —— 表里没有的数字不许出现在卡上）。
+ * 门禁当时仍按旧设计断言（卡上要出现 -x c++ / -std=c++23 / -DONLINE_JUDGE），
+ * 于是天天误报「产品坏了」—— 其实产品完全按新设计工作。
+ *
+ * 期望写死在门禁里 = 期望必然再次过期。这里现读源码：
+ * 下一次产品改卡数或改文案，门禁跟着走，而不是躺在旧期望上假红。
+ */
+const OL_BROWSER_DIR = path.join(repoRoot, 'oss', 'src', 'vs', 'workbench', 'contrib', 'olympia', 'browser');
+
+function readExpectations() {
+	const timeline = fs.readFileSync(path.join(OL_BROWSER_DIR, 'olympiaOnboardingTimeline.ts'), 'utf8');
+	const cards = fs.readFileSync(path.join(OL_BROWSER_DIR, 'olympiaOnboardingCards.ts'), 'utf8');
+	const targets = fs.readFileSync(path.join(OL_BROWSER_DIR, 'olympiaJudgeTargets.ts'), 'utf8');
+
+	// 卡数：设计意图的唯一来源
+	const cardCount = Number((timeline.match(/OLYMPIA_ONBOARDING_CARD_COUNT\s*=\s*(\d+)/) || [])[1]);
+	// 评测机摘要：模板在卡片源码里，参数在评测机表里 —— 两边拼出卡上的真实字面量
+	const tpl = (cards.match(/'olympia\.onboarding\.compile\.judge\.description',\s*"([^"]+)"/) || [])[1];
+	// 锚到洛谷那一条（表里第一个），不要全局抓第一个 gcc —— 表顺序变了会抓错
+	const luogu = (targets.match(/id:\s*'luogu'[\s\S]*?baseFlags:[^\n]*/) || [])[0] || '';
+	const gcc = (luogu.match(/\bgcc:\s*'([^']+)'/) || [])[1];
+	const std = (luogu.match(/\bstd:\s*'([^']+)'/) || [])[1];
+	const label = (luogu.match(/\blabel:\s*'([^']+)'/) || [])[1];
+	const summary = tpl && gcc && std ? tpl.replace('{0}', gcc).replace('{1}', String(std).toUpperCase()) : null;
+
+	// 现读失败就必须停：门禁绝不能靠猜，也不能悄悄少断言一条然后照样放行。
+	if (!cardCount || !summary || !label) {
+		console.error('无法从产品源码现读引导期望（卡数 / 评测机摘要 / 评测机名）—— 门禁不靠猜，中止');
+		process.exit(2);
+	}
+	return { cardCount, summary, label };
+}
+
+const EXP = readExpectations();
+console.log(`现读产品期望：${EXP.cardCount} 张卡，评测机「${EXP.label}」摘要 ${JSON.stringify(EXP.summary)}`);
 
 /**
  * Profile 目录：**每次跑都必须是全新的**。
@@ -374,19 +418,21 @@ try {
 	console.log('\n=== 第一张卡上的文字 ===');
 	console.log(cardText ? cardText.split('\n').filter(s => s.trim()).map(s => '  ' + s).join('\n') : '  (拿不到)');
 
+	// 期望全部现读自产品源码（见 readExpectations）。
+	// 旧版这里写死了 5 条：洛谷 / 15.1.0 / C++23 / -x c++ / -std=c++23 / -DONLINE_JUDGE，
+	// 其中后 3 条是 4 张卡时代的旧设计（整条编译命令印在卡上），09e4b1f9 之后
+	// 卡上只印评测机表里的真实值摘要 —— 于是这 3 条永远假红。
+	// 现在改成一条**带结构的精确字面量**（如 "GCC 15.1.0 · C++23"），
+	// 既比「/15\.1\.0/」这种裸子串强得多，又跟着产品走。
 	const wants = [
-		['评测机名 洛谷', /洛谷/],
-		['GCC 版本 15.1.0', /15\.1\.0/],
-		['C++ 标准 C++23', /C\+\+23/],
-		['编译命令 -x c++', /-x c\+\+/],
-		['编译命令 -std=c++23', /-std=c\+\+23/],
-		['编译命令 -DONLINE_JUDGE', /-DONLINE_JUDGE/],
-		['跳过剩余引导 按钮', /跳过剩余引导/],
-		['下一步 CTA', /下一步/]
+		['评测机名 ' + EXP.label, (t) => t.includes(EXP.label)],
+		['评测机摘要 ' + EXP.summary, (t) => t.includes(EXP.summary)],
+		['跳过剩余引导 按钮', (t) => t.includes('跳过剩余引导')],
+		['下一步 CTA', (t) => t.includes('下一步')]
 	];
 	console.log('\n=== 真值检查 ===');
-	for (const [label, re] of wants) {
-		const ok = cardText ? re.test(cardText) : false;
+	for (const [label, test] of wants) {
+		const ok = cardText ? test(cardText) : false;
 		console.log(`  ${ok ? '✓' : '✗'} ${label}`);
 		if (!ok) problems.push(`卡片上找不到「${label}」`);
 	}
@@ -396,9 +442,9 @@ try {
 	fs.writeFileSync(cardPng, Buffer.from(shot1.data, 'base64'));
 	console.log('  截图:', cardPng);
 
-	// ---- 阶段 B：卡片导航（真实用户路径：下一步 ×3 → 开始做题）
+	// ---- 阶段 B：卡片导航（真实用户路径：下一步 ×(卡数-1) → 末卡「开始做题」）
 	//
-	// 注意：4 张卡同时在 DOM 里（轨道式排布），当前卡没有专属 class，
+	// 注意：全部卡同时在 DOM 里（轨道式排布），当前卡没有专属 class，
 	// 只有当前卡是 pointerEvents:auto（见 olympiaOnboardingCards.ts 的 render()）。
 	// 所以定位「当前卡」必须按这个特征，不能用 querySelector 取第一个。
 	const ACTIVE_CARD = `(() => {
@@ -452,8 +498,21 @@ try {
 		report.skipClickedAt = Date.now();
 		console.log('  已点击「跳过剩余引导」');
 	} else {
-		for (let step = 0; step < 3; step++) {
+		// 导航次数由产品常量决定（现读），不写死。
+		// 旧版按 4 张卡点 3 次「下一步」；09e4b1f9 之后只有 3 张卡，
+		// 第 3 次点到的其实是**末卡**的「开始做题」—— 于是门禁报
+		// 「点了下一步但索引没变」和「第 4 张卡 CTA 应为开始做题」。两条都是假红。
+		// 现在：只点「下一步」（卡数 - 1 次），末卡的「开始做题」交给阶段 C 去点。
+		for (let step = 0; step < EXP.cardCount - 1; step++) {
 			const idxBefore = await cdp.eval(ACTIVE_INDEX);
+			// CTA 文案必须在**点击前**读：点完末卡就会启动进入动画，
+			// overlay 一摘，ACTIVE_CARD 的 `|| cards[0]` 兜底会读到第 1 张卡。
+			const cta = await cdp.eval(`(() => {
+				const card = ${ACTIVE_CARD};
+				const b = card ? card.querySelector('.olympia-onboarding-cta') : null;
+				return b ? b.innerText.trim() : null;
+			})()`);
+			if (cta !== '下一步') problems.push(`第 ${step + 1} 张卡的 CTA 应为「下一步」，实际 ${JSON.stringify(cta)}`);
 			const ok = await cdp.eval(`(() => {
 				const card = ${ACTIVE_CARD};
 				if (!card) return false;
@@ -469,10 +528,10 @@ try {
 				const f = card ? card.querySelector('.olympia-onboarding-card-footer') : null;
 				return f ? f.innerText.replace(/\\s+/g, ' ').trim() : null;
 			})()`);
-			footers.push({ idxBefore, idxAfter, foot });
+			footers.push({ idxBefore, idxAfter, foot, cta });
 			console.log(`  第 ${step + 1} 次「下一步」→ 圆点索引 ${idxBefore} → ${idxAfter}，footer: ${JSON.stringify(foot)}`);
 			if (!ok) { problems.push('找不到当前卡的「下一步」按钮'); break; }
-			if (idxAfter === idxBefore) problems.push(`点了「下一步」但当前卡没变（索引仍是 ${idxAfter}）`);
+			if (idxAfter !== idxBefore + 1) problems.push(`点了「下一步」但当前卡没前进（索引 ${idxBefore} → ${idxAfter}，应为 ${idxBefore + 1}）`);
 		}
 		report.footers = footers;
 
@@ -481,8 +540,8 @@ try {
 			const b = card ? card.querySelector('.olympia-onboarding-cta') : null;
 			return b ? b.innerText.trim() : null;
 		})()`);
-		console.log('  最后一张卡 CTA:', JSON.stringify(ctaText));
-		if (ctaText !== '开始做题') problems.push(`第 4 张卡 CTA 应为「开始做题」，实际 ${JSON.stringify(ctaText)}`);
+		console.log(`  第 ${EXP.cardCount} 张（末张）卡 CTA:`, JSON.stringify(ctaText));
+		if (ctaText !== '开始做题') problems.push(`末张卡（第 ${EXP.cardCount} 张）CTA 应为「开始做题」，实际 ${JSON.stringify(ctaText)}`);
 	}
 
 	// ---- 阶段 C：进入动画，逐帧抓像素

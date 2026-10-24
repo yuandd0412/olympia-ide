@@ -20,8 +20,8 @@
  *    1. CSS 选择器：源码 CSS 里每个 `.olympia*` 类名，必须出现在产物 CSS 里。
  *    2. TS 字面量：源码 TS 里每个 `olympia.` / `olympia-` 字符串，必须出现在产物 JS 里
  *       （localize / localize2 的 key 除外 —— 它们在构建时被替换成 NLS 索引，不留在 JS 里）。
- *    3. 本地化文案：源码 TS 里每个 `localize(key, "默认文案")` 的默认文案，
- *       必须出现在产物的 NLS 消息表里。
+ *    3. 本地化文案：源码 TS 里每个 `localize(key, "默认文案")` / `localize2(key, "默认文案")`
+ *       的默认文案，必须出现在产物的 NLS 消息表里。
  *
  *  第 3 条抓的是最阴的那一类：文案改了但 NLS 没重新抽取 → 界面显示的还是旧字，
  *  而源码、类型检查、打包全部报成功。
@@ -222,8 +222,10 @@ for (const file of tsFiles) {
 			jsLiterals.set(m[1], path.relative(repoRoot, file));
 		}
 	}
-	// localize(key, "默认文案") —— 第二参数是双引号字符串常量。
-	for (const m of text.matchAll(/localize\(\s*'[^']*'\s*,\s*"((?:[^"\\]|\\.)*)"/g)) {
+	// localize(key, "默认文案") / localize2(key, "默认文案") —— 第二参数是双引号字符串常量。
+	// localize2 也必须收：命令标题/描述走 localize2（首页「打开 Olympia 首页」就是），
+	// 只收 localize 会让这一整类中文文案零覆盖，而 AGENTS.md 明写「localize2 默认必须包含」。
+	for (const m of text.matchAll(/localize2?\(\s*'[^']*'\s*,\s*"((?:[^"\\]|\\.)*)"/g)) {
 		const value = JSON.parse(`"${m[1]}"`);
 		if (!l10nDefaults.has(value)) {
 			l10nDefaults.set(value, path.relative(repoRoot, file));

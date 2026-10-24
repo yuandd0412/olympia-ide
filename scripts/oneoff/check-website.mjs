@@ -342,6 +342,33 @@ check('手册列的每档评测机参数，和 ojTargets.ts 里的 label / GCC /
 	assert.deepEqual(missing, [], `手册的三档预设和产品对不上：${missing.map(t => t.label).join('、')}`);
 });
 
+/**
+ * ---- 解题记录那行：手册描述的形状必须和产品现在拼出来的一样 ----
+ * 「每日题量」删掉以后，面板上那行变成「N 题 · 连续 D 天 · 今日 x 题」，
+ * 手册却还留着旧的「今日 x/3」——2026-10-24 实测线上 https://olympia.dpdns.org/docs/ 命中。
+ * 所以这里查的不是「文档写得对不对」，而是「文档说的那行和产品拼的那行是同一行」：
+ * 模板从 solveLog.ts 现读，占位符换成通配；哪一页描述了它，就得落进这个形状里。
+ */
+check('手册描述的解题记录那行，和面板上现在拼出来的是同一行', () => {
+	const solveLogSrc = fs.readFileSync(path.join(onboardingSrc, 'solveLog.ts'), 'utf8');
+	const tpl = /(\$\{[^}]+\} 题 · 连续 \$\{[^}]+\} 天 · 今日 \$\{[^}]+\} 题)/.exec(solveLogSrc);
+	assert.ok(tpl, 'solveLog.ts 里读不到面板那行的模板——它的形状改了？');
+	const shape = new RegExp(tpl[1].split(/\$\{[^}]+\}/)
+		.map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+		.join('[^·<>]{1,16}'));
+	const described = [...pages.entries()].filter(([, html]) => html.includes('连续') && html.includes('今日'));
+	assert.ok(described.length >= 1, '没有一页描述解题记录那行——读法改了吗？');
+	for (const [file, html] of described) {
+		const rel = path.relative(siteRoot, file);
+		assert.ok(shape.test(html), `${rel} 描述的那行和产品现在的形状对不上（产品是「${tpl[1]}」）`);
+	}
+	// 旧版「今日 x/3」是每日题量留下的：分母一出现，这一行就变回了一个产品里根本没有的目标。
+	const withGoal = [...pages.entries()]
+		.filter(([, html]) => /今日[^·<>]{0,10}\/\s*\d/.test(html))
+		.map(([file]) => path.relative(siteRoot, file));
+	assert.deepEqual(withGoal, [], `这些页面还在教「今日 x/3」这种每日目标，产品里已经没有了：${withGoal.join('、')}`);
+});
+
 check('官网每一处出现的编译参数串，都和 renderFlags 现在算出来的一致', () => {
 	const src = fs.readFileSync(path.join(onboardingSrc, 'ojTargets.ts'), 'utf8');
 	const flags = /const LUOGU_BASE_FLAGS = \[([^\]]+)\]/.exec(src);

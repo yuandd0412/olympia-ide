@@ -2,6 +2,7 @@
 // 官网是给人看的承诺，承诺过期比没有更糟：学生按页面上的 Ctrl+Alt+X 去按，结果什么都没发生。
 // 运行：node scripts/oneoff/check-website.mjs
 import assert from 'node:assert';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -432,6 +433,13 @@ if (process.argv.includes('--online')) {
 	// 链接活着不等于发的是这一版：分卷名没变、标签没变，内容却可以是上一次那批字节。
 	// 官网写的体积与 SHA256SUMS.txt 都来自本次发布目录，线上对不上就是"网页在承诺另一份文件"。
 	// 只查页面上那条按钮不够：学生真正拖下来的是四个分卷，而页面上根本没有它们的链接。
+	//
+	// 判据必须是**内容**，不是大小。Content-Length 只能证明"一样长"：上一版恰好同样大小的
+	// 文件会蒙混过关。2026-10-24 实测过一次——整套旧产物挂在线上，7 个附件里只有最后一个分卷
+	// 的字节数对得上（其余 6 个大小相同、内容全是旧的），字节数门禁照样放行。
+	// 所以默认按 SHA256 把线上附件逐个下载回来算摘要再对；--quick 只留字节数快检，
+	// 供迭代时用，不能当发版判据。
+	const deep = !process.argv.includes('--quick');
 	const dirs = fs.readdirSync(path.join(repoRoot, 'dist'))
 		.filter(d => d.startsWith('olympia-release-v') && !d.includes('.bak-'));
 	const releaseDir = dirs.map(d => path.join(repoRoot, 'dist', d))
@@ -441,13 +449,34 @@ if (process.argv.includes('--online')) {
 	const prefix = urls.map(u => u.slice(0, u.indexOf('/download/') + '/download/'.length))[0];
 	assert.ok(prefix && prefix !== '/download/'.slice(0, 10), `页面上解析不到 /download/ 前缀，拼不出逐附件的线上地址`);
 
-	const names = fs.readdirSync(releaseDir).filter(n => n !== '说明.txt');
+	const names = fs.readdirSync(releaseDir).filter(n => fs.statSync(path.join(releaseDir, n)).isFile());
 	const stale = [];
 	let checked = 0;
 	for (const name of names) {
+		// prefix 已经是页面里的绝对地址（百分号编码过的），这里只编码文件名，别再套一层 encodeURI。
+		const url = `${prefix}${tag}/${encodeURIComponent(name)}`;
+		if (deep) {
+			let buf;
+			try {
+				const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'cb=' + Date.now(),
+					{ redirect: 'follow', signal: AbortSignal.timeout(300000) });
+				if (!res.ok) { stale.push(`${name} → HTTP ${res.status}（标签 ${tag} 下大概没有这个附件）`); continue; }
+				buf = Buffer.from(await res.arrayBuffer());
+			} catch (error) {
+				stale.push(`${name} → ${error.name}`);
+				continue;
+			}
+			checked++;
+			const want = crypto.createHash('sha256').update(fs.readFileSync(path.join(releaseDir, name))).digest('hex');
+			const got = crypto.createHash('sha256').update(buf).digest('hex');
+			if (got !== want) {
+				stale.push(`${name}: 线上 SHA256 ${got.slice(0, 12)}… ≠ 本次产物 ${want.slice(0, 12)}… ← Gitee 上不是这一版`);
+			}
+			continue;
+		}
 		let res;
 		try {
-			res = await fetch(encodeURI(`${prefix}${tag}/${encodeURIComponent(name)}`), { method: 'HEAD', redirect: 'follow' });
+			res = await fetch(url, { method: 'HEAD', redirect: 'follow' });
 		} catch (error) {
 			stale.push(`${name} → ${error.name}`);
 			continue;
@@ -464,9 +493,9 @@ if (process.argv.includes('--online')) {
 		console.log('FAIL  一个附件的线上字节都没核到，这条等于没查');
 	} else if (stale.length) {
 		failed++;
-		console.log(`FAIL  线上附件与本次发布产物对不上（核了 ${checked} 个，标签 ${tag}）：\n        ${stale.join('\n        ')}`);
+		console.log(`FAIL  线上附件与本次发布产物对不上（核了 ${checked} 个，标签 ${tag}，判据 ${deep ? 'SHA256 内容' : 'Content-Length 字节数'}）：\n        ${stale.join('\n        ')}`);
 	} else {
-		console.log(`ok    ${checked} 个附件在线上的字节与 ${path.basename(releaseDir)} 一致（标签 ${tag}）`);
+		console.log(`ok    ${checked} 个附件在线上与 ${path.basename(releaseDir)} 逐字节一致（标签 ${tag}，判据 ${deep ? 'SHA256 内容' : 'Content-Length 字节数'}）`);
 	}
 }
 

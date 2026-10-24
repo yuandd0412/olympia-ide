@@ -1,6 +1,6 @@
 // 文案里写出来的快捷键，必须是产品真的注册过的组合键。
 //
-// 为什么要有这一条：三个 Olympia 扩展之间不能互相 import，所以「按 Ctrl+Alt+M 读题面」
+// 为什么要有这一条：几个 Olympia 扩展之间不能互相 import，所以「按 Ctrl+Alt+M 读题面」
 // 这类提示要么写死在句子里，要么各扩展自己存一份常量。2026-10-17 查出来的是：
 // statement.show 的键位注册在 olympia-contest/package.json 里，而 onboarding 那张
 // KEYS 镜像表根本没有它 —— 于是文案只能手写一个组合键，将来改键位时没有任何一处会红。
@@ -13,10 +13,12 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { discoverOlympiaExtensions } from './lib/olympia-extensions.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const extRoot = path.join(repoRoot, 'oss', 'extensions');
-const EXTENSIONS = ['olympia-coach', 'olympia-contest', 'olympia-onboarding'];
+// 名单从磁盘发现，不写死：加了新扩展而忘了改这里，它声明的键位就没人对拍了。
+const EXTENSIONS = discoverOlympiaExtensions(extRoot);
 
 /** ctrl+alt+m → Ctrl+Alt+M；逗号、Enter 这类保持可读形状。 */
 function normalize(key) {
@@ -82,7 +84,7 @@ for (const name of EXTENSIONS) {
 				checked++;
 				const norm = normalize(token);
 				if (registered.has(norm) || NOT_OLYMPIA.has(norm)) { continue; }
-				stale.push(`${name}/src/${file}: 文案写了 ${norm}，但三个扩展的 keybindings 里没有这条`);
+				stale.push(`${name}/src/${file}: 文案写了 ${norm}，但扩展的 keybindings 里没有这条`);
 			}
 		}
 	}

@@ -81,6 +81,25 @@ function sha256(file) {
 	return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex').toUpperCase();
 }
 
+/**
+ * 引导器把发行标签编译进了二进制（Inno 的 AppVersion 和取文件的 URL 用的是同一个 ReleaseTag）。
+ * 不校验它，这两条走法都会静默出错：
+ *   - 新编：编译命令里的 /dReleaseTag 写错，编出一个去旧标签找文件的引导器；
+ *   - --skip-bootstrap：直接沿用上一次的引导器，它内嵌的标签跟当前版本对不上。
+ * 用户那边看到的现象是：点下载，拿到一个「找不到文件」的引导器，全程没有任何报错。
+ * Inno 的字符串常量在 PE 里是 UTF-16LE，所以按这个编码找（实测 v1.0.0 能命中，
+ * 换成 v1.0.1 / v1.1.0 就不命中，所以这条判据有区分度，不是恒真）。
+ */
+function assertBootstrapTag(file, tag) {
+	const text = fs.readFileSync(file).toString('utf16le');
+	if (text.includes(tag)) { return; }
+	const seen = [...new Set(text.match(/v\d+(?:\.\d+){1,3}/g) ?? [])];
+	assert.fail(`引导器 ${path.basename(file)} 里没有发行标签 ${tag}（按 UTF-16LE 找的）。`
+		+ (seen.length ? `它里面出现过的版本串：${seen.slice(0, 8).join('、')}。` : '')
+		+ '引导器是用别的标签编的：换标签必须重编（去掉 --skip-bootstrap），'
+		+ '否则用户点下载拿到的是一个去旧标签找文件的程序，全程没有报错。');
+}
+
 // ---- 1. 收分卷 ----
 const present = fs.readdirSync(slicesDir).filter(n => /^OlympiaSetup.*(exe|bin)$/i.test(n));
 const setupExe = 'OlympiaSetup.exe';
@@ -152,14 +171,21 @@ if (!skipBootstrap) {
 	const built = path.join(oss, 'build', 'win32', 'web-out', 'OlympiaSetup-web.exe');
 	assert.ok(fs.existsSync(built), `ISCC 说编译过了，但产物不在 ${built}`);
 	fs.copyFileSync(built, path.join(outDir, 'OlympiaSetup-web.exe'));
+	assertBootstrapTag(path.join(outDir, 'OlympiaSetup-web.exe'), tag);
 	bootstrap = fs.statSync(path.join(outDir, 'OlympiaSetup-web.exe')).size;
-	step(`引导器 ${bootstrap} B，ReleaseTag=${tag}`);
+	step(`引导器 ${bootstrap} B，ReleaseTag=${tag}（已核对二进制里嵌的就是这个标签）`);
 } else if (previousDir && fs.existsSync(path.join(previousDir, 'OlympiaSetup-web.exe'))) {
 	// --skip-bootstrap 的意思是「这次不重编引导器」，不是「把官网按钮指向的那个文件丢掉」。
 	// 上一次不做这件事时，发布目录里就没有它，跟着上传一轮就是线上下载链 404。
 	fs.copyFileSync(path.join(previousDir, 'OlympiaSetup-web.exe'), path.join(outDir, 'OlympiaSetup-web.exe'));
+	assertBootstrapTag(path.join(outDir, 'OlympiaSetup-web.exe'), tag);
 	bootstrap = fs.statSync(path.join(outDir, 'OlympiaSetup-web.exe')).size;
-	step(`引导器沿用上一次的 ${bootstrap} B（--skip-bootstrap，没重编）`);
+	step(`引导器沿用上一次的 ${bootstrap} B（--skip-bootstrap，没重编；已核对其内嵌标签就是 ${tag}）`);
+} else {
+	// 两条路都拿不到引导器：官网的下载按钮指向的就是这个文件，缺了它线上下载链 404。
+	// 以前这里是静悄悄地少一个附件，等传完上传才发现官网按钮打不开。
+	assert.fail(`--skip-bootstrap，但没有可沿用的引导器（${previousDir ? path.join(previousDir, 'OlympiaSetup-web.exe') : '没有上一次的发布目录'}）。`
+		+ '官网的下载按钮指向这个文件，缺它线上下载链 404。去掉 --skip-bootstrap 重编一个。');
 }
 
 // ---- 3.5 随包说明：数字全部来自上面量出来的东西 ----
@@ -291,6 +317,9 @@ console.log(`
      ${attachments} 个文件全部作为附件上传（含 SHA256SUMS.txt，文件名不能改）。
   2) 传完先自查线上链接是不是真的在：
        node scripts/oneoff/check-website.mjs --online
-     绿了再部署官网：
-       cd website && npx wrangler pages deploy . --project-name olympia-ide --branch main
+     绿了再部署官网 —— **先显式清点，再部署发布目录**：
+       node scripts/oneoff/stage-site.mjs --force
+     它会打印出真正要执行的 wrangler 命令（发布目录在 .scratch/publish/site，不在 website/）。
+     千万别直接 deploy website/：那里的 DEPLOY.md 是内部发版指南，会被一起发到公网上
+     （2026-10-24 实测：wrangler pages deploy . 不认 .gitignore，website/.gitignore 拦不住它）。
 引导器把 ${tag} 编译进了二进制，所以换标签就得重跑本脚本，否则它去旧标签找文件。`);

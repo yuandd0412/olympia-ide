@@ -157,15 +157,30 @@ if ($SkipExtensions) {
     # `-ci` consumes `.build/extensions`; the tasks that fill it hang off the outer
     # vscode-win32-x64 task, which this script does not run because it re-bundles the workbench.
     Write-Output ("=== STAGE 3/4 extensions START " + (& $stamp) + " ===")
-    # The three Olympia extensions are NOT in the upstream extension list, so
+    # The Olympia extensions are NOT in the upstream extension list, so
     # `compile-extensions-build` never touches them and `vscode-win32-x64-ci` just copies whatever
     # `oss/extensions/<ext>/out` already holds. Without this loop a source change ships the
     # previous build silently — measured 2026-10-17: coach/onboarding fixes committed at 15:00
     # came out at 15:07 as byte-identical 12:16 output.
-    foreach ($olympiaExt in @('olympia-coach', 'olympia-contest', 'olympia-onboarding')) {
-        Push-Location (Join-Path $Oss "extensions\$olympiaExt")
+    #
+    # The list is DISCOVERED, not hard-coded. A new olympia-* extension used to be invisible
+    # here (never compiled, therefore never shipped) and to every gate, because they all
+    # hard-coded the same three names — adding an extension meant editing six files and
+    # forgetting one silently dropped the extension out of the product.
+    # Discovered means one directory is enough to add an extension.
+    $extRoot = Join-Path $Oss 'extensions'
+    $olympiaExts = @(Get-ChildItem -Path $extRoot -Directory -Filter 'olympia-*' -ErrorAction SilentlyContinue |
+        Sort-Object -Property Name)
+    if ($olympiaExts.Count -eq 0) {
+        Write-Output "No olympia-* extension directory under $extRoot" -ForegroundColor Red
+        exit 3
+    }
+    Write-Output ("Discovered " + $olympiaExts.Count + " built-in extension(s): " +
+        (($olympiaExts | ForEach-Object { $_.Name }) -join ', '))
+    foreach ($olympiaExt in $olympiaExts) {
+        Push-Location (Join-Path $extRoot $olympiaExt.Name)
         npm run compile
-        if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Output "=== STAGE 3/4 extensions $olympiaExt FAILED ==="; exit $LASTEXITCODE }
+        if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Output "=== STAGE 3/4 extensions $($olympiaExt.Name) FAILED ==="; exit $LASTEXITCODE }
         Pop-Location
     }
     node node_modules/gulp/bin/gulp.js compile-extensions-build

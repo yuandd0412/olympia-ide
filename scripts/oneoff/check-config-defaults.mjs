@@ -13,11 +13,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { discoverOlympiaExtensions } from './lib/olympia-extensions.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../..');
 const extensionsRoot = path.join(repoRoot, 'oss/extensions');
-const EXTENSIONS = ['olympia-onboarding', 'olympia-contest', 'olympia-coach'];
+// 名单从磁盘发现，不写死：加了新扩展而忘了改这里，这扇门就会看不见它。
+const EXTENSIONS = discoverOlympiaExtensions(extensionsRoot);
 
 let failed = 0;
 function report(ok, label) {
@@ -75,7 +77,7 @@ for (const id of EXTENSIONS) {
 		}
 	}
 }
-report(declared.size > 0, `三个清单里读到 ${declared.size} 个带默认值的设置项`);
+report(declared.size > 0, `${EXTENSIONS.length} 个清单里读到 ${declared.size} 个带默认值的设置项`);
 
 function sourceFiles(dir) {
 	return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {

@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- * Olympia 三个扩展之间的命令 id 对拍。
+ * Olympia 内置扩展之间的命令 id 对拍。
  *
  * 为什么需要：扩展各自打包，跨扩展 import 不了常量，所以 olympia-coach / olympia-contest /
  * olympia-onboarding 各自留了一份 id 表（constants.ts、statementView 的 CMD、commands.ts）。
@@ -7,7 +7,7 @@
  * 「快捷键按了没反应」，而且不报错——这个 fork 已经真踩过一次（defaultChatAgent.completionsMenuCommand
  * 指向一条不存在的命令，是个看不见的死菜单项）。所以这里把三类来源对到一起：
  *   声明（package.json contributes.commands） / 注册（代码里的 registerCommand） /
- *   引用（package.json 的菜单、键位，以及那三份 id 表）。
+ *   引用（package.json 的菜单、键位，以及各扩展自己那份 id 表）。
  * 被引用但既没注册也没声明 = 死链；声明了但没人注册 = 同样死链。
  *
  * 注册调用几乎都写成 registerCommand(CMD.show, …) 而不是裸字面量，所以必须先把常量解析成 id；
@@ -18,11 +18,13 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { discoverOlympiaExtensions } from './lib/olympia-extensions.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..', '..');
 const extRoot = path.join(repoRoot, 'oss', 'extensions');
-const EXTENSIONS = ['olympia-coach', 'olympia-contest', 'olympia-onboarding'];
+// 名单从磁盘发现，不写死：加了新扩展而忘了改这里，它的命令 id 就没人对拍了。
+const EXTENSIONS = discoverOlympiaExtensions(extRoot);
 
 /** VS Code 自己的命令前缀：这些不归我们注册。 */
 const BUILTIN_PREFIXES = ['workbench.', 'editor.', 'vscode.', 'extension.', 'terminal.', 'notebook.', 'chat.', 'setContext', 'executeCommand', 'runCommands'];

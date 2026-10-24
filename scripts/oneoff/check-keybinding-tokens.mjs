@@ -6,16 +6,18 @@
 // 2026-10-18 实测：同一个物理组合键，声明改成 "ctrl+alt+," 之后 1 秒就打开设置页。
 // 这类错误不会编译报错、不会激活失败，只有用户按了没反应才知道，所以交给门来拦。
 //
-//   node scripts/oneoff/check-keybinding-tokens.mjs            # 扫三个 Olympia 扩展
+//   node scripts/oneoff/check-keybinding-tokens.mjs            # 扫所有内置 Olympia 扩展
 //   node scripts/oneoff/check-keybinding-tokens.mjs --self-test # 确认这条规则真的会红
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert';
 import { fileURLToPath } from 'node:url';
+import { discoverOlympiaExtensions } from './lib/olympia-extensions.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const extRoot = path.join(repoRoot, 'oss', 'extensions');
-const EXTENSIONS = ['olympia-coach', 'olympia-contest', 'olympia-onboarding'];
+// 名单从磁盘发现，不写死：加了新扩展而忘了改这里，它声明的键位写法就没人查了。
+const EXTENSIONS = discoverOlympiaExtensions(extRoot);
 
 /**
  * 有字面写法的可打印键一律不许写扫描码名字：写出来解析不了，且没有任何报错。

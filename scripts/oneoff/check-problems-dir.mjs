@@ -1,4 +1,4 @@
-// 三个 Olympia 扩展共用「题面库目录」这一个事实：olympia-contest 往里写，olympia-onboarding
+// 几个 Olympia 扩展共用「题面库目录」这一个事实：olympia-contest 往里写，olympia-onboarding
 // 与 olympia-coach 从里面读。跨扩展没有 import 这条路，所以每个读的一侧要么读那条设置，
 // 要么就写死了一份——写死的那份在学生改过目录之后立刻变成静默错误：题面明明在盘上，
 // 教练却回「题面库里找不到这道题」（2026-10-17 查 coach.ts 时就是这个状态）。
@@ -12,10 +12,13 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { discoverOlympiaExtensions } from './lib/olympia-extensions.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const extRoot = path.join(repoRoot, 'oss', 'extensions');
 const SETTING = 'olympia.problem.problemsDir';
+// 名单从磁盘发现，不写死：加了新扩展而忘了改这里，它写死题面目录就没人抓了。
+const EXTENSIONS = discoverOlympiaExtensions(extRoot);
 
 /** contest 是这条设置的主人：它的 package.json 里那个 default 就是目录的唯一真源。
  *  package.json 的 contributes.configuration 有好几种合法形状（对象、数组、带 properties 一层），
@@ -37,7 +40,7 @@ const ownerDefault = declared.default;
 
 const fail = [];
 const readers = [];
-for (const ext of ['olympia-coach', 'olympia-onboarding', 'olympia-contest']) {
+for (const ext of EXTENSIONS) {
 	const srcDir = path.join(extRoot, ext, 'src');
 	for (const name of fs.readdirSync(srcDir).filter(n => n.endsWith('.ts'))) {
 		const file = path.join(srcDir, name);

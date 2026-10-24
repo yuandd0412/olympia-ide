@@ -1,6 +1,6 @@
-// 产品目录里的三个 Olympia 扩展，是不是从当前源码编出来的？
+// 产品目录里的内置 Olympia 扩展，是不是从当前源码编出来的？
 //
-// 为什么要有这一条：上游的扩展清单里没有 olympia-coach / olympia-contest / olympia-onboarding，
+// 为什么要有这一条：上游的扩展清单里没有 olympia-* 这些扩展，
 // 所以 `compile-extensions-build` 根本不碰它们，`vscode-win32-x64-ci` 只是把
 // `oss/extensions/<扩展>/out` 原样拷进产品。谁改了 src 而没单独 compile，产物里就是上一次的
 // 旧编译——2026-10-17 实际踩到：教练的题面目录修复 15:00 提交，15:07 出包里 coach.js 还是
@@ -12,11 +12,14 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { discoverOlympiaExtensions } from '../scripts/oneoff/lib/olympia-extensions.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = process.argv[2];
 assert.ok(dist, '用法：node build/verify-product-extensions.mjs <产品目录>（例如 D:\\oler-ide-v2\\VSCode-win32-x64）');
 const extSrcRoot = path.join(repoRoot, 'oss', 'extensions');
+// 名单从磁盘发现，不写死：加了新扩展而忘了改这里，这个门就看不见它。
+const EXTENSIONS = discoverOlympiaExtensions(extSrcRoot);
 
 /** 递归取一个目录里所有 .ts/.js 的最新 mtime（源码只看 src，产物只看 out）。 */
 function newest(dir, exts) {
@@ -61,8 +64,17 @@ const MARKERS = {
 	'olympia-contest': { file: 'templates.js', needle: '.olympia/problems' },
 };
 
+// 新增一个 olympia-* 扩展而忘了在这里登记线索 —— 那么「产物比源码旧」这条对这个扩展
+// 就是开着的：它没有线索可比，只能靠上面那两条新鲜度判断，而那两条对一个新扩展
+// 恰好是最容易被 -SkipExtensions 绕过的。缺线索直接红，不许悄悄放过。
+const missingMarker = EXTENSIONS.filter(name => !MARKERS[name]);
+if (missingMarker.length) {
+	console.error(missingMarker.map(n => `FAIL  ${n}：没有登记校验线索（MARKERS），这个门看不见它`).join('\n'));
+	process.exit(1);
+}
+
 const problems = [];
-for (const name of ['olympia-coach', 'olympia-contest', 'olympia-onboarding']) {
+for (const name of EXTENSIONS) {
 	const srcNewest = newest(path.join(extSrcRoot, name, 'src'), ['.ts']);
 	const treeDir = path.join(dist, 'resources', 'app', 'extensions', name, 'out');
 	const treeNewest = newest(treeDir, ['.js']);
@@ -121,4 +133,4 @@ if (problems.length) {
 	console.error(problems.map(p => `FAIL  ${p}`).join('\n'));
 	process.exit(1);
 }
-console.log('ok    三个 Olympia 扩展的产物不比源码旧，且关键改动在产物里');
+console.log(`ok    ${EXTENSIONS.length} 个 Olympia 扩展的产物不比源码旧，且关键改动在产物里`);

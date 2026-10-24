@@ -89,46 +89,41 @@
  * ---------------------------------------------------------------------------
  * ## 卡片布局判据（L-*）
  *
- * 配置期那四张卡在真机上量出来过五个缺陷，这个门禁把它们一条条钉住：
+ * 三屏卡片（评测环境 / 代码字号 / 练习目录）在真机上量出来过五个缺陷，这个门禁把它们一条条钉住：
  *
  *   L-center   卡片视觉中心与视口中心重合（≤ 2px）—— 曾经偏 25×21px。
  *   L-bounds   整张卡完整落在视口里（越出 ≤ 1px）—— 400×270 里曾经上下各裁 65/107px。
  *   L-gap      相邻两张卡之间留得出间隙（≥ 8px）—— 曾经重叠 4.9px。
  *   L-cta      主按钮完整可见可点 —— 被裁就等于点不到。
- *   L-code     代码样例露出 ≥3 行，且光标落在可视区内、没掉进底部渐隐区。
- *   L-preview  预览面板不留大片空白（空白 ≤ max(6px, 可用区高×15%)）。
- *   L-preview-overflow 预览内容不许溢出可用区（上沿/下沿各算，超出 > 2px 判红）。
+ *   L-choices  选择列表不许被静默裁掉（每一项都要看得见）—— 三路信号，见下。
  *   L-card-fit 卡片必须装得下：主按钮下沿不许越过卡片 padding box 下沿，
  *                   卡片 scrollHeight 不许超过 clientHeight（超 > 2px 判红）。
  *
- * ### L-preview 钉的是「空白量」，不是「图示居中」
+ * ### 2026-10-23 三屏改造：L-code / L-preview / L-preview-overflow 退役
  *
- * 早先版本把「图示内容中心 == 可用区中心」当判据，结果在**修好的新包**上判红 ——
- * 查下去发现**判据本身错了**：预览面板里除了图示还有一段命令文字
- * （.olympia-onboarding-command），图示和它是同一组内容；窄窗里命令换行变高，
- * 会把图示挤得偏上，但面板并没有留白。探针实测（480×900）：图示 511..535、
- * 命令 569..614、面板空白只有 2px —— pipe 自身的居中是准的。
+ * 旧卡片里有代码样例和预览面板（管道图 / 目录树），那三条判据都挂在它们身上。
+ * 新卡片是「标题 + 描述 + 一个竖排单选列表」—— 那两块整块退役，
+ * 判据**跟着被测对象一起退役**，不是「改成必须保持绿」
+ * （那等于给一条已经没人守的事实盖章）。
  *
- * F5 真正的定义是「预览框底部大片空白」：修复前实测框 189px 高、内容只占 108px、
- * 底部空 81px。所以判据改成：可用区高 − 直接子元素并集高 ≤ 容差。
- * 旧包必红（81px > 28px），新包必绿（2px）。
+ * ### L-choices 钉的是「选择列表不许被压没」
  *
- * ---------------------------------------------------------------------------
- * ## L-preview-overflow：预览内容溢出（不是留白）
+ * 旧结构里 .olympia-onboarding-card-body 在矮窗口档被写成可压缩（flex: 0 1 auto + min-height: 0），
+ * 窗口高落到 321~420 之间时行区被压扁 —— 330px 高的窗口里行区只剩 50px（内容 120px），
+ * 整行看不见，而且 overflow:hidden 连滚动条都不给：用户根本不知道自己还有一项没选。
  *
- * L-preview 钉的是「空白太多」；这条钉的是反方向的病：**内容装不下，被裁掉了**。
+ * 新结构里这一块是 .olympia-onboarding-choices（列表容器）+ .olympia-onboarding-choice（每个选项），
+ * 判据量三件事（各自独立成立）：
+ *   ① 列表内容高度不许超过可见高度（scrollHeight ≤ clientHeight）——
+ *      装不下就意味着被切了。
+ *   ② 每一个选项的下沿不许越过列表盒子的下沿 —— 逐项核对，
+ *      免得「整体装得下、但某一项被切掉半截」这种半吊子状态蒙混过关。
+ *   ③ 列表可见高度不许低到等于没有（低于 32px = 连一个选项行都放不下）。
  *
- * 预览面板（.olympia-onboarding-card-preview）是 overflow:hidden 的 flex 列，
- * 内容（管道图示 + 命令文字）比可用区高时，多出来的那截直接消失 ——
- * 用户看到的是「图示缺了一截」，不是「留白」。这两个是相反的缺陷，必须分别钉。
+ * scrollHeight / clientHeight 是布局像素（不含卡片的缩放），
+ * 选项的下沿与盒子的下沿是屏幕像素（都含缩放）—— 两组量各自内部同坐标系，不混用。
  *
- * 口径（**不用**「用高 − 区高」，那是 F5 的留白口径，两个量不能混）：
- *   overflowPx    = max(0, 内容下沿 − 可用区下沿)   ← 底部被裁的量
- *   topOverflowPx = max(0, 可用区上沿 − 内容上沿)   ← 顶部被裁的量
- * 取两者的最大值与容差比；超过容差判红。
- *
- * ---------------------------------------------------------------------------
- * ## L-card-fit：卡片装不装得下
+ * ### L-card-fit：卡片装不装得下
  *
  * 两个互相独立的信号，都说明「卡片被自己的 overflow:hidden 裁了」：
  *   ① 主按钮下沿越过卡片的 **padding box** 下沿（可见下沿）——
@@ -141,6 +136,13 @@
  * 「卡片内容盒（content box）高多少」只作诊断输出，**不参与判红**：
  * 内容盒比 padding box 小是正常的（padding + border 本来就占地方），
  * 拿它当判据会把所有正常卡片都判红。
+ *
+ * ### 「不适用」不等于「通过」
+ *
+ * 每条卡片判据都返回 { ok, detail }，ok === null 表示「这条在这个视口下不适用」。
+ * 不适用**不算失败**，但也**不许当成通过**：每个场景必须有一条 L-applicable 判据，
+ * 钉死「本场景的不适用条数 == 0」。少了它，「什么都没测到」和「全都测过了」
+ * 在报告里长得一模一样。
  *
  * ---------------------------------------------------------------------------
  * ## 门禁自证有牙
@@ -164,13 +166,79 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..', '..');
 const PRODUCT_DIR = arg('--product', path.join(repoRoot, 'VSCode-win32-x64'));
 const PRODUCT = path.join(PRODUCT_DIR, 'Olympia.exe');
-const BASE_PORT = Number(arg('--port', 9251));
+// --port 只是为了兼容旧调用保留（check-all.mjs 还在传 9251）。
+// 端口不再由脚本写死连号排开 —— 交给 Chromium 自选，理由见 resolveDevToolsPort 的注释。
+const LEGACY_BASE_PORT = Number(arg('--port', 9251));
+// 单个场景的墙钟上限。超了 = 这个场景判失败并继续下一个，绝不让整轮空转。
+const SCENARIO_DEADLINE_MS = Number(arg('--scenario-timeout', 240000));
 const STAMP = new Date().toISOString().replace(/[:.]/g, '-');
 const OUT = arg('--out', path.join(os.tmpdir(), 'olympia-geometry-' + STAMP));
 const ONLY_SCENARIO = arg('--scenario', '');
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-async function httpJson(url) { return (await fetch(url)).json(); }
+
+/**
+ * 带超时的 JSON 抓取。
+ *
+ * 为什么必须有超时（2026-10-23 实测踩出来的坑）：
+ * Windows 上被强杀的进程会留下「属主 PID 已经不在、但内核仍然 LISTENING」的孤儿套接字。
+ * 连上它，TCP 握手会成功、但永远不吐一个字节 —— 于是 `await fetch(url)` **永久挂起**，
+ * 连 try/catch 都进不去（它不是 reject，它是永远不 settle）。
+ * 后果：几何门在 resize-mid 场景上静默空转 28 分钟，后面 6 个场景一个都没跑到，
+ * 机器还被占着，别的门禁全排不上队。
+ * 所以每一次网络交互都必须自带超时：超时 = 抛错 = 被 catch = 这一轮不白跑。
+ */
+async function httpJson(url, timeoutMs = 5000) {
+	return (await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })).json();
+}
+
+/**
+ * 从 profile 目录里读 Chromium **自选**的调试端口。
+ *
+ * 为什么不能写死端口段（2026-10-23 实测踩出来的坑）：
+ * Windows 上被强杀的进程会留下「属主 PID 已经不在、但内核仍然 LISTENING」的孤儿套接字。
+ * 固定端口段（9251~9260）一旦被孤儿占住，Chromium 会**静默拿不到 DevTools 端口**
+ * （DevToolsActivePort 文件根本不生成），而门禁脚本还拿着写死的端口去连 →
+ * 连上那个「连上但不回数据」的孤儿 → fetch 永远不 settle → 整轮空转 28 分钟。
+ * 交给 Chromium 自选（--remote-debugging-port=0）就绕开了「端口被占」这个前提：
+ * 它自己挑一个没人占的端口，并把真实端口写进 <profile>/DevToolsActivePort。
+ */
+async function resolveDevToolsPort(profile, timeoutMs = 60000) {
+	const portFile = path.join(profile, 'DevToolsActivePort');
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		try {
+			const txt = fs.readFileSync(portFile, 'utf8');
+			const first = String(txt).split(/\r?\n/)[0].trim();
+			if (/^\d+$/.test(first)) { return Number(first); }
+		} catch { /* 还没写出来 */ }
+		await sleep(200);
+	}
+	throw new Error('等不到 DevToolsActivePort（' + portFile + '）');
+}
+
+/**
+ * 按 --user-data-dir 特征反查并杀掉这个 profile 的残留产品进程，返回杀掉的个数。
+ *
+ * 归属判据用「命令行里含这个 profile 路径」，不用 PID：
+ * spawn 出来的 child.pid 是启动器 PID，真正的主进程 PID 可能不是它；
+ * 反查特征还能顺带清掉上一次崩掉留下的孤儿。
+ * 路径通过环境变量传进 PowerShell，避免路径里的空格/引号被命令行拆坏。
+ */
+function killProfileProcesses(profile) {
+	if (!profile) { return 0; }
+	let pids = [];
+	try {
+		const out = execFileSync('powershell.exe', ['-NoProfile', '-Command',
+			'$p = $env:OLYMPIA_PROFILE_MARK; Get-CimInstance Win32_Process -Filter "Name=\'Olympia.exe\'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($p) } | ForEach-Object { $_.ProcessId }'],
+			{ encoding: 'utf8', env: { ...process.env, OLYMPIA_PROFILE_MARK: profile } });
+		pids = String(out).split(/\r?\n/).map(s => parseInt(s.trim(), 10)).filter(n => n > 0);
+	} catch {
+		return 0;
+	}
+	for (const pid of pids) { try { process.kill(pid); } catch { /* ignore */ } }
+	return pids.length;
+}
 
 // ---------------------------------------------------------------------------
 // 判据阈值（集中在这里，方便对着上面的推导改）
@@ -188,13 +256,9 @@ const TH = {
 		centerTol: 2,          // 卡片视觉中心与视口中心的偏差上限（px）
 		boundsTol: 1,          // 卡片越出视口的上限（px）
 		minGap: 8,             // 相邻两张卡之间的最小水平间隙（px）
-		minCodeLines: 3,       // 代码样例至少要露出几行
-		caretZone: 0.9,        // 光标必须停在这条线以内（与 CSS 底部渐隐的起点配对）
-		previewTolRatio: 0.15, // 预览面板允许的空白上限（占可用区高度的比例）
-		previewTolMin: 6,      // 同上的下限（可用区太矮时用百分比会太苛刻）
-		rowClipTol: 1,         // 行区被裁掉的量上限（px）—— 1px 以内当亚像素误差
-		rowMinHeight: 20,      // 行区可见高度下限（px）—— 低于这个等于整块行区不见了
-		previewOverflowTol: 2, // 预览内容溢出可用区的上限（px）—— 2px 以内当亚像素误差
+		choicesClipTol: 1,     // 选择列表被裁掉的量上限（px）—— 1px 以内当亚像素误差
+		choicesMinHeight: 32,  // 选择列表可见高度下限（px）—— 最矮档里一个选项行是 32px，
+		                        // 低于这个 = 连一个选项都放不下（整块列表被压没了）
 		cardFitTol: 2          // 卡片装填误差上限（px）—— 主按钮越界 / scrollHeight 超出共用
 	},
 };
@@ -292,157 +356,63 @@ function judgeCardCta(m) {
 	};
 }
 
-/** F4：代码样例要露出几行，而且光标必须看得见（不能被裁、不能掉进渐隐区）。 */
-function judgeCardCode(m) {
-	const c = m.code;
-	if (!c || !c.applicable) {
-		return { ok: null, detail: '这张卡没有代码样例（或预览块被紧凑档整块隐藏了）' };
-	}
-	if (c.visibleLines < TH.card.minCodeLines) {
-		return { ok: false, detail: `代码样例只露出 ${c.visibleLines}/${c.totalLines} 行（应 ≥ ${TH.card.minCodeLines} 行）` };
-	}
-	if (!c.caret || c.caret.h <= 0) {
-		return { ok: false, detail: '没有找到光标' };
-	}
-	if (c.caret.b > c.clipBottom + 1) {
-		return { ok: false, detail: `光标落在 ${c.caret.b.toFixed(0)}，已经超出可视区底边 ${c.clipBottom.toFixed(0)}（被裁掉了）` };
-	}
-	if (c.caret.b > c.zoneLimit + 1) {
-		return { ok: false, detail: `光标落在 ${c.caret.b.toFixed(0)}，掉进了底部渐隐区（这条线在 ${c.zoneLimit.toFixed(0)}）` };
-	}
-	return { ok: true, detail: `露出 ${c.visibleLines}/${c.totalLines} 行，光标在 ${c.caret.b.toFixed(0)}（渐隐线 ${c.zoneLimit.toFixed(0)}，可视底边 ${c.clipBottom.toFixed(0)}）` };
-}
-
 /**
- * F5：预览面板里不许有大片空白。
+ * L-choices：选择列表不许被静默裁掉。
  *
- * 判据钉的是**空白量**，不是「图示单独居中」——
- *
- * 面板里的内容不止图示：编译那张卡还有一段命令文字（.olympia-onboarding-command），
- * 图示和它是同一组内容。真机实测（修好之后）：
- *   480×900  图示在 511..535，命令在 569..614 —— 图示中心离可用区中心 -19px，
- *            可面板里的空白只有 2px（内容把面板撑满了）。
- *
- * 「图示居中」会把一个没问题的排版判红；「空白量」才是 F5 真正的定义 ——
- * 修复前实测：预览框 189px 高，图示内容只占上面 108px，底部空着 81px。
- */
-function judgeCardPreview(m) {
-	const ps = (m.previews || []).filter(p => p.areaHeight > 1);
-	if (!ps.length) {
-		return { ok: null, detail: '没有可判的图示预览区' };
-	}
-	let worst = null;
-	for (const p of ps) {
-		const tol = Math.max(TH.card.previewTolMin, p.areaHeight * TH.card.previewTolRatio);
-		if (!worst || p.blank > worst.blank) {
-			worst = { blank: p.blank, tol: tol, areaHeight: p.areaHeight };
-		}
-	}
-	const ok = worst.blank <= worst.tol;
-	return {
-		ok: ok,
-		detail: `预览面板内空白 ${worst.blank.toFixed(1)}px（可用区高 ${worst.areaHeight.toFixed(0)}，容差 ${worst.tol.toFixed(1)}px）`
-	};
-}
-
-/**
- * Q6：配置行不许被静默裁掉。
- *
- * 这是 T-032 复审 Q6 在真机上坐实的缺陷：@media (max-height: 420px) 档把
- * `.olympia-onboarding-card-body` 写成 `flex: 0 1 auto; min-height: 0`，
- * 窗口高落到 321~420 之间时行区被压扁 —— 330px 高的窗口里 card1 的行区
- * 只剩 50px（内容 120px），「光标动画」那一行整行看不见，
- * 而且 overflow:hidden 连滚动条都不给：用户根本不知道自己还有一项没配。
+ * 这是 T-032 复审 Q6 在真机上坐实的缺陷（旧结构）：矮窗口档把行区写成可压缩，
+ * 窗口一矮行区就被压扁 —— 内容装不下，还不给滚动条：用户根本不知道自己还有一项没选。
  *
  * 判据钉三件事（各自独立成立）：
- *   ① 行区内容高度不许超过可见高度（scrollHeight ≤ clientHeight）——
- *      装不下就意味着被切了。
- *   ② 每一行的下沿不许超出行区盒子的下沿 —— 逐行核对，
- *      免得「整体装得下、但某一行被切掉半截」这种半吊子状态蒙混过关。
- *   ③ 行区可见高度不许低到等于没有。
+ *   ① 列表内容高度不许超过可见高度（scrollHeight ≤ clientHeight）—— 装不下就意味着被切了。
+ *   ② 每一个选项的下沿不许越过列表盒子的下沿 —— 逐项核对，
+ *      免得「整体装得下、但某一项被切掉半截」这种半吊子状态蒙混过关。
+ *   ③ 列表可见高度不许低到等于没有（低于 32px = 连一个选项行都放不下）。
  *
  * scrollHeight / clientHeight 是布局像素（不含卡片的缩放），
- * 行的下沿与盒子的下沿是屏幕像素（都含缩放）—— 两组量各自内部同坐标系，
- * 不混用。
+ * 选项的下沿与盒子的下沿是屏幕像素（都含缩放）—— 两组量各自内部同坐标系，不混用。
  */
-function judgeCardRows(m) {
-		const rs = (m.rows || []).filter(r => r.rowCount > 0);
-		if (!rs.length) {
-				return { ok: null, detail: '没有可判的配置行区' };
-		}
-		let worst = null;
-		for (const r of rs) {
-				const clipped = r.scrollH - r.clientH;
-				const score = Math.max(clipped, r.rowsBottomExcess);
-				if (!worst || score > worst.score) {
-						worst = {
-								score: score,
-								clipped: clipped,
-								overflowRows: r.rowsBottomExcess,
-								clientH: r.clientH,
-								scrollH: r.scrollH,
-								rowCount: r.rowCount,
-								card: r.cardIndex
-						};
-				}
-		}
-		if (worst.clientH < TH.card.rowMinHeight) {
-				return {
-						ok: false,
-						detail: `第 ${worst.card + 1} 张卡的行区只剩 ${worst.clientH.toFixed(0)}px 高（内容 ${worst.scrollH.toFixed(0)}px）—— 整块行区被压没了`
-				};
-		}
-		if (worst.clipped > TH.card.rowClipTol) {
-				return {
-						ok: false,
-						detail: `第 ${worst.card + 1} 张卡的行区内容 ${worst.scrollH.toFixed(0)}px 装不进 ${worst.clientH.toFixed(0)}px，被裁掉 ${worst.clipped.toFixed(0)}px`
-				};
-		}
-		if (worst.overflowRows > TH.card.rowClipTol) {
-				return {
-						ok: false,
-						detail: `第 ${worst.card + 1} 张卡有配置行的下沿超出行区盒子 ${worst.overflowRows.toFixed(0)}px（那一行看不见了）`
-				};
-		}
-		return {
-				ok: true,
-				detail: `行区可见 ${worst.clientH.toFixed(0)}px / 内容 ${worst.scrollH.toFixed(0)}px，${worst.rowCount} 行全露着`
-		};
-}
-
-/**
- * L-preview-overflow：预览内容不许溢出可用区（上沿、下沿各算）。
- *
- * 这是 L-preview 的反面：L-preview 钉「空白太多」，这条钉「内容被裁掉」。
- * 预览面板 overflow:hidden，内容比可用区高时多出来的那截直接消失 ——
- * 用户看到的是缺了一截的图示，不是留白。
- *
- * 口径：
- *   overflowPx    = max(0, contentBottom − areaBottom)
- *   topOverflowPx = max(0, areaTop − contentTop)
- * 取两者最大与容差比。
- */
-function judgeCardPreviewOverflow(m) {
-	const ps = (m.previews || []).filter(p => p.areaHeight > 1);
-	if (!ps.length) {
-		return { ok: null, detail: '没有可判的图示预览区' };
+function judgeCardChoices(m) {
+	const cs = (m.choices || []).filter(c => c.choiceCount > 0);
+	if (!cs.length) {
+		return { ok: null, detail: '没有可判的选择列表' };
 	}
 	let worst = null;
-	for (const p of ps) {
-		const over = Math.max(p.overflowPx ?? 0, p.topOverflowPx ?? 0);
-		if (!worst || over > worst.over) {
+	for (const c of cs) {
+		const clipped = c.scrollH - c.clientH;
+		const score = Math.max(clipped, c.choicesBottomExcess);
+		if (!worst || score > worst.score) {
 			worst = {
-				over: over,
-				overflowPx: p.overflowPx ?? 0,
-				topOverflowPx: p.topOverflowPx ?? 0,
-				areaHeight: p.areaHeight
+				score: score,
+				clipped: clipped,
+				overflowChoices: c.choicesBottomExcess,
+				clientH: c.clientH,
+				scrollH: c.scrollH,
+				choiceCount: c.choiceCount,
+				card: c.cardIndex
 			};
 		}
 	}
-	const ok = worst.over <= TH.card.previewOverflowTol;
+	if (worst.clientH < TH.card.choicesMinHeight) {
+		return {
+			ok: false,
+			detail: `第 ${worst.card + 1} 张卡的选择列表只剩 ${worst.clientH.toFixed(0)}px 高（内容 ${worst.scrollH.toFixed(0)}px）—— 整块列表被压没了`
+		};
+	}
+	if (worst.clipped > TH.card.choicesClipTol) {
+		return {
+			ok: false,
+			detail: `第 ${worst.card + 1} 张卡的选择列表内容 ${worst.scrollH.toFixed(0)}px 装不进 ${worst.clientH.toFixed(0)}px，被裁掉 ${worst.clipped.toFixed(0)}px`
+		};
+	}
+	if (worst.overflowChoices > TH.card.choicesClipTol) {
+		return {
+			ok: false,
+			detail: `第 ${worst.card + 1} 张卡有选项的下沿越过列表盒子 ${worst.overflowChoices.toFixed(0)}px（那一项看不见了）`
+		};
+	}
 	return {
-		ok: ok,
-		detail: `预览内容超出可用区 ${worst.over.toFixed(1)}px（下溢 ${worst.overflowPx.toFixed(1)} / 上溢 ${worst.topOverflowPx.toFixed(1)}，容差 ${TH.card.previewOverflowTol}px）`
+		ok: true,
+		detail: `选择列表可见 ${worst.clientH.toFixed(0)}px / 内容 ${worst.scrollH.toFixed(0)}px，${worst.choiceCount} 项全露着`
 	};
 }
 
@@ -532,19 +502,17 @@ function selftest() {
 	{
 	const good = {
 	viewport: { w: 1200, h: 800 },
-	card: { l: 399, t: 164, r: 801, b: 636, w: 402, h: 472, cx: 600, cy: 400 },
+	card: { l: 399, t: 184, r: 801, b: 616, w: 402, h: 432, cx: 600, cy: 400 },
 	centerDx: 0, centerDy: 0,
 	gap: 45,
 	ctaVisible: true,
-	cta: { l: 520, t: 590, r: 680, b: 618, w: 160, h: 28 },
-	code: { applicable: true, visibleLines: 6, totalLines: 11, caret: { t: 284, b: 300, h: 16 }, clipBottom: 340, zoneLimit: 320, boxH: 190 },
-	previews: [{ areaTop: 200, areaBottom: 340, areaHeight: 140, contentTop: 200, contentBottom: 340, usedHeight: 140, blank: 0, overflowPx: 0, topOverflowPx: 0 }],
-	rows: [{ cardIndex: 0, clientH: 134, scrollH: 134, rowCount: 2, rowsBottomExcess: 0 }],
-	fit: { scale: 1, ctaBelowPadBox: 0, ctaBelowPadBoxScreen: 0, scrollH: 472, clientH: 472, overflow: 0, contentH: 436, padBoxBottom: 636 }
+	cta: { l: 520, t: 566, r: 680, b: 600, w: 160, h: 34 },
+	choices: [{ cardIndex: 0, clientH: 138, scrollH: 138, choiceCount: 3, choicesBottomExcess: 0 }],
+	fit: { scale: 1, ctaBelowPadBox: 0, ctaBelowPadBoxScreen: 0, scrollH: 432, clientH: 432, overflow: 0, contentH: 384, padBoxBottom: 616 }
 	};
 	const clone = (o) => JSON.parse(JSON.stringify(o));
 	const allCardGreen = (m) => {
-	const r = [judgeCardCenter(m), judgeCardBounds(m), judgeCardGap(m), judgeCardCta(m), judgeCardCode(m), judgeCardPreview(m), judgeCardPreviewOverflow(m), judgeCardRows(m), judgeCardFit(m)];
+	const r = [judgeCardCenter(m), judgeCardBounds(m), judgeCardGap(m), judgeCardCta(m), judgeCardChoices(m), judgeCardFit(m)];
 	return r.every(x => x.ok !== false);
 	};
 	cases.push({ name: '卡片布局全套判据：正常数据全绿', got: allCardGreen(good), expectGreen: true });
@@ -567,53 +535,18 @@ function selftest() {
 	noCta.ctaVisible = false;
 	cases.push({ name: '主按钮被裁掉 → L-cta 判红', got: allCardGreen(noCta), expectGreen: false });
 
-	const hiddenCaret = clone(good);
-	hiddenCaret.code.caret = { t: 384, b: 400, h: 16 };
-	cases.push({ name: '光标被裁到可视区外 → L-code 判红', got: allCardGreen(hiddenCaret), expectGreen: false });
+	// L-choices 的三条反例：列表被压扁 / 被压没 / 某一项被切半截。
+	const clippedChoices = clone(good);
+	clippedChoices.choices = [{ cardIndex: 0, clientH: 50, scrollH: 138, choiceCount: 3, choicesBottomExcess: 0 }];
+	cases.push({ name: '选择列表被压到 50px、内容 138px → L-choices 判红', got: allCardGreen(clippedChoices), expectGreen: false });
 
-	const fadedCaret = clone(good);
-	fadedCaret.code.caret = { t: 324, b: 340, h: 16 };
-	cases.push({ name: '光标掉进底部渐隐区 → L-code 判红', got: allCardGreen(fadedCaret), expectGreen: false });
+	const goneChoices = clone(good);
+	goneChoices.choices = [{ cardIndex: 0, clientH: 12, scrollH: 138, choiceCount: 3, choicesBottomExcess: 0 }];
+	cases.push({ name: '选择列表只剩 12px → L-choices 判红', got: allCardGreen(goneChoices), expectGreen: false });
 
-	// 用**修复前的真机实测值**当反例：框 189px 高、内容只占上面 108px、底部空 81px。
-	const bottomBlank = clone(good);
-	bottomBlank.previews[0] = { areaTop: 200, areaBottom: 389, areaHeight: 189, contentTop: 200, contentBottom: 308, usedHeight: 108, blank: 81 };
-	cases.push({ name: '预览框底部空 81px（修复前实测：框 189 / 内容 108）→ L-preview 判红', got: allCardGreen(bottomBlank), expectGreen: false });
-
-	// 内容不在正中、但面板没留白 —— 不该判红（这正是旧判据错的地方）。
-	const offCenterButFull = clone(good);
-	offCenterButFull.previews[0] = { areaTop: 200, areaBottom: 340, areaHeight: 140, contentTop: 205, contentBottom: 335, usedHeight: 130, blank: 10 };
-	cases.push({ name: '预览内容不在正中但面板没留白 → L-preview 不判红', got: allCardGreen(offCenterButFull), expectGreen: true });
-
-	const noPreview = clone(good);
-	noPreview.previews = [];
-	cases.push({ name: '没有图示预览区 → L-preview 不适用（不算失败）', got: allCardGreen(noPreview), expectGreen: true });
-
-	// Q6 的三条反例，用真机实测值（330px 高时行区只剩 50px、内容 120px）。
-	const clippedRows = clone(good);
-	clippedRows.rows = [{ cardIndex: 0, clientH: 50, scrollH: 120, rowCount: 2, rowsBottomExcess: 0 }];
-	cases.push({ name: '行区被压到 50px、内容 120px（330px 窗实测）→ L-rows 判红', got: allCardGreen(clippedRows), expectGreen: false });
-
-	const goneRows = clone(good);
-	goneRows.rows = [{ cardIndex: 0, clientH: 12, scrollH: 120, rowCount: 2, rowsBottomExcess: 0 }];
-	cases.push({ name: '行区只剩 12px → L-rows 判红', got: allCardGreen(goneRows), expectGreen: false });
-
-	const cutRow = clone(good);
-	cutRow.rows = [{ cardIndex: 0, clientH: 134, scrollH: 134, rowCount: 2, rowsBottomExcess: 9 }];
-	cases.push({ name: '某一行的下沿超出行区盒子 9px → L-rows 判红', got: allCardGreen(cutRow), expectGreen: false });
-
-	// ---- L-preview-overflow：预览内容被裁（与「留白」相反的病） ----
-	const overflowBottom = clone(good);
-	overflowBottom.previews[0] = { areaTop: 200, areaBottom: 340, areaHeight: 140, contentTop: 200, contentBottom: 364, usedHeight: 164, blank: 0, overflowPx: 24, topOverflowPx: 0 };
-	cases.push({ name: '预览内容下沿溢出可用区 24px → L-preview-overflow 判红', got: allCardGreen(overflowBottom), expectGreen: false });
-
-	const overflowTop = clone(good);
-	overflowTop.previews[0] = { areaTop: 200, areaBottom: 340, areaHeight: 140, contentTop: 192, contentBottom: 340, usedHeight: 148, blank: 0, overflowPx: 0, topOverflowPx: 8 };
-	cases.push({ name: '预览内容上沿溢出可用区 8px → L-preview-overflow 判红', got: allCardGreen(overflowTop), expectGreen: false });
-
-	const overflowEdge = clone(good);
-	overflowEdge.previews[0] = { areaTop: 200, areaBottom: 340, areaHeight: 140, contentTop: 198, contentBottom: 342, usedHeight: 144, blank: 0, overflowPx: 2, topOverflowPx: 2 };
-	cases.push({ name: '预览内容溢出 2px（正好等于容差）→ L-preview-overflow 不判红', got: allCardGreen(overflowEdge), expectGreen: true });
+	const cutChoice = clone(good);
+	cutChoice.choices = [{ cardIndex: 0, clientH: 138, scrollH: 138, choiceCount: 3, choicesBottomExcess: 9 }];
+	cases.push({ name: '某一个选项的下沿越过列表盒子 9px → L-choices 判红', got: allCardGreen(cutChoice), expectGreen: false });
 
 	// ---- L-card-fit：卡片装不装得下 ----
 	const ctaBelow = clone(good);
@@ -621,19 +554,19 @@ function selftest() {
 	cases.push({ name: '主按钮下沿越过卡片可见下沿 12px → L-card-fit 判红', got: allCardGreen(ctaBelow), expectGreen: false });
 
 	const notFit = clone(good);
-	notFit.fit = Object.assign({}, good.fit, { scrollH: 487, clientH: 472, overflow: 15 });
-	cases.push({ name: '卡片内容 487px 装不进 472px（差 15px）→ L-card-fit 判红', got: allCardGreen(notFit), expectGreen: false });
+	notFit.fit = Object.assign({}, good.fit, { scrollH: 447, clientH: 432, overflow: 15 });
+	cases.push({ name: '卡片内容 447px 装不进 432px（差 15px）→ L-card-fit 判红', got: allCardGreen(notFit), expectGreen: false });
 
 	const fitEdge = clone(good);
-	fitEdge.fit = Object.assign({}, good.fit, { scrollH: 474, clientH: 472, overflow: 2 });
+	fitEdge.fit = Object.assign({}, good.fit, { scrollH: 434, clientH: 432, overflow: 2 });
 	cases.push({ name: '卡片内容溢出 2px（正好等于容差）→ L-card-fit 不判红', got: allCardGreen(fitEdge), expectGreen: true });
 
 	// 两个新判据的**直接**返回值断言：证明是它们自己判红的，不是别条误伤。
 	cases.push({
-		name: 'L-preview-overflow 直接判据：正常绿 / 底部溢出 24px 红 / 顶部溢出 8px 红',
-		got: judgeCardPreviewOverflow(good).ok === true
-			&& judgeCardPreviewOverflow(overflowBottom).ok === false
-			&& judgeCardPreviewOverflow(overflowTop).ok === false,
+		name: 'L-choices 直接判据：正常绿 / 被压扁红 / 某一项越界红',
+		got: judgeCardChoices(good).ok === true
+			&& judgeCardChoices(clippedChoices).ok === false
+			&& judgeCardChoices(cutChoice).ok === false,
 		expectGreen: true
 	});
 	cases.push({
@@ -696,18 +629,20 @@ class Cdp {
 	}
 }
 
-async function findPageTarget(port) {
-	for (let i = 0; i < 240; i++) {
+async function findPageTarget(port, timeoutMs = 90000) {
+	// 墙钟上限，不是「次数上限」：httpJson 自带 5s 超时，按次数算最坏会拖到 20 分钟。
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
 		try {
-			const list = await httpJson(`http://127.0.0.1:${port}/json/list`);
+			const list = await httpJson(`http://127.0.0.1:${port}/json/list`, 3000);
 			const pages = list.filter(t => t.type === 'page' && t.webSocketDebuggerUrl);
 			if (pages.length) {
 				return pages.find(p => !/devtools|about:blank/i.test(p.url)) || pages[0];
 			}
 		} catch { /* 还没起来 */ }
-		await sleep(500);
+		await sleep(300);
 	}
-	throw new Error('等不到 CDP 页面目标');
+	throw new Error('等不到 CDP 页面目标（端口 ' + port + '）');
 }
 
 // ---------------------------------------------------------------------------
@@ -797,112 +732,33 @@ const SAMPLE_EXPR = `(() => {
 	ctaVisible = cta.w > 0 && cta.h > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) > 0.05;
 	}
 
-	// 代码样例（哪张卡有算哪张）：可视区底边取预览面板的底边 ——
-	// 代码盒子自己 overflow:hidden 之前，溢出的行是「画到面板外面去了」，不是被它自己裁掉。
-	let code = null;
-	for (const c of cards) {
-	const box = c.querySelector('.olympia-onboarding-code');
-	if (!box) { continue; }
-	const preview = c.querySelector('.olympia-onboarding-card-preview');
-	const boxRect = R(box);
-	const prevRect = preview ? R(preview) : null;
-	const caretEl = box.querySelector('.olympia-onboarding-caret');
-	const caret = caretEl ? R(caretEl) : null;
-	const lines = [...box.querySelectorAll('.olympia-onboarding-code-line')].map(R);
-	const clipBottom = prevRect ? prevRect.b : boxRect.b;
-	code = {
-	applicable: boxRect.h > 1,
-	boxH: boxRect.h,
-	boxTop: boxRect.t,
-	clipBottom: clipBottom,
-	visibleLines: lines.filter(function (l) { return l.b <= clipBottom + 1; }).length,
-	totalLines: lines.length,
-	caret: caret,
-	caretBottom: caret ? caret.b : null,
-	zoneLimit: boxRect.t + 0.9 * boxRect.h
-	};
-	break;
-	}
-
-	// 预览区里有没有大片没用上的高度（F5）
-	//
-	// 判据钉的是**空白量**：可用区（预览面板去掉边框和 padding 的内容盒）减去
-	// 「直接子元素并集」的高度。
-	//
-	// 为什么不是「图示单独居中」：预览面板里除了图示还有一段命令文字
-	// （.olympia-onboarding-command），图示和它是同一组内容。真机实测（修好之后）：
-	//   480×900  图示在 511..535，命令在 569..614 —— 图示中心离可用区中心 -19px，
-	//            但面板里的空白只有 2px（内容把面板撑满了）。
-	// 「图示居中」会把一个没问题的排版判红；「空白量」才是 F5 真正的定义 ——
-	// 修复前实测：预览框 189px 高，内容只占上面 108px，底部空着 81px。
-	const previews = [];
-	for (const c of cards) {
-		const preview = c.querySelector('.olympia-onboarding-card-preview');
-		if (!preview) { continue; }
-		const pr = R(preview);
-		if (pr.h <= 1) { continue; }
-		const cs = getComputedStyle(preview);
-		const padTop = parseFloat(cs.paddingTop) || 0;
-		const padBottom = parseFloat(cs.paddingBottom) || 0;
-		const border = preview.clientTop || 0;
-		const areaTop = pr.t + border + padTop;
-		const areaBottom = pr.b - border - padBottom;
-		const areaHeight = areaBottom - areaTop;
-		if (areaHeight <= 1) { continue; }
-		const kids = [...preview.children].filter(function (el) {
-			const st = getComputedStyle(el);
-			if (st.display === 'none' || st.visibility === 'hidden') { return false; }
-			return el.getBoundingClientRect().height > 0.5;
-		});
-		if (!kids.length) { continue; }
-		let top = Infinity, bottom = -Infinity;
-		for (const el of kids) {
-			const r = el.getBoundingClientRect();
-			top = Math.min(top, r.top);
-			bottom = Math.max(bottom, r.bottom);
+	// 选择列表有没有被静默裁掉。
+		//
+		// 量两件事，各自内部同坐标系：
+		//   ① scrollHeight vs clientHeight（布局像素，不含卡片的缩放）——
+		//      内容装不下就是被切了。
+		//   ② 每一个选项的下沿 vs 列表盒子的下沿（屏幕像素，两边都含缩放）——
+		//      逐项核对，防止「整体装得下但某一项被切半截」。
+		const choices = [];
+		for (let ci = 0; ci < cards.length; ci++) {
+				const c = cards[ci];
+				const list = c.querySelector('.olympia-onboarding-choices');
+				if (!list) { continue; }
+				const lr = R(list);
+				const choiceEls = [...list.querySelectorAll('.olympia-onboarding-choice')];
+				let excess = 0;
+				for (const el of choiceEls) {
+						const rr = el.getBoundingClientRect();
+						excess = Math.max(excess, rr.bottom - lr.bottom);
+				}
+				choices.push({
+						cardIndex: ci,
+						clientH: list.clientHeight,
+						scrollH: list.scrollHeight,
+						choiceCount: choiceEls.length,
+						choicesBottomExcess: excess
+				});
 		}
-		const usedHeight = bottom - top;
-		previews.push({
-			areaTop: areaTop,
-			areaBottom: areaBottom,
-			areaHeight: areaHeight,
-			contentTop: top,
-			contentBottom: bottom,
-			usedHeight: usedHeight,
-			blank: Math.max(0, areaHeight - usedHeight),
-			overflowPx: Math.max(0, bottom - areaBottom),
-			topOverflowPx: Math.max(0, areaTop - top),
-			childCount: kids.length
-		});
-	}
-
-	// Q6：配置行区有没有被静默裁掉。
-			//
-			// 量两件事，各自内部同坐标系：
-			//   ① scrollHeight vs clientHeight（布局像素，不含卡片的缩放）——
-			//      内容装不下就是被 overflow:hidden 切了。
-			//   ② 每一行的下沿 vs 行区盒子的下沿（屏幕像素，两边都含缩放）——
-			//      逐行核对，防止「整体装得下但某一行被切半截」。
-			const rows = [];
-			for (let ci = 0; ci < cards.length; ci++) {
-					const c = cards[ci];
-					const body = c.querySelector('.olympia-onboarding-card-body');
-					if (!body) { continue; }
-					const br = R(body);
-					const rowEls = [...body.querySelectorAll('.olympia-onboarding-row')];
-					let excess = 0;
-					for (const el of rowEls) {
-							const rr = el.getBoundingClientRect();
-							excess = Math.max(excess, rr.bottom - br.bottom);
-					}
-					rows.push({
-							cardIndex: ci,
-							clientH: body.clientHeight,
-							scrollH: body.scrollHeight,
-							rowCount: rowEls.length,
-							rowsBottomExcess: excess
-					});
-			}
 
 	// 卡片装填（Q2 / Q8）：卡片自己 overflow:hidden，内容装不下就会被它切掉。
 	//   ① 主按钮下沿越过卡片的 padding box 下沿（可见下沿）
@@ -945,9 +801,7 @@ const SAMPLE_EXPR = `(() => {
 	gaps: gaps,
 	cta: cta,
 	ctaVisible: ctaVisible,
-	code: code,
-	previews: previews,
-	rows: rows,
+	choices: choices,
 	fit: fit
 	};
 	})()`;
@@ -997,10 +851,10 @@ async function setViewport(cdp, w, h, dpr) {
 }
 
 // ---------------------------------------------------------------------------
-// 触发进入动画：走完 4 张卡（3 次「下一步」+ 1 次「开始做题」）
+// 触发进入动画：走完 3 张卡（2 次「下一步」+ 1 次「开始做题」）
 // ---------------------------------------------------------------------------
 async function triggerEnter(cdp) {
-	for (let i = 0; i < 3; i++) {
+	for (let i = 0; i < 2; i++) {
 		const ok = await cdp.eval(`(() => {
 			const card = ${ACTIVE_CARD};
 			if (!card) { return false; }
@@ -1032,6 +886,38 @@ async function triggerEnter(cdp) {
 // ---------------------------------------------------------------------------
 const results = [];
 const problems = [];
+// 所有 ok === null（不适用）的判据。「不适用」不算失败，但绝不许当成通过 ——
+// 每个场景都要有一条 L-applicable 判据钉死「本场景不适用条数 == 0」。
+const notApplicable = [];
+// 当前场景的 profile（超时兜底反查进程用）
+let activeProfile = '';
+// 场景超时后置 true：此后这个场景里产生的判据结果一律作废，
+// 免得「超时那一刻顺手算出来的半个结果」混进最终报告里冒充结论。
+let scenarioAborted = false;
+
+/**
+ * 每个场景的墙钟上限。
+ *
+ * 场景内部有大量 await（等 overlay、等动画帧、等 CDP 回包），其中任何一个
+ * 「永不 settle」的 await 都会让整个场景无限期挂着 —— 而脚本外面还有 9 个场景在排队，
+ * 结果就是「一轮空转几十分钟，后面什么都没测」（2026-10-23 实测：卡在 resize-mid 空转 28 分钟）。
+ * 所以：超时就判失败 + 反查杀掉这个 profile 的进程 + 继续下一个场景。
+ * 宁可少测一个场景，也不能让整轮卡死。
+ */
+function withScenarioDeadline(name, fn) {
+	scenarioAborted = false;
+	return new Promise((resolve, reject) => {
+		const timer = setTimeout(() => {
+			scenarioAborted = true;
+			const killed = killProfileProcesses(activeProfile);
+			reject(new Error(`场景 ${name} 超过墙钟上限 ${Math.round(SCENARIO_DEADLINE_MS / 1000)}s，已杀 ${killed} 个残留进程并判失败`));
+		}, SCENARIO_DEADLINE_MS);
+		Promise.resolve().then(fn).then(
+			(v) => { clearTimeout(timer); resolve(v); },
+			(e) => { clearTimeout(timer); reject(e); }
+		);
+	});
+}
 
 /**
 	* 记一条判据。
@@ -1040,8 +926,16 @@ const problems = [];
 	* （汇总里显示为「—」，一眼能看出它没被测到，而不是被漏掉了）。
 	*/
 function judge(id, desc, ok, detail) {
+	if (scenarioAborted) {
+		console.log(`  ⊘ ${id} ${desc} —— 场景已超时，此项结果作废`);
+		return;
+	}
 	results.push({ id, desc, ok, detail });
-	if (ok === null) { console.log(`  — ${id} ${desc} —— ${detail}（不适用）`); return; }
+	if (ok === null) {
+		notApplicable.push({ id, desc, detail });
+		console.log(`  — ${id} ${desc} —— ${detail}（不适用）`);
+		return;
+	}
 	if (ok) { console.log(`  ✓ ${id} ${desc}`); }
 	else { console.log(`  ✗ ${id} ${desc} —— ${detail}`); problems.push(`${id}: ${detail}`); }
 }
@@ -1051,11 +945,13 @@ async function runScenario(name, opts) {
 	const outDir = path.join(OUT, name);
 	fs.mkdirSync(outDir, { recursive: true });
 	const profile = path.join(outDir, 'profile');
-	const port = BASE_PORT + (opts.portOffset || 0);
-	const args = [`--user-data-dir=${profile}`, `--remote-debugging-port=${port}`];
+	activeProfile = profile;
+	// 端口交给 Chromium 自选（0 = 让它挑一个没人占的端口）。
+	// 写死端口段会被「属主已死但内核仍 LISTENING」的孤儿套接字占住，
+	// 那样 Chromium 根本拿不到 DevTools 端口，脚本却还拿着旧端口去连 → 永久挂起。
+	const args = [`--user-data-dir=${profile}`, '--remote-debugging-port=0'];
 	if (opts.forceDpr) { args.push(`--force-device-scale-factor=${opts.forceDpr}`); }
 	const child = spawn(PRODUCT, args, { stdio: 'ignore' });
-	console.log('  进程 PID:', child.pid, '| 端口', port);
 
 	let closed = false;
 	const cleanup = async () => {
@@ -1063,23 +959,22 @@ async function runScenario(name, opts) {
 		closed = true;
 		try { child.kill(); } catch { /* 已退出 */ }
 		await sleep(2000);
-		try {
-			const ps = execFileSync('powershell.exe', ['-NoProfile', '-Command',
-				`Get-CimInstance Win32_Process -Filter "Name='Olympia.exe'" | Where-Object { $_.CommandLine -like '*${profile}*' } | ForEach-Object { $_.ProcessId }`],
-				{ encoding: 'utf8' });
-			const pids = ps.split(/\r?\n/).map(s => parseInt(s.trim(), 10)).filter(n => n > 0);
-			for (const pid of pids) { try { process.kill(pid); } catch { /* ignore */ } }
-			console.log(`  清理了 ${pids.length} 个残留进程（按 --user-data-dir 特征反查）`);
-		} catch { /* ignore */ }
+		const killed = killProfileProcesses(profile);
+		if (killed) { console.log(`  清理了 ${killed} 个残留进程（按 --user-data-dir 特征反查）`); }
 	};
 
 	let cdp; let ws;
 	try {
+		const port = await resolveDevToolsPort(profile);
+		console.log('  进程 PID:', child.pid, '| 端口', port, '（Chromium 自选）');
 		const target = await findPageTarget(port);
 		ws = new WebSocket(target.webSocketDebuggerUrl);
 		await new Promise((res, rej) => {
-			ws.addEventListener('open', res, { once: true });
-			ws.addEventListener('error', rej, { once: true });
+			// WS 握手也必须带超时：连上但握手不完成 = 同样是「永不 settle」。
+			const timer = setTimeout(() => rej(new Error('CDP WebSocket 15s 内没连上')), 15000);
+			const once = (fn) => (ev) => { clearTimeout(timer); fn(ev); };
+			ws.addEventListener('open', once(res), { once: true });
+			ws.addEventListener('error', once(rej), { once: true });
 		});
 		cdp = new Cdp(ws);
 		await cdp.send('Runtime.enable');
@@ -1135,16 +1030,20 @@ async function runScenario(name, opts) {
 				['L-bounds', '整张卡完整落在视口里（不被裁切）', judgeCardBounds],
 				['L-gap', '相邻两张卡之间留得出间隙（不重叠）', judgeCardGap],
 				['L-cta', '主按钮完整可见可点', judgeCardCta],
-				['L-code', '代码样例露出足够行数、光标可见且不在渐隐区', judgeCardCode],
-				['L-preview', '预览面板没有留出大片空白', judgeCardPreview],
-				['L-preview-overflow', '预览内容不许溢出可用区（上沿下沿都不许）', judgeCardPreviewOverflow],
-				['L-rows', '配置行不许被静默裁掉（每一行都要看得见）', judgeCardRows],
+				['L-choices', '选择列表不许被静默裁掉（每一项都要看得见）', judgeCardChoices],
 				['L-card-fit', '卡片内容必须装得下（主按钮不许被卡片裁掉）', judgeCardFit],
 			];
 			for (const [id, desc, fn] of cardJudges) {
 				const r = fn(cardLayout);
 				judge(`${name}-${id}`, desc, r.ok, r.detail);
 			}
+			// 「不适用」不等于「通过」：本场景里凡是没被测到的判据都要被点名。
+			const naHere = notApplicable.filter(x => x.id.startsWith(name + '-'));
+			judge(`${name}-L-applicable`, '所有卡片判据都必须适用（不适用条数必须为 0）',
+				naHere.length === 0,
+				naHere.length === 0
+					? '本场景没有「不适用」的判据'
+					: `本场景有 ${naHere.length} 条判据没被测到：${naHere.map(x => x.id).join('、')}`);
 		}
 
 		// 触发进入动画
@@ -1219,6 +1118,8 @@ if (has('--selftest')) {
 console.log('=== 窗口几何真机门禁 ===');
 console.log('  产品 :', PRODUCT);
 console.log('  输出 :', OUT);
+console.log('  端口 : Chromium 自选（--port ' + LEGACY_BASE_PORT + ' 仅作兼容保留，已不生效）');
+console.log('  单场景墙钟上限 :', Math.round(SCENARIO_DEADLINE_MS / 1000) + 's');
 
 if (!fs.existsSync(PRODUCT)) {
 	console.error('产品不存在：' + PRODUCT);
@@ -1227,22 +1128,26 @@ if (!fs.existsSync(PRODUCT)) {
 }
 fs.mkdirSync(OUT, { recursive: true });
 
+// 端口不再连号排开：每个场景用独立 profile + Chromium 自选端口。
+// 原来的写法（--port 9251 连号）会被 Windows 上的孤儿监听套接字占死，
+// 而 Chromium 拿不到端口时是**静默**的 —— 门禁脚本拿着旧端口去连一个不回话的孤儿，
+// 于是永久挂起。端口自选把这个前提彻底去掉。
 const SCENARIOS = [
-	{ name: 'narrow', viewport: [480, 900], dpr: 1, portOffset: 0 },
-	{ name: 'flat', viewport: [1400, 300], dpr: 1, portOffset: 1 },
-	{ name: 'hidpi', viewport: [900, 900], dpr: 2, forceDpr: 2, portOffset: 2 },
-	{ name: 'resize-mid', viewport: [1100, 800], dpr: 1, portOffset: 3, resizeAtMs: 1700, resizeTo: [900, 640] },
-	{ name: 'resize-late', viewport: [1100, 800], dpr: 1, portOffset: 4, resizeAtMs: 3200, resizeTo: [820, 900] },
-	{ name: 'tiny', viewport: [400, 270], dpr: 1, portOffset: 5 },
-	{ name: 'min-width', viewport: [400, 760], dpr: 1, portOffset: 6 },
-	{ name: 'short', viewport: [1000, 400], dpr: 1, portOffset: 7 },
-	{ name: 'veryshort', viewport: [1000, 330], dpr: 1, portOffset: 8 },
-	{ name: 'midshort', viewport: [900, 460], dpr: 1, portOffset: 9 },];
+	{ name: 'narrow', viewport: [480, 900], dpr: 1 },
+	{ name: 'flat', viewport: [1400, 300], dpr: 1 },
+	{ name: 'hidpi', viewport: [900, 900], dpr: 2, forceDpr: 2 },
+	{ name: 'resize-mid', viewport: [1100, 800], dpr: 1, resizeAtMs: 1700, resizeTo: [900, 640] },
+	{ name: 'resize-late', viewport: [1100, 800], dpr: 1, resizeAtMs: 3200, resizeTo: [820, 900] },
+	{ name: 'tiny', viewport: [400, 270], dpr: 1 },
+	{ name: 'min-width', viewport: [400, 760], dpr: 1 },
+	{ name: 'short', viewport: [1000, 400], dpr: 1 },
+	{ name: 'veryshort', viewport: [1000, 330], dpr: 1 },
+	{ name: 'midshort', viewport: [900, 460], dpr: 1 },];
 
 for (const sc of SCENARIOS) {
 	if (ONLY_SCENARIO && sc.name !== ONLY_SCENARIO) { continue; }
 	try {
-		await runScenario(sc.name, sc);
+		await withScenarioDeadline(sc.name, () => runScenario(sc.name, sc));
 	} catch (e) {
 		console.error(`  ✗ 场景 ${sc.name} 异常：${e.message}`);
 		problems.push(`${sc.name}-crash: ${e.message}`);
@@ -1264,6 +1169,9 @@ console.log('\n================ 汇总 ================');
 for (const r of results) {
 	console.log(`  ${r.ok === null ? '—' : (r.ok ? '✓' : '✗')} ${r.id} ${r.desc}${r.ok === null || r.ok ? '' : ' —— ' + r.detail}`);
 }
+console.log(notApplicable.length
+	? `\n注意：有 ${notApplicable.length} 条判据「不适用」—— 不适用不等于通过`
+	: '\n没有「不适用」的判据（全部真的测到了）');
 console.log(problems.length ? `\n有 ${problems.length} 条几何判据没过` : '\n窗口几何全过 ✓');
 console.log('报告:', path.join(OUT, 'geometry-report.json'));
 process.exit(problems.length ? 1 : 0);

@@ -58,7 +58,13 @@ const SHEET_COLS = Number(arg('--cols', 6));
 const SHEET_INTERVAL_MS = Number(arg('--interval', 220));
 const STAMP = new Date().toISOString().replace(/[:.]/g, '-');
 const OUT = arg('--out', path.join(os.tmpdir(), 'olympia-frames-' + STAMP));
-const PROFILE = path.join(OUT, 'profile');
+// Profile 必须**每次唯一**：
+//  1) 首启标记（olympia.onboarding.completed.v1）写进这个目录后，第二次跑就再也不显示引导；
+//  2) <profile>/DevToolsActivePort 里残留的是**上一个已退出进程**的端口 —— 照着它去连会连一个
+//     早已死掉的端口，页面目标等 90s 也不会出现（2026-10-24 实测：日志读到的端口 54281，
+//     而文件里现存的其实是 59798；应用本身启动 3 秒内就有 type=page 目标）。
+// 其它门禁脚本（check-backdrop-continuity / measure-card-geometry）也都是这个口径。
+const PROFILE = path.join(OUT, 'profile-' + STAMP);
 
 if (!['normal', 'skip'].includes(PATH_KIND)) {
 	console.error('用法：node capture-onboarding-frames.mjs [--product <目录>] [--port N] [--path normal|skip] [--out <目录>]');
@@ -227,20 +233,48 @@ class CDP {
 }
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-async function httpJson(url) { return (await fetch(url)).json(); }
+async function httpJson(url, timeoutMs = 5000) {
+	// 每次网络交互都必须自带超时：无超时的 fetch 遇到「连上但不回数据」的孤儿套接字时
+	// 不是 reject，而是永远不 settle —— 整个脚本就此挂住，什么都不打印。
+	return (await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })).json();
+}
 
-async function findPageTarget(port) {
-	for (let i = 0; i < 160; i++) {
+/**
+ * 端口交给 Chromium 自选（--remote-debugging-port=0）。
+ *
+ * 固定端口段一旦被孤儿套接字占住，Chromium 会**静默拿不到 DevTools 端口**
+ * （DevToolsActivePort 文件根本不生成），而脚本还拿着写死的端口去连 →
+ * 连上那个「连上但不回数据」的孤儿 → fetch 永远不 settle → 整轮空转。
+ * 交给它自己挑就绕开了「端口被占」这个前提。
+ */
+async function resolveDevToolsPort(profile, timeoutMs = 60000) {
+	const portFile = path.join(profile, 'DevToolsActivePort');
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
 		try {
-			const list = await httpJson(`http://127.0.0.1:${port}/json/list`);
+			const txt = fs.readFileSync(portFile, 'utf8');
+			const first = String(txt).split(/\r?\n/)[0].trim();
+			if (/^\d+$/.test(first)) { return Number(first); }
+		} catch { /* 还没写出来 */ }
+		await sleep(200);
+	}
+	throw new Error('等不到 DevToolsActivePort（' + portFile + '）');
+}
+
+async function findPageTarget(port, timeoutMs = 90000) {
+	// 墙钟上限，不是「次数上限」：httpJson 自带 5s 超时，按次数算最坏会拖到 20 分钟。
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		try {
+			const list = await httpJson(`http://127.0.0.1:${port}/json/list`, 3000);
 			const pages = list.filter(t => t.type === 'page' && t.webSocketDebuggerUrl);
 			if (pages.length) {
 				return pages.find(p => !/devtools|about:blank/i.test(p.url)) || pages[0];
 			}
 		} catch { /* 还没起来 */ }
-		await sleep(500);
+		await sleep(300);
 	}
-	throw new Error('等不到 CDP 页面目标');
+	throw new Error('等不到 CDP 页面目标（端口 ' + port + '）');
 }
 
 // ---------------------------------------------------------------- DOM 探针
@@ -327,9 +361,13 @@ console.log('  产品   :', PRODUCT);
 console.log('  profile:', PROFILE);
 console.log('  输出   :', OUT);
 
+// 端口文件必须是**本次进程**写的：即使 profile 目录是全新的，也先把可能残留的端口文件删掉，
+// 避免读到上一个进程的端口后白等 90s。
+try { fs.unlinkSync(path.join(PROFILE, 'DevToolsActivePort')); } catch { /* 本来就没有 */ }
+
 const child = spawn(PRODUCT, [
 	`--user-data-dir=${PROFILE}`,
-	`--remote-debugging-port=${CDP_PORT}`
+	'--remote-debugging-port=0'
 ], { stdio: 'ignore' });
 console.log('  进程 PID:', child.pid);
 
@@ -343,8 +381,8 @@ const cleanup = async () => {
 	await sleep(1500);
 	try {
 		const ps = execFileSync('powershell.exe', ['-NoProfile', '-Command',
-			`Get-CimInstance Win32_Process -Filter "Name='Olympia.exe'" | Where-Object { $_.CommandLine -like '*${PROFILE}*' } | ForEach-Object { $_.ProcessId }`],
-			{ encoding: 'utf8' });
+			`$p = $env:OLYMPIA_PROFILE_MARK; Get-CimInstance Win32_Process -Filter "Name='Olympia.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($p) } | ForEach-Object { $_.ProcessId }`],
+			{ encoding: 'utf8', env: { ...process.env, OLYMPIA_PROFILE_MARK: PROFILE } });
 		const pids = ps.split(/\r?\n/).map(s => parseInt(s.trim(), 10)).filter(n => n > 0);
 		for (const pid of pids) { try { process.kill(pid); } catch { /* ignore */ } }
 		if (pids.length) { console.log(`  清理了 ${pids.length} 个残留进程`); }
@@ -352,11 +390,15 @@ const cleanup = async () => {
 };
 
 try {
-	const target = await findPageTarget(CDP_PORT);
+	const cdpPort = await resolveDevToolsPort(PROFILE);
+	console.log('  CDP 端口', cdpPort, '（Chromium 自选）');
+	const target = await findPageTarget(cdpPort);
 	const ws = new WebSocket(target.webSocketDebuggerUrl);
 	await new Promise((res, rej) => {
-		ws.addEventListener('open', res, { once: true });
-		ws.addEventListener('error', rej, { once: true });
+		const timer = setTimeout(() => rej(new Error('CDP WebSocket 15s 内没连上')), 15000);
+		const once = (fn) => (ev) => { clearTimeout(timer); fn(ev); };
+		ws.addEventListener('open', once(res), { once: true });
+		ws.addEventListener('error', once(rej), { once: true });
 	});
 	cdp = new CDP(ws);
 	await cdp.send('Runtime.enable');
@@ -418,7 +460,13 @@ try {
 			const cards = [...document.querySelectorAll('.olympia-onboarding-card')];
 			return cards.find(c => c.style.pointerEvents === 'auto') || cards[0] || null;
 		})()`;
-		for (let step = 0; step < 3; step++) {
+		// 推进次数按**实际卡片数**算：三屏版 2 次（四屏旧版才是 3 次）。
+		// 写死 3 次会在三屏上多点一次，把最后一张卡的「开始做题」提前点掉 ——
+		// 紧接着读到的 CTA 就是 null，还会被误报成「CTA 不是开始做题」。
+		const cardCount = Number(await cdp.eval(`document.querySelectorAll('.olympia-onboarding-card').length`));
+		const advanceSteps = Math.max(0, cardCount - 1);
+		console.log('  卡片数:', cardCount, '→ 推进', advanceSteps, '次');
+		for (let step = 0; step < advanceSteps; step++) {
 			const ok = await cdp.eval(`(() => {
 				const card = ${ACTIVE_CARD};
 				if (!card) { return false; }
@@ -436,7 +484,7 @@ try {
 			return b ? b.innerText.trim() : null;
 		})()`);
 		console.log('  最后一张卡 CTA:', JSON.stringify(label));
-		if (label !== '开始做题') { problems.push('第 4 张卡 CTA 不是「开始做题」，实际 ' + JSON.stringify(label)); }
+		if (label !== '开始做题') { problems.push('最后一张卡 CTA 不是「开始做题」，实际 ' + JSON.stringify(label)); }
 		const started = await cdp.eval(`(() => {
 			const card = ${ACTIVE_CARD};
 			const b = card ? card.querySelector('.olympia-onboarding-cta') : null;

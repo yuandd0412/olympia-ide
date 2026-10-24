@@ -619,20 +619,48 @@ class CDP {
 }
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-async function httpJson(url) { return (await fetch(url)).json(); }
+async function httpJson(url, timeoutMs = 5000) {
+	// 每次网络交互都必须自带超时：无超时的 fetch 遇到「连上但不回数据」的孤儿套接字时
+	// 不是 reject，而是永远不 settle —— 整个脚本就此挂住，什么都不打印。
+	return (await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })).json();
+}
 
-async function findPageTarget(port) {
-	for (let i = 0; i < 160; i++) {
+/**
+ * 端口交给 Chromium 自选（--remote-debugging-port=0）。
+ *
+ * 固定端口段一旦被孤儿套接字占住，Chromium 会**静默拿不到 DevTools 端口**
+ * （DevToolsActivePort 文件根本不生成），而脚本还拿着写死的端口去连 →
+ * 连上那个「连上但不回数据」的孤儿 → fetch 永远不 settle → 整轮空转。
+ * 交给它自己挑就绕开了「端口被占」这个前提。
+ */
+async function resolveDevToolsPort(profile, timeoutMs = 60000) {
+	const portFile = path.join(profile, 'DevToolsActivePort');
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
 		try {
-			const list = await httpJson(`http://127.0.0.1:${port}/json/list`);
+			const txt = fs.readFileSync(portFile, 'utf8');
+			const first = String(txt).split(/\r?\n/)[0].trim();
+			if (/^\d+$/.test(first)) { return Number(first); }
+		} catch { /* 还没写出来 */ }
+		await sleep(200);
+	}
+	throw new Error('等不到 DevToolsActivePort（' + portFile + '）');
+}
+
+async function findPageTarget(port, timeoutMs = 90000) {
+	// 墙钟上限，不是「次数上限」：httpJson 自带 5s 超时，按次数算最坏会拖到 20 分钟。
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		try {
+			const list = await httpJson(`http://127.0.0.1:${port}/json/list`, 3000);
 			const pages = list.filter(t => t.type === 'page' && t.webSocketDebuggerUrl);
 			if (pages.length) {
 				return pages.find(p => !/devtools|about:blank/i.test(p.url)) || pages[0];
 			}
 		} catch { /* 还没起来 */ }
-		await sleep(500);
+		await sleep(300);
 	}
-	throw new Error('等不到 CDP 页面目标');
+	throw new Error('等不到 CDP 页面目标（端口 ' + port + '）');
 }
 
 // ---------------------------------------------------------------- 采集
@@ -662,7 +690,7 @@ async function collect(opts = {}) {
 
 	const child = spawn(PRODUCT, [
 		`--user-data-dir=${PROFILE}`,
-		`--remote-debugging-port=${PORT}`
+		'--remote-debugging-port=0'
 	], { stdio: 'ignore' });
 	console.log('  进程 PID:', child.pid);
 
@@ -676,8 +704,8 @@ async function collect(opts = {}) {
 		await sleep(1500);
 		try {
 			const ps = execFileSync('powershell.exe', ['-NoProfile', '-Command',
-				`Get-CimInstance Win32_Process -Filter "Name='Olympia.exe'" | Where-Object { $_.CommandLine -like '*${PROFILE}*' } | ForEach-Object { $_.ProcessId }`],
-				{ encoding: 'utf8' });
+				`$p = $env:OLYMPIA_PROFILE_MARK; Get-CimInstance Win32_Process -Filter "Name='Olympia.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($p) } | ForEach-Object { $_.ProcessId }`],
+				{ encoding: 'utf8', env: { ...process.env, OLYMPIA_PROFILE_MARK: PROFILE } });
 			const pids = ps.split(/\r?\n/).map(s => parseInt(s.trim(), 10)).filter(n => n > 0);
 			for (const pid of pids) { try { process.kill(pid); } catch { /* ignore */ } }
 			if (pids.length) { console.log(`  清理了 ${pids.length} 个残留进程`); }
@@ -685,11 +713,15 @@ async function collect(opts = {}) {
 	};
 
 	try {
-		const target = await findPageTarget(PORT);
+		const cdpPort = await resolveDevToolsPort(PROFILE);
+		console.log('  CDP 端口', cdpPort, '（Chromium 自选）');
+		const target = await findPageTarget(cdpPort);
 		const ws = new WebSocket(target.webSocketDebuggerUrl);
 		await new Promise((res, rej) => {
-			ws.addEventListener('open', res, { once: true });
-			ws.addEventListener('error', rej, { once: true });
+			const timer = setTimeout(() => rej(new Error('CDP WebSocket 15s 内没连上')), 15000);
+			const once = (fn) => (ev) => { clearTimeout(timer); fn(ev); };
+			ws.addEventListener('open', once(res), { once: true });
+			ws.addEventListener('error', once(rej), { once: true });
 		});
 		cdp = new CDP(ws);
 		await cdp.send('Runtime.enable');
@@ -797,7 +829,7 @@ async function collect(opts = {}) {
 		fs.writeFileSync(outFile, JSON.stringify({
 			startedAt: new Date().toISOString(),
 			product: PRODUCT,
-			port: PORT,
+			port: cdpPort,
 			...payload,
 		}));
 		console.log('\n  样本已落盘:', outFile);

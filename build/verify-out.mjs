@@ -46,7 +46,14 @@ check('布局菜单「底部面板」', !!layout && layout.includes('底部面�
 
 const settings = read('vs/workbench/contrib/preferences/browser/settingsLayout.js');
 check('设置页含 Olympia 分类', !!settings && settings.includes('olympia'));
-check('设置页含「编译器」分类', !!settings && settings.includes('编译器'));
+// The "编译器与评测" category is NOT contributed by settingsLayout.ts: the built-in extension
+// ships its own configuration block and settingsTree.ts renders every Olympia extension id
+// under the "Olympia" root. Assert on the two places that actually carry it -- the old check
+// grepped settingsLayout.ts and went stale when the layout was refactored.
+const settingsTree = read('vs/workbench/contrib/preferences/browser/settingsTree.js');
+check('设置树含 Olympia 根节点', !!settingsTree && settingsTree.includes('olympia'));
+const onboardingPkg = JSON.parse(readFileSync(`${OSS}/extensions/olympia-onboarding/package.json`, 'utf8'));
+check('设置页含「编译器与评测」分类', onboardingPkg.contributes?.configuration?.title === '编译器与评测');
 
 const welcome = read('vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.js');
 check('起始页「装完，就打比赛」', !!welcome && welcome.includes('装完，就打比赛'));
@@ -168,25 +175,46 @@ console.log('\n== Olympia 扩展产物 ==');
 for (const f of ['extension.js', 'precheck.js', 'compile.js']) {
 	check(`out/${f} 存在`, existsSync(`${OSS}/extensions/olympia-onboarding/out/${f}`));
 }
-const extJs = readAbs('extensions/olympia-onboarding/out/extension.js') ?? '';
+// The command ids live in the CMD map in commands.ts -> out/commands.js. extension.js only
+// imports that map, so grepping extension.js for the ids proved nothing -- and 'olympia.compile'
+// even matched there through the unrelated setting key 'olympia.compiler.path'. Match the
+// quoted literal in the file that actually declares them.
+const cmdJs = readAbs('extensions/olympia-onboarding/out/commands.js') ?? '';
 for (const cmd of [
 	'olympia.checkEnvironment', 'olympia.pickCompileProfile', 'olympia.preSubmitCheck',
 	'olympia.compile', 'olympia.compileJudgeAccurate', 'olympia.compileAndRun', 'olympia.openWebsite'
 ]) {
-	check(`命令 ${cmd}`, extJs.includes(cmd));
+	check(`命令 ${cmd}`, cmdJs.includes(`'${cmd}'`));
 }
+const extJs = readAbs('extensions/olympia-onboarding/out/extension.js') ?? '';
 check('扩展产物含中文（提交前体检）', extJs.includes('提交前体检'));
 
+// The judge's published switch set lives in ojTargets.ts (LUOGU_BASE_FLAGS) -> out/ojTargets.js;
+// compile.ts only assembles the command line. Both files have to be checked, because the
+// language selector ('-x' / 'c++') is in compile.ts and the rest are in ojTargets.ts.
+const ojJs = readAbs('extensions/olympia-onboarding/out/ojTargets.js') ?? '';
 const compileJs = readAbs('extensions/olympia-onboarding/out/compile.js') ?? '';
-check('编译参数 -DONLINE_JUDGE（无值）', compileJs.includes('-DONLINE_JUDGE'));
-check('编译参数不含 -DONLINE_JUDGE=luogu', !compileJs.includes('-DONLINE_JUDGE=luogu'));
-for (const flag of ['-fPIC', '-fno-asm', '-march=native', '-x', 'c++']) {
-	check(`评测机开关 ${flag}`, compileJs.includes(`'${flag}'`) || compileJs.includes(`"${flag}"`));
+check('编译参数 -DONLINE_JUDGE（无值）', ojJs.includes(`'-DONLINE_JUDGE'`));
+check('编译参数不含 -DONLINE_JUDGE=luogu', !ojJs.includes('-DONLINE_JUDGE=luogu'));
+for (const flag of ['-fPIC', '-fno-asm', '-march=native']) {
+	check(`评测机开关 ${flag}`, ojJs.includes(`'${flag}'`));
+}
+for (const flag of ['-x', 'c++']) {
+	check(`语言开关 ${flag}`, compileJs.includes(`'${flag}'`));
 }
 
+// The rule set is the three that survive in src/precheck.ts. The other ids were retired with
+// the old checker, so they must stay gone -- that is a subtraction assertion and it bites.
+// Anchor on the checker table entry (`id: '<rule>'`), not on a bare substring: a plain
+// includes() could not tell 'pragmaOptimize' from 'pragmaOptimize_MUTATED', and the ids also
+// appear as plain arguments in the finding() calls.
+// ('freopen' is deliberately not asserted either way: it only survives inside a source comment.)
 const preJs = readAbs('extensions/olympia-onboarding/out/precheck.js') ?? '';
-for (const rule of ['crlf', 'pragmaOptimize', 'onlineJudge', 'memoryLeak', 'reservedWord', 'freopen', 'ioMix', 'removedCpp']) {
-	check(`体检规则 ${rule}`, preJs.includes(rule));
+for (const rule of ['pragmaOptimize', 'reservedWord', 'removedCpp']) {
+	check(`体检规则 ${rule}`, preJs.includes(`id: '${rule}'`));
+}
+for (const rule of ['crlf', 'onlineJudge', 'memoryLeak', 'ioMix']) {
+	check(`体检规则 ${rule} 已退役（不得复活）`, !preJs.includes(`id: '${rule}'`));
 }
 
 // ---- 4. brand ----
@@ -394,20 +422,27 @@ check('非 localize 字符串未被误改（tasks.json 模板保持英文）',
 console.log('\n== 减法 / 加法：内置扩展裁剪 + olympia-contest ==');
 // Removal is only real if the dev-mode scanner skips these folders. Asserting on the
 // workbench bundle would be vacuous: it never contains extension names at all.
-const scannerSrc = readFileSync('D:/oler-ide-v2/oss/src/vs/platform/extensionManagement/common/extensionsScannerService.ts', 'utf8');
-const removedNames = ['git', 'git-base', 'github-authentication', 'php-language-features', 'ms-vscode.js-debug', 'microsoft-authentication', 'python', 'java'];
-for (const n of removedNames) {
-	check(`减法：${n} 已从 dev 扫描层排除`, scannerSrc.includes(`\t'${n}',`));
+// The trim list is product data now: product.json's `olympiaExcludedBuiltInExtensions`,
+// consumed by the scanner through getExcludedBuiltInExtensionDirs(). The old check grepped a
+// hard-coded array inside extensionsScannerService.ts and went stale when the list moved.
+const productJson = JSON.parse(readFileSync(`${OSS}/product.json`, 'utf8'));
+const excludedIds = (productJson.olympiaExcludedBuiltInExtensions ?? []).map(id => id.toLowerCase());
+const scannerSrc = readFileSync(`${OSS}/src/vs/platform/extensionManagement/common/extensionsScannerService.ts`, 'utf8');
+check('减法：dev 扫描层读取 product.json 的排除表', scannerSrc.includes('olympiaExcludedBuiltInExtensions'));
+for (const n of ['git', 'git-base', 'github-authentication', 'php-language-features', 'microsoft-authentication', 'python', 'java']) {
+	check(`减法：${n} 已从产品内置扩展中排除`, excludedIds.includes(n));
 }
-check('减法：product.json 不再声明市场内置扩展', JSON.parse(readFileSync('D:/oler-ide-v2/oss/product.json', 'utf8')).builtInExtensions.length === 0);
+// ms-vscode.js-debug has no folder under extensions/ at all, so there is nothing to exclude.
+check('减法：ms-vscode.js-debug 目录不存在（无需排除）', !existsSync(`${OSS}/extensions/ms-vscode.js-debug`));
+check('减法：product.json 不再声明市场内置扩展', (productJson.builtInExtensions ?? []).length === 0);
 // addition: the contest helper must be compiled and registered
-const contestPkg = JSON.parse(readFileSync('D:/oler-ide-v2/oss/extensions/olympia-contest/package.json', 'utf8'));
+const contestPkg = JSON.parse(readFileSync(`${OSS}/extensions/olympia-contest/package.json`, 'utf8'));
 check('加法：olympia-contest 已注册拉取题面命令', contestPkg.contributes.commands.some(c => c.command === 'olympia.problem.pull'));
-check('加法：olympia-contest 未被误排除', !scannerSrc.includes("'olympia-contest',"));
-const contestOut = readFileSync('D:/oler-ide-v2/oss/extensions/olympia-contest/out/sources.js', 'utf8');
+check('加法：olympia-contest 未被误排除', !excludedIds.includes('olympia-contest'));
+const contestOut = readFileSync(`${OSS}/extensions/olympia-contest/out/sources.js`, 'utf8');
 check('加法：题面拉取器已编译（洛谷/Codeforces/AtCoder）',
-	contestOut.includes('lentille-context') && contestOut.includes('codeforces.com/api') && contestOut.includes('atcoder.jp'));
-const contestTemplates = readFileSync('D:/oler-ide-v2/oss/extensions/olympia-contest/out/templates.js', 'utf8');
+	contestOut.includes('lentille-context') && contestOut.includes('https://codeforces.com') && contestOut.includes('https://atcoder.jp'));
+const contestTemplates = readFileSync(`${OSS}/extensions/olympia-contest/out/templates.js`, 'utf8');
 check('加法：ACM / IOI 赛制模板已编译', contestTemplates.includes('ACM') && contestTemplates.includes('IOI'));
 
 // Copilot must not merely be excluded as an extension — the agent host registers a `copilotcli`

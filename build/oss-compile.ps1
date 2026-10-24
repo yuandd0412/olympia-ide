@@ -27,13 +27,27 @@ if ($running.Count -gt 0) {
 Set-Location 'D:\oler-ide-v2\oss'
 $stamp = { (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') }
 
-# STEP 1 - type check only. `npm run compile` -> `gulp compile` -> `tsc --noEmit`.
-# It does NOT emit JavaScript. A green EXITCODE here says nothing about out/.
+# STEP 1 - type check. `npm run compile` -> `gulp compile` -> tsgo/tsc over src/ + extensions/.
+#
+# The exit code of this npm chain is NOT trustworthy: the outer `npm run` wrapper can
+# report 0 even when the inner gulp task failed (measured: the log ended with
+# `ERROR: "compile-client" exited with 1.` while $LASTEXITCODE was still 0).
+# So the verdict is taken from the captured log content as well, and a non-zero code
+# is only one of the ways to fail.
 Write-Output ("=== STEP 1/2 typecheck START " + (& $stamp) + " ===")
-npm run compile --proxy=null --https-proxy=null
+$typecheckLog = 'D:\oler-ide-v2\build\oss-compile-typecheck.log'
+npm run compile --proxy=null --https-proxy=null 2>&1 | Tee-Object -FilePath $typecheckLog
 $rc = $LASTEXITCODE
-Write-Output ("=== STEP 1/2 typecheck EXITCODE=$rc  " + (& $stamp) + " ===")
-if ($rc -ne 0) { Write-Output "typecheck failed, skipping transpile"; exit $rc }
+$logText = ''
+if (Test-Path $typecheckLog) { $logText = Get-Content -Raw $typecheckLog }
+$failMarkers = @('errored after', 'exited with 1', 'exited with 2', 'error TS', 'Error: tsgo exited with code')
+$hitMarker = ''
+foreach ($m in $failMarkers) {
+	if ($logText.Contains($m)) { $hitMarker = $m; break }
+}
+$failed = ($rc -ne 0) -or ($hitMarker -ne '')
+Write-Output ("=== STEP 1/2 typecheck EXITCODE=$rc FAILMARKER='" + $hitMarker + "' FAILED=$failed  " + (& $stamp) + " ===")
+if ($failed) { Write-Output "typecheck failed, skipping transpile"; exit 1 }
 
 # STEP 2 - actually emit out/*.js. This is the pipeline that produces runnable artifacts.
 # It cleans out/ first, then rewrites all ~9440 files (~65s).

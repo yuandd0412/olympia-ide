@@ -585,6 +585,423 @@ check('F2', 'CSS 里没有使用非 --vscode- 前缀的自定义变量', () => {
 });
 
 // ===========================================================================
+// G. 布局不变式 + 禁用原生下拉
+// ===========================================================================
+//
+// 这一组的来历：2026-10-24 真机验收（用 CDP 读真实 DOM，不是看截图）在
+// **默认工作台宽度**下抓到两个真实缺陷：
+//
+//   1. 布局崩坏。右侧聊天面板默认展开时，编辑器区只有 ~546px 宽。
+//      原来的 flex 布局在这��宽度下：
+//        - `.olympiaSettings-rowControl { flex: 0 0 320px }` 固定不缩，
+//          把标签盒压成 **0 宽**（实测 label clientWidth = 0）→ 中文标签一字一行竖排；
+//        - 控件溢出 → 内容区出横向滚动条（实测 scrollWidth 386 > clientWidth 334）；
+//        - `position: sticky` 的 footer 停不住（祖先 `overflow: hidden` 成了 sticky 的
+//          scrollport，而它自己不滚）→ footer 停在半空（实测 y=591，底部 767）。
+//   2. 主题/枚举下拉用的是**原生 `<select>`**：暗色主题下展开就是系统弹窗，
+//      白底白字 / 白底黑字，和工作台完全是两套皮 —— 这是用户点名的红线。
+//
+// 这两条必须变成**可重复的静态断言**，否则下一次改 CSS 又会悄悄退化回去。
+
+/**
+ * 取出 CSS 里某个选择器的规则块内容（花括号内，不含花括号）。
+ *
+ * 注释在 load() 那一步已经剥掉了 —— 否则文件里「说明为什么这么写」的注释
+ * 会把规则块切碎，断言就变成在读散文而不是读代码。
+ */
+function cssRule(css, selector) {
+	if (css === null) return null;
+	const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	const re = new RegExp('(?:^|[}\\n])\\s*' + escaped + '\\s*\\{');
+	const m = re.exec(css);
+	if (!m) return null;
+	const open = css.indexOf('{', m.index);
+	let depth = 0;
+	for (let i = open; i < css.length; i++) {
+		if (css[i] === '{') { depth++; continue; }
+		if (css[i] === '}') {
+			depth--;
+			if (depth === 0) { return css.slice(open + 1, i); }
+		}
+	}
+	return null;
+}
+
+const pageText = load(F_PAGE);
+const cssText = load(F_CSS);
+
+check('G1', '设置页根容器是 grid，右列写成 minmax(0, 1fr)（1fr 的默认 min 是 auto，不缩）', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const rule = cssRule(cssText, '.olympiaSettings');
+	if (rule === null) return 'CSS 里找不到 .olympiaSettings 规则块';
+	if (!/display:\s*grid;/.test(rule)) return '.olympiaSettings 不是 grid 布局';
+	if (!rule.includes('grid-template-columns: 180px minmax(0, 1fr);')) {
+		return 'grid-template-columns 不是 "180px minmax(0, 1fr)" —— 右列不会收缩，窄宽度下必然横向溢出';
+	}
+	return null;
+});
+
+check('G2', '设置页分三行（导航带 + 内容区 + 底栏），footer 因此能真正贴底', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const rule = cssRule(cssText, '.olympiaSettings');
+	if (rule === null) return 'CSS 里找不到 .olympiaSettings 规则块';
+	if (!rule.includes('grid-template-rows: auto minmax(0, 1fr) auto;')) {
+		return 'grid-template-rows 不是 "auto minmax(0, 1fr) auto" —— 没有独立的底栏行（窄容器响应式也依赖这个三行结构）';
+	}
+	return null;
+});
+
+check('G3', '内容区 .olympiaSettings-body 有 min-width: 0（否则右列不缩 → 横向滚动条）', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const rule = cssRule(cssText, '.olympiaSettings-body');
+	if (rule === null) return 'CSS 里找不到 .olympiaSettings-body 规则块';
+	if (!/min-width:\s*0;/.test(rule)) return '.olympiaSettings-body 没有 min-width: 0';
+	return null;
+});
+
+check('G4', '设置行允许换行（窄宽度下控件整体落到下一行，而不是把标签压成 0 宽）', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const rule = cssRule(cssText, '.olympiaSettings-row');
+	if (rule === null) return 'CSS 里找不到 .olympiaSettings-row 规则块';
+	if (!/flex-wrap:\s*wrap;/.test(rule)) return '.olympiaSettings-row 没有 flex-wrap: wrap';
+	return null;
+});
+
+check('G5', '标签列 .olympiaSettings-rowLabel 的 min-width 不为 0（0 宽 = 中文标签一字一行竖排）', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const rule = cssRule(cssText, '.olympiaSettings-rowLabel');
+	if (rule === null) return 'CSS 里找不到 .olympiaSettings-rowLabel 规则块';
+	const m = /min-width:\s*([^;]+);/.exec(rule);
+	if (!m) return '.olympiaSettings-rowLabel 没有声明 min-width';
+	if (m[1].trim() === '0') return 'min-width 是 0 —— 标签盒会被压成 0 宽，中文标签竖排';
+	return null;
+});
+
+check('G6', '控件列 .olympiaSettings-rowControl 可以收缩（不能是 flex: 0 0 …）', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const rule = cssRule(cssText, '.olympiaSettings-rowControl');
+	if (rule === null) return 'CSS 里找不到 .olympiaSettings-rowControl 规则块';
+	if (/flex:\s*0\s+0\b/.test(rule)) return 'flex: 0 0 … 不许缩 —— 窄宽度下它把标签挤成 0 宽';
+	return null;
+});
+
+check('G7', '底栏 .olympiaSettings-footer 不再用 position: sticky（祖先 overflow:hidden 会让它失效）', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const rule = cssRule(cssText, '.olympiaSettings-footer');
+	if (rule === null) return 'CSS 里找不到 .olympiaSettings-footer 规则块';
+	if (/position:\s*sticky/.test(rule)) return 'footer 还是 position: sticky —— 它会停在半空而不是贴底';
+	return null;
+});
+
+check('G8', '底栏占 grid 第三行（grid-row: 3）', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const rule = cssRule(cssText, '.olympiaSettings-footer');
+	if (rule === null) return 'CSS 里找不到 .olympiaSettings-footer 规则块';
+	if (!rule.includes('grid-row: 3;')) return '.olympiaSettings-footer 没有 grid-row: 3';
+	return null;
+});
+
+check('G9', '底栏挂在根容器上而不是滚动区里（append(container, this.renderFooter())）', () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	if (!pageText.includes('append(container, this.renderFooter());')) {
+		return '页面没有把 footer 挂到 container 上';
+	}
+	if (pageText.includes('append(body, this.renderFooter());')) {
+		return '底栏还挂在 body 里 —— 它会跟着内容一起滚动';
+	}
+	return null;
+});
+
+check('G10', '设置页不自己创建原生 <select>（系统弹窗 = 白底白字红线）', () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const bad = [];
+	if (/createElement\(\s*['"]select['"]\s*\)/.test(pageText)) { bad.push("document.createElement('select')"); }
+	if (/\$\s*<[^>]*>\(\s*['"]select['"]\s*\)/.test(pageText)) { bad.push("$<HTMLSelectElement>('select')"); }
+	if (/\$\(\s*['"]select['"]\s*\)/.test(pageText)) { bad.push("$('select')"); }
+	if (/HTMLSelectElement/.test(pageText)) { bad.push('HTMLSelectElement'); }
+	if (bad.length > 0) {
+		return `页面里出现了原生 select：${bad.join('、')}`;
+	}
+	return null;
+});
+
+check('G11', '下拉用上游 SelectBox 且强制 useCustomDrawn: true（自绘列表，不弹系统菜单）', () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	if (!pageText.includes('new SelectBox(')) {
+		return '页面没有用上游 SelectBox —— 下拉要么是原生系统弹窗，要么根本没实现';
+	}
+	if (!pageText.includes('useCustomDrawn: true')) {
+		return 'SelectBox 没有强制 useCustomDrawn: true —— macOS 上会退回原生 <select>（系统弹窗）';
+	}
+	return null;
+});
+
+check('G12', '下拉颜色走主题变量（defaultSelectBoxStyles），页面不自己刷颜色', () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	if (!pageText.includes('defaultSelectBoxStyles')) {
+		return '没有用 defaultSelectBoxStyles —— 下拉框颜色会和主题脱节';
+	}
+	if (pageText.includes('style.backgroundColor')) {
+		return '页面里手写了 style.backgroundColor —— 颜色必须由主题变量提供';
+	}
+	return null;
+});
+
+check('G13', 'CSS 给 .monaco-select-box 定了排版（否则下拉框没高度，整行会塌）', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const rule = cssRule(cssText, '.olympiaSettings-rowControl .monaco-select-box');
+	if (rule === null) return 'CSS 里找不到 .olympiaSettings-rowControl .monaco-select-box 规则块';
+	if (!/height:\s*26px;/.test(rule)) {
+		return '没有 height: 26px（这个高度是跟原生设置页对齐的，见上游 settingsEditor2.css）';
+	}
+	return null;
+});
+
+check('G14', 'CSS 里不再有针对原生 select 的选择器（页面已经不用它了）', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	if (cssText.includes('.olympiaSettings-rowControl select')) {
+		return 'CSS 里还有 .olympiaSettings-rowControl select 规则';
+	}
+	if (/(^|[}\n])\s*select\s*\{/.test(cssText)) {
+		return 'CSS 里还有裸的 select 类型选择器';
+	}
+	return null;
+});
+
+check('G15', '重画前释放上一轮的下拉框（this.renderDisposables.clear()），否则监听器会叠加', () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	if (!pageText.includes('this.renderDisposables.clear();')) {
+		return 'render() 里没有释放上一轮的部件 —— 每次配置变化都会多挂一份监听器';
+	}
+	return null;
+});
+
+// ===========================================================================
+// H. 窄容器响应式 + 控件类型正确性
+// ===========================================================================
+// 这一组的来历：2026-10-24 第二轮真机验收。验收把窗口压到「右侧聊天栏展开 →
+// 编辑器组只剩 214px」的真实窄宽度下，抓到三个真缺陷：
+//
+//   H1/H2  布局：grid 第一列写死 180px 不肯收缩 → 第二列只剩 34px
+//               （实测 gridTemplateColumns: "180px 34px"），
+//               标签全部跑到可视区外、控件越界 208px、footer 被压成竖排一条。
+//   H3     输入框：`input[type="text"]` 这类**属性选择器匹配不上任何元素**
+//               —— 上游 `$()`（src/vs/base/browser/dom.ts:1445 的 SELECTOR_REGEX）
+//               只解析 tag / id / class，属性段被静默丢弃 → 元素上根本没有 type 属性。
+//               于是输入框退回浏览器默认外观 = 纯白底 rgb(255,255,255) +
+//               浅灰字 rgb(204,204,204)（用户点名的「白底白字」红线）。
+//   H4     布尔开关：同一个 `$()` 缺陷 → 16 个 boolean 控件**全部渲染成文本框**，
+//               6 个数字项也不是 number 类型。
+//
+// H3/H4 是「代码看着对、渲染出来是错的」—— 只有真机能看出来，
+// 所以必须变成静态断言，否则下一次改 TS 又会悄悄退化回去。
+
+/** 窄容器断点的 at-rule 字面量。 */
+const NARROW_AT_RULE = '@container (max-width: 520px)';
+
+/**
+ * 取出 CSS 里某个 at-rule（例如 `@container (max-width: 520px)`）的块内容。
+ *
+ * cssRule() 取的是「选择器 → 规则块」，这里取的是「at-rule → 整块」。
+ */
+function cssAtBlock(css, atRule) {
+	if (css === null) return null;
+	const idx = css.indexOf(atRule);
+	if (idx < 0) return null;
+	const open = css.indexOf('{', idx);
+	if (open < 0) return null;
+	return balanced(css, open, '{', '}');
+}
+
+/**
+ * 取出 TS 里某个方法/函数的**函数体**（含首尾花括号）。
+ *
+ * 断言必须落在**使用处**：「整个文件里出现过 input.type = 'text'」太松，
+ * 「renderString 的函数体里设了 type」才是真的。
+ */
+function methodBody(text, signature) {
+	if (text === null) return null;
+	const idx = text.indexOf(signature);
+	if (idx < 0) return null;
+	const open = text.indexOf('{', idx);
+	if (open < 0) return null;
+	return balanced(text, open, '{', '}');
+}
+
+check('G16', '根容器声明 container-type: inline-size（窄容器响应式的前提，没有它 @container 永不生效）', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const rule = cssRule(cssText, '.olympiaSettings');
+	if (rule === null) return 'CSS 里找不到 .olympiaSettings 规则块';
+	if (!rule.includes('container-type: inline-size;')) {
+		return '.olympiaSettings 没有 container-type: inline-size —— @container 查询不会以它为容器';
+	}
+	return null;
+});
+
+check('G17', `存在窄容器断点 ${NARROW_AT_RULE}`, () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	if (cssAtBlock(cssText, NARROW_AT_RULE) === null) {
+		return `CSS 里找不到 ${NARROW_AT_RULE} 断点块`;
+	}
+	return null;
+});
+
+check('G18', '窄容器下导航换行铺开（flex-wrap: wrap）—— 横向滚动条会让 6/9 个分组落在可视区外', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const block = cssAtBlock(cssText, NARROW_AT_RULE);
+	if (block === null) return `CSS 里找不到 ${NARROW_AT_RULE} 断点块`;
+	const rule = cssRule(block, '.olympiaSettings-nav');
+	if (rule === null) return `${NARROW_AT_RULE} 里没有 .olympiaSettings-nav 规则`;
+	if (!/flex-wrap:\s*wrap;/.test(rule)) return '窄容器下 nav 没有 flex-wrap: wrap —— 分组要靠横向滚动才能看全';
+	if (!rule.includes('grid-column: 1 / -1;')) return '窄容器下 nav 没有横跨整行（grid-column: 1 / -1）';
+	if (!rule.includes('grid-row: 1;')) return '窄容器下 nav 没有落在第 1 行';
+	return null;
+});
+
+check('G19', '窄容器下内容区与底栏各占整行（grid-column: 1 / -1）', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const block = cssAtBlock(cssText, NARROW_AT_RULE);
+	if (block === null) return `CSS 里找不到 ${NARROW_AT_RULE} 断点块`;
+	const body = cssRule(block, '.olympiaSettings-body');
+	if (body === null) return `${NARROW_AT_RULE} 里没有 .olympiaSettings-body 规则`;
+	if (!body.includes('grid-column: 1 / -1;')) return '窄容器下 body 没有横跨整行';
+	if (!body.includes('grid-row: 2;')) return '窄容器下 body 没有落在第 2 行';
+	const footer = cssRule(block, '.olympiaSettings-footer');
+	if (footer === null) return `${NARROW_AT_RULE} 里没有 .olympiaSettings-footer 规则`;
+	if (!footer.includes('grid-column: 1 / -1;')) return '窄容器下 footer 没有横跨整行';
+	if (!footer.includes('grid-row: 3;')) return '窄容器下 footer 没有落在第 3 行';
+	return null;
+});
+
+check('G20', '宽布局三行落位自洽：导航跨 1~3 行、内容第 2 行、底栏第 3 行', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const nav = cssRule(cssText, '.olympiaSettings-nav');
+	if (nav === null) return 'CSS 里找不到 .olympiaSettings-nav 规则块';
+	if (!nav.includes('grid-row: 1 / span 3;')) return '.olympiaSettings-nav 没有 grid-row: 1 / span 3';
+	const body = cssRule(cssText, '.olympiaSettings-body');
+	if (body === null) return 'CSS 里找不到 .olympiaSettings-body 规则块';
+	if (!body.includes('grid-row: 2;')) return '.olympiaSettings-body 没有 grid-row: 2';
+	const footer = cssRule(cssText, '.olympiaSettings-footer');
+	if (footer === null) return 'CSS 里找不到 .olympiaSettings-footer 规则块';
+	if (!footer.includes('grid-row: 3;')) return '.olympiaSettings-footer 没有 grid-row: 3';
+	return null;
+});
+
+check('G21', 'CSS 里不得出现 input[type=...] 属性选择器（上游 $() 不支持属性选择器 → 规则匹配不上 → 白底浅字）', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const m = /input\s*\[\s*type\s*[~^$*|]?=/.exec(cssText);
+	if (m) {
+		return `CSS 里还有属性选择器 ${m[0]} —— 上游 $() 会把属性段静默丢弃，这条规则匹配不到任何元素`;
+	}
+	return null;
+});
+
+check('G22', '输入框样式挂在自有 class .olympiaSettings-input 上，颜色取主题变量', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const rule = cssRule(cssText, '.olympiaSettings-rowControl .olympiaSettings-input');
+	if (rule === null) return 'CSS 里找不到 .olympiaSettings-rowControl .olympiaSettings-input 规则块';
+	if (!rule.includes('background-color: var(--vscode-input-background);')) {
+		return '输入框没有用 --vscode-input-background —— 会退回浏览器默认白底';
+	}
+	if (!rule.includes('color: var(--vscode-input-foreground);')) {
+		return '输入框没有用 --vscode-input-foreground —— 会退回浏览器默认浅灰字';
+	}
+	return null;
+});
+
+check('G23', 'TS 里不得用 $(...［属性选择器］...) 创建元素（属性段被静默丢弃 → 元素没有 type 属性）', () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const m = /\$\s*(?:<[^>]*>)?\(\s*['"][^'"]*\[[^\]]*\]/.exec(pageText);
+	if (m) {
+		return `页面里还有 ${m[0]} 形式的元素创建 —— 属性段会被上游 $() 静默丢弃`;
+	}
+	return null;
+});
+
+check('G24', "renderString 的函数体里显式设了 input.type = 'text'", () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const body = methodBody(pageText, 'private renderString(');
+	if (body === null) return '找不到 renderString 的函数体';
+	if (!body.includes("input.type = 'text';")) return "renderString 没有显式设 input.type = 'text'";
+	return null;
+});
+
+check('G25', "renderArray 的函数体里显式设了 input.type = 'text'", () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const body = methodBody(pageText, 'private renderArray(');
+	if (body === null) return '找不到 renderArray 的函数体';
+	if (!body.includes("input.type = 'text';")) return "renderArray 没有显式设 input.type = 'text'";
+	return null;
+});
+
+check('G26', "renderNumber 的函数体里显式设了 input.type = 'number'", () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const body = methodBody(pageText, 'private renderNumber(');
+	if (body === null) return '找不到 renderNumber 的函数体';
+	if (!body.includes("input.type = 'number';")) return "renderNumber 没有显式设 input.type = 'number'";
+	return null;
+});
+
+check('G27', 'renderBoolean 用上游 Toggle（new Toggle + Codicon.check + actionClassName），不再用 input[type=checkbox]', () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const body = methodBody(pageText, 'private renderBoolean(');
+	if (body === null) return '找不到 renderBoolean 的函数体';
+	if (!body.includes('new Toggle(')) {
+		return 'renderBoolean 没有用上游 Toggle —— 原生 checkbox 不受主题控制，且 $() 会丢掉 type 属性';
+	}
+	if (!body.includes('icon: Codicon.check,')) return 'renderBoolean 的 Toggle 没有用 Codicon.check 图标';
+	if (!body.includes("actionClassName: 'olympiaSettings-checkbox',")) {
+		return "renderBoolean 的 Toggle 没有设 actionClassName: 'olympiaSettings-checkbox'";
+	}
+	if (/input\s*\[\s*type\s*=\s*checkbox/.test(body)) return 'renderBoolean 里还有 input[type=checkbox]';
+	return null;
+});
+
+check('G28', 'Toggle 挂进 renderDisposables（否则每次重画叠加一份监听器）', () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const body = methodBody(pageText, 'private renderBoolean(');
+	if (body === null) return '找不到 renderBoolean 的函数体';
+	if (!body.includes('this.renderDisposables.add(toggle);')) {
+		return 'renderBoolean 没有把 Toggle 加进 renderDisposables';
+	}
+	return null;
+});
+
+check('G29', '布尔开关外观对齐原生设置页 .setting-value-checkbox（18×18 / 3px 圆角 / 透明边框）', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const rule = cssRule(cssText, '.olympiaSettings-rowControl .olympiaSettings-checkbox');
+	if (rule === null) return 'CSS 里找不到 .olympiaSettings-rowControl .olympiaSettings-checkbox 规则块';
+	if (!rule.includes('height: 18px;')) return '开关高度不是 18px（与原生设置页不一致）';
+	if (!rule.includes('width: 18px;')) return '开关宽度不是 18px（与原生设置页不一致）';
+	if (!rule.includes('border-radius: 3px;')) return '开关圆角不是 3px（与原生设置页不一致）';
+	if (!rule.includes('border: 1px solid transparent;')) return '开关边框不是 1px solid transparent（与原生设置页不一致）';
+	return null;
+});
+
+check('G30', '未勾选时隐藏勾号字形（与原生设置页一致）', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const rule = cssRule(cssText, '.olympiaSettings-rowControl .olympiaSettings-checkbox.codicon:not(.checked)::before');
+	if (rule === null) {
+		return 'CSS 里没有 .olympiaSettings-rowControl .olympiaSettings-checkbox.codicon:not(.checked)::before —— 未勾选时会露出一个勾号';
+	}
+	if (!/opacity:\s*0;/.test(rule)) return '隐藏勾号的规则里没有 opacity: 0';
+	return null;
+});
+
+check('G31', "boolean 分支真的调 renderBoolean，且 schema 里确有 boolean 控件（保证 G27 不是空断言）", () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	if (!pageText.includes("case 'boolean':")) return "页面 switch 里没有 case 'boolean':";
+	if (!pageText.includes('append(controlBox, this.renderBoolean(control, controlId));')) {
+		return 'boolean 分支没有调 this.renderBoolean(control, controlId)';
+	}
+	const schemaText = load(F_SCHEMA);
+	if (schemaText === null) return `文件不存在（见上面的 MISSING ${F_SCHEMA}）`;
+	const n = (schemaText.match(/type:\s*'boolean'/g) || []).length;
+	if (n === 0) return 'schema 里一个 boolean 控件都没有 —— G27 就没有可保护的对象';
+	return null;
+});
+
+// ===========================================================================
 // 汇总
 // ===========================================================================
 const failed = results.filter(r => !r.ok);

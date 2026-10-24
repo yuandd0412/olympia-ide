@@ -72,6 +72,52 @@ const EXPLICIT = [
 const SRC_ROOT = path.join(REPO, 'oss', 'src', 'vs');
 
 /**
+ * 在 CSS 里替换某个选择器的规则块内容。
+ *
+ * 与体检脚本的 cssRule() 同一口径：选择器必须在**行首**（可带缩进），
+ * 于是文件头「说明为什么这么写」的注释行（行首是 ` * `）天然不会被误伤。
+ *
+ * 只处理不含嵌套花括号的规则块 —— 本文件的 CSS 没有 @media 之类的嵌套。
+ */
+function cssRuleMutate(t, selector, replacer) {
+	const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	const re = new RegExp('((?:^|[}\\n])[ \\t]*' + esc + '[ \\t]*\\{)([^}]*)(\\})');
+	return t.replace(re, (m, head, body, tail) => head + replacer(body) + tail);
+}
+
+/**
+ * 在某个 at-rule（如 `@container (max-width: 520px)`）块内的**指定选择器规则**里换字面量。
+ *
+ * 为什么要限定作用域：同一个字面量在文件里会出现多次 ——
+ * `flex-wrap: wrap` 同时存在于 `.olympiaSettings-row`（基础规则）和
+ * @container 里的 `.olympiaSettings-nav`。不限定就打到了错误的规则上，
+ * 变异变红的原因和这条断言要守的东西对不上，判定就失去意义了。
+ */
+function cssAtRuleMutate(t, atRule, selector, from, to) {
+	const at = t.indexOf(atRule);
+	if (at < 0) return t;
+	const head = t.slice(0, at);
+	const tail = t.slice(at);
+	const changed = cssRuleMutate(tail, selector, b => b.replace(from, to));
+	return changed === tail ? t : head + changed;
+}
+
+/**
+ * 在某个方法的函数体范围内换字面量（第二次及以后出现的那处）。
+ *
+ * 例：`input.type = 'text';` 在 renderString 和 renderArray 里各有一处，
+ * 只靠 `String.replace` 只能改到第一处 —— 必须限定到方法体里才能改到第二处。
+ */
+function inMethodMutate(t, signature, from, to) {
+	const idx = t.indexOf(signature);
+	if (idx < 0) return t;
+	const head = t.slice(0, idx);
+	const tail = t.slice(idx);
+	const changed = tail.replace(from, to);
+	return changed === tail ? t : head + changed;
+}
+
+/**
  * 从 schema 里抠出全部 `key: '...'`（与体检脚本 schemaKeys() 同一口径）。
  */
 function schemaKeysOfSchemaText(text) {
@@ -406,6 +452,223 @@ const MUTATIONS = [
 		file: OL + 'olympiaSettingsInterceptor.ts',
 		// 注释里的表格提到了 `revealSetting`；改它只会动到注释，代码一行没变。
 		mutate: t => t.replace('`revealSetting`', '`revealSettingX`')
+	},
+
+	// --- G：布局不变式 + 禁用原生下拉 -------------------------------------
+	// 这一组的来历：2026-10-24 真机验收在默认工作台宽度下抓到两个真实缺陷
+	// （标签被压成 0 宽竖排 + 横向溢出 + footer 停在半空；原生 <select> 弹系统菜单）。
+	{
+		id: 'M31', expect: 'G1',
+		desc: '把 grid 的右列写回 1fr（min 是 auto → 不收缩 → 横向溢出复发）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssRuleMutate(t, '.olympiaSettings',
+			b => b.replace('grid-template-columns: 180px minmax(0, 1fr);', 'grid-template-columns: 180px 1fr;'))
+	},
+	{
+		id: 'M32', expect: 'G2',
+		desc: '把 grid 砍成两行（没有独立的底栏行 → footer 跟着内容滚；窄容器三行结构也塌了）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssRuleMutate(t, '.olympiaSettings',
+			b => b.replace('grid-template-rows: auto minmax(0, 1fr) auto;', 'grid-template-rows: auto minmax(0, 1fr);'))
+	},
+	{
+		id: 'M33', expect: 'G3',
+		desc: '删掉内容区的 min-width: 0（右列不缩 → 横向滚动条复发）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssRuleMutate(t, '.olympiaSettings-body', b => b.replace('min-width: 0;', ''))
+	},
+	{
+		id: 'M34', expect: 'G4',
+		desc: '把设置行改回不换行（窄宽度下标签被压成 0 宽竖排）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssRuleMutate(t, '.olympiaSettings-row', b => b.replace('flex-wrap: wrap;', 'flex-wrap: nowrap;'))
+	},
+	{
+		id: 'M35', expect: 'G5',
+		desc: '把标签列的 min-width 改回 0（中文标签一字一行竖排）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssRuleMutate(t, '.olympiaSettings-rowLabel', b => b.replace('min-width: 180px;', 'min-width: 0;'))
+	},
+	{
+		id: 'M36', expect: 'G6',
+		desc: '把控件列改回 flex: 0 0（不许缩 → 把标签挤成 0 宽）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssRuleMutate(t, '.olympiaSettings-rowControl', b => b.replace('flex: 0 1 320px;', 'flex: 0 0 320px;'))
+	},
+	{
+		id: 'M37', expect: 'G7',
+		desc: '给 footer 加回 position: sticky（祖先 overflow:hidden → 停在半空）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssRuleMutate(t, '.olympiaSettings-footer',
+			b => b.replace('grid-row: 3;', 'grid-row: 3;\n\tposition: sticky;'))
+	},
+	{
+		id: 'M38', expect: 'G8',
+		desc: '把 footer 挪回第一行（不再贴底）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssRuleMutate(t, '.olympiaSettings-footer', b => b.replace('grid-row: 3;', 'grid-row: 1;'))
+	},
+	{
+		id: 'M39', expect: 'G9',
+		desc: '把 footer 挂回滚动区 body（它会跟着内容一起滚）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => t.replace('append(container, this.renderFooter());', 'append(body, this.renderFooter());')
+	},
+	{
+		id: 'M40', expect: 'G10',
+		desc: '重新自建原生 <select>（系统弹窗 = 白底白字红线）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => t.replace(
+			'const options: { value: string; label: string }[] = values.map',
+			"const nativeSelect = $<HTMLSelectElement>('select');\n\t\tconst options: { value: string; label: string }[] = values.map")
+	},
+	{
+		id: 'M41', expect: 'G11',
+		desc: '去掉 useCustomDrawn: true（macOS 上退回原生 <select>）',
+		file: OL + 'olympiaSettingsPage.ts',
+		// 锚点带尾逗号：文档注释里写的是 `useCustomDrawn: true`（没有逗号），
+		// 只按字面量替换会先打到注释上，被「只打到注释」守卫拦下 —— 那是变异没打中代码。
+		mutate: t => t.replace('useCustomDrawn: true,', 'useCustomDrawn: false,')
+	},
+	{
+		id: 'M42', expect: 'G12',
+		desc: '下拉不再用主题样式（defaultSelectBoxStyles → unthemed）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => t.replace(/defaultSelectBoxStyles/g, 'unthemedSelectBoxStyles')
+	},
+	{
+		id: 'M43', expect: 'G13',
+		desc: '把 .monaco-select-box 的高度改掉（和原生设置页不再一致）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssRuleMutate(t, '.olympiaSettings-rowControl .monaco-select-box',
+			b => b.replace('height: 26px;', 'height: 18px;'))
+	},
+	{
+		id: 'M44', expect: 'G14',
+		desc: '把下拉的样式改回原生 select 选择器',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => t.replace('.olympiaSettings-rowControl .monaco-select-box {', '.olympiaSettings-rowControl select {')
+	},
+	{
+		id: 'M45', expect: 'G15',
+		desc: '重画前不释放上一轮的下拉框（监听器一次次叠加）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => t.replace('this.renderDisposables.clear();', '')
+	},
+
+	// --- H：窄容器响应式 + 控件类型正确性 -----------------------------------
+	// 这一组的来历：2026-10-24 第二轮真机验收在窄宽度（编辑器组只剩 214px）下
+	// 抓到的三个真缺陷：grid 第一列写死不缩、输入框白底浅字、16 个开关变文本框。
+	// 后两个只有真机能看出来 —— 静态断言必须把它们钉住。
+
+	{
+		id: 'M46', expect: 'G16',
+		desc: '删掉 container-type: inline-size（@container 查询失去容器 → 窄宽度响应式整个失效）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssRuleMutate(t, '.olympiaSettings', b => b.replace('container-type: inline-size;', ''))
+	},
+	{
+		id: 'M47', expect: 'G17',
+		desc: '把窄容器断点改成一个不存在的阈值（响应式断点消失）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => t.replace('@container (max-width: 520px) {', '@container (max-width: 519px) {')
+	},
+	{
+		id: 'M48', expect: 'G18',
+		desc: '窄容器下导航不换行（9 个分组里 6 个落在可视区外，得横向拖才看得见）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssAtRuleMutate(t, '@container (max-width: 520px)', '.olympiaSettings-nav',
+			'flex-wrap: wrap;', 'flex-wrap: nowrap;')
+	},
+	{
+		id: 'M49', expect: 'G19',
+		desc: '窄容器下内容区不占整行（被挤成一条缝）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssAtRuleMutate(t, '@container (max-width: 520px)', '.olympiaSettings-body',
+			'grid-column: 1 / -1;', 'grid-column: 2;')
+	},
+	{
+		id: 'M50', expect: 'G20',
+		desc: '导航只跨两行（三行 grid 的落位不自洽 → 宽布局下导航不再满高）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssRuleMutate(t, '.olympiaSettings-nav', b => b.replace('grid-row: 1 / span 3;', 'grid-row: 1 / span 2;'))
+	},
+	{
+		id: 'M51', expect: 'G21',
+		desc: '把输入框样式改回 input[type="text"] 属性选择器（匹配不到任何元素 → 白底浅字复发）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => t.replace('.olympiaSettings-rowControl .olympiaSettings-input {', '.olympiaSettings-rowControl input[type="text"] {')
+	},
+	{
+		id: 'M52', expect: 'G22',
+		desc: '输入框不取主题背景色（退回浏览器默认白底）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssRuleMutate(t, '.olympiaSettings-rowControl .olympiaSettings-input',
+			b => b.replace('background-color: var(--vscode-input-background);', ''))
+	},
+	{
+		id: 'M53', expect: 'G23',
+		desc: '重新用 $(...input[type=text]) 创建输入框（属性段被静默丢弃 → 元素没有 type 属性）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => t.replace("$<HTMLInputElement>('input');", "$<HTMLInputElement>('input[type=text]');")
+	},
+	{
+		id: 'M54', expect: 'G24',
+		desc: 'renderString 不再显式设 type（字符串框没有 type 属性 → 退回浏览器默认外观）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => inMethodMutate(t, 'private renderString(', "input.type = 'text';", '')
+	},
+	{
+		id: 'M55', expect: 'G25',
+		desc: 'renderArray 不再显式设 type',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => inMethodMutate(t, 'private renderArray(', "input.type = 'text';", '')
+	},
+	{
+		id: 'M56', expect: 'G26',
+		desc: '数字框被改成 type = text（min/max 约束随之失效）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => t.replace("input.type = 'number';", "input.type = 'text';")
+	},
+	{
+		id: 'M57', expect: 'G27',
+		desc: '布尔开关不走上游 Toggle（actionClassName 对不上 → 外观与原生设置页脱节）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => t.replace("actionClassName: 'olympiaSettings-checkbox',", "actionClassName: 'olympiaSettings-checkboxX',")
+	},
+	{
+		id: 'M58', expect: 'G28',
+		desc: 'Toggle 不挂进 renderDisposables（每次重画叠加一份监听器）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => t.replace('this.renderDisposables.add(toggle);', '')
+	},
+	{
+		id: 'M59', expect: 'G29',
+		desc: '开关高度改成 22px（与原生设置页的 18px 不一致）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssRuleMutate(t, '.olympiaSettings-rowControl .olympiaSettings-checkbox',
+			b => b.replace('height: 18px;', 'height: 22px;'))
+	},
+	{
+		id: 'M60', expect: 'G30',
+		desc: '未勾选时不再隐藏勾号字形（opacity: 0 被删掉）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssRuleMutate(t, '.olympiaSettings-rowControl .olympiaSettings-checkbox.codicon:not(.checked)::before',
+			b => b.replace('opacity: 0;', ''))
+	},
+	{
+		id: 'M61', expect: 'G31',
+		desc: 'boolean 分支不再调 renderBoolean（16 个开关会走错分支）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => t.replace("case 'boolean':", "case 'booleanX':")
+	},
+	{
+		id: 'M62', expectGuardHit: true,
+		desc: '元变异：锚点故意落在文档注释上 —— 必须被「只打到注释」守卫拦住',
+		file: OL + 'olympiaSettingsPage.ts',
+		// 注释里写的是 `$('input[type=text]')`（没有 <HTMLInputElement> 泛型）；
+		// 改它只会动到注释，代码一行没变。
+		mutate: t => t.replace("input[type=text]'", "input[type=textX]'")
 	}
 ];
 

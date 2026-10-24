@@ -62,3 +62,19 @@ desktop.ini
 
 # Local curl cookie jar from OJ scrape testing (may hold session credentials)
 /cookies.txt
+
+# Local scratch, agent working dirs and release artifacts (never published)
+# These hold chat transcripts, provider credentials and 300MB+ installers.
+# A plain `git add -A` used to stage 6600+ of them.
+/.scratch/
+/.zcode/
+/.zcodeignore
+/.superdesign/
+/.superpowers/
+/dist/
+backup-*.patch
+/linux-port-prompt.md
+
+# Internal agent handoff notes (process artifacts for the retired Tauri line,
+# not product documentation)
+/docs/zcode-*.md

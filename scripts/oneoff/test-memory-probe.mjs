@@ -56,11 +56,25 @@ for (const [name, source] of Object.entries(SOURCES)) {
 }
 
 const requireProbe = createRequire(new URL('memoryProbe.js', outDir));
-const vscodeStub = new Proxy({}, {
-	get: (_target, key) => (key === 'workspace' || key === 'window' || key === 'commands'
-		? { getConfiguration: () => ({ get: (_k, fallback) => fallback }), showInformationMessage: async () => undefined, onDidChangeActiveTextEditor: () => ({ dispose() { } }) }
-		: undefined)
-});
+// 这里必须是**普通对象**，不能用 Proxy：
+// 扩展的编译产物里是 `const vscode = __importStar(require("vscode"))`，而 __importStar
+// 靠 Object.getOwnPropertyNames(mod) 拷贝自有键 —— Proxy 的 target 是空对象、自有键一个都没有，
+// 拷出来就是空的 → vscode.workspace 是 undefined。
+// 表现出来的错是「Cannot read properties of undefined (reading 'getConfiguration')」，
+// 看着像产品缺 API，其实是桩把整个 vscode 吞了。
+const vscodeStub = {
+	workspace: { getConfiguration: () => ({ get: (_k, fallback) => fallback }) },
+	window: {
+		showInformationMessage: async () => undefined,
+		onDidChangeActiveTextEditor: () => ({ dispose() { } })
+	},
+	commands: { executeCommand: async () => undefined },
+	// 产品的 toolchain.ts 靠 vscode.env.appRoot 找内置工具链：
+	// 依次试 <appRoot>/toolchain/mingw64、<appRoot>/resources/toolchain/mingw64、
+	// <appRoot>/.build/toolchain。appRoot 必须是装好的那份产物的 resources/app，
+	// 第一个候选正好命中内置 g++（这台机器上 GPP 就指着它）。
+	env: { appRoot: path.join(repoRoot, 'VSCode-win32-x64', 'resources', 'app') }
+};
 const originalLoad = Module._load;
 Module._load = function (request, parent, isMain) {
 	if (request === 'vscode') { return vscodeStub; }

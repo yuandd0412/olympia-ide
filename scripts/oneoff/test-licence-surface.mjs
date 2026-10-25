@@ -22,7 +22,11 @@ const CASES = [
 	{ name: 'Setup 行改成写死的文件名', file: ISS, from: 'LicenseFile={#RepoDir}\\{#RootLicenseFileName}', to: 'LicenseFile={#RepoDir}\\NOTICE.olympia.txt', expect: ['那一行引用 RootLicenseFileName'] },
 	{ name: 'Setup 行整行注释掉', file: ISS, from: 'LicenseFile={#RepoDir}\\{#RootLicenseFileName}', to: '; LicenseFile={#RepoDir}\\{#RootLicenseFileName}', expect: ['恰好一行 LicenseFile', '注释掉的 LicenseFile'] },
 	{ name: '许可页指回上游 LICENSE.txt', file: ISS, from: "FileExists(RepoDir + '\\' + OlympiaNoticeFileName) ? OlympiaNoticeFileName", to: "FileExists(RepoDir + '\\nope.txt') ? 'nope.txt'", expect: ['优先选中文清单'] },
-	{ name: '清单少列一个工具链目录', file: NOTICE, from: 'libwinpthread  winpthreads  zlib  zstd', to: 'libwinpthread  zlib  zstd', expect: ['NOTICE 列的目录与实际发出的'] },
+	// 这里的原文必须逐字对得上 NOTICE.olympia.txt 里那两行目录清单。
+	// 之前写的是 'libwinpthread  winpthreads  zlib  zstd'，而文件里实际是
+	// 'libwinpthread  mpc  mpfr  winpthreads  zlib  zstd'（中间还有 mpc、mpfr）
+	// → 破坏压根没落到文件里，这条用例天天报「找不到要改的原文」，却从没证明过什么。
+	{ name: '清单少列一个工具链目录', file: NOTICE, from: 'libwinpthread  mpc  mpfr  winpthreads  zlib  zstd', to: 'libwinpthread  mpc  mpfr  zlib  zstd', expect: ['NOTICE 列的目录与实际发出的'] },
 	{ name: '清单多列一个不存在的目录', file: NOTICE, from: 'binutils  crt  gcc-libs', to: 'binutils  crt  gcc  gcc-libs', expect: ['NOTICE 列的目录与实际发出的'] },
 	{ name: 'MIT 扩展数写错', file: NOTICE, from: '其余 39 个是 MIT', to: '其余 38 个是 MIT', expect: ['MIT 扩展数'] },
 	{ name: '不写 GPL-3.0-or-later', file: NOTICE, from: 'GPL-3.0-or-later', to: 'GPLv3', expect: ['每一种许可证', '第一节按 product.json'] },

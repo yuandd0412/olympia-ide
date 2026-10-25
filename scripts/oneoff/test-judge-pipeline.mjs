@@ -13,6 +13,87 @@ const extensionOut = path.join(repoRoot, 'oss/extensions/olympia-onboarding/out'
 const fixture = path.join(repoRoot, '.scratch/judgetest');
 const GPP = path.join(repoRoot, 'VSCode-win32-x64/resources/app/toolchain/mingw64/bin/g++.exe');
 
+// ---- 夹具自己造出来 --------------------------------------------------
+// 这道门以前依赖一份手工准备的 .scratch/judgetest/（里面得有 P1001.cpp、P1001_wrong.cpp
+// 和 .olympia/problems/P1001.md）。那份目录不在仓库里 → 门在任何干净机器上都必然全红，
+// 而且红的原因是「文件不存在」，跟判题逻辑对不对毫无关系。读不到 ≠ 通过。
+// 现在夹具由门自己写：跑出来的红，只能是判题链自己的红。
+const problemsDir = path.join(fixture, '.olympia', 'problems');
+fs.rmSync(fixture, { recursive: true, force: true });
+fs.mkdirSync(problemsDir, { recursive: true });
+
+/** A+B 的正解：两组样例都要过。 */
+const P1001_CPP = [
+	'#include <iostream>',
+	'using namespace std;',
+	'int main() {',
+	'    int a, b;',
+	'    cin >> a >> b;',
+	'    cout << a + b << endl;',
+	'    return 0;',
+	'}',
+	''
+].join('\n');
+
+/** 故意写成减法 → 样例 1 期望 7、实到 -1：判 WA，且诊断要能指出第 1 行。 */
+const P1001_WRONG_CPP = [
+	'#include <iostream>',
+	'using namespace std;',
+	'int main() {',
+	'    int a, b;',
+	'    cin >> a >> b;',
+	'    cout << a - b << endl;',
+	'    return 0;',
+	'}',
+	''
+].join('\n');
+
+/**
+ * 题面格式必须和 judgeSamples.ts 的 parseSamples() 对得上：
+ * 「### 样例 N」分段，每段里 **输入** / **输出** 两个代码块。
+ * 格式不对 → parseSamples 解析不到样例 → 门测的就变成「有没有题面」，不是「判得对不对」。
+ */
+const P1001_MD = [
+	'# P1001 A+B Problem',
+	'',
+	'> 来源：洛谷 ｜ 时限：1000 ms',
+	'',
+	'## 样例数据',
+	'',
+	'### 样例 1',
+	'',
+	'**输入**',
+	'',
+	'```',
+	'3 4',
+	'```',
+	'',
+	'**输出**',
+	'',
+	'```',
+	'7',
+	'```',
+	'',
+	'### 样例 2',
+	'',
+	'**输入**',
+	'',
+	'```',
+	'10 20',
+	'```',
+	'',
+	'**输出**',
+	'',
+	'```',
+	'30',
+	'```',
+	''
+].join('\n');
+
+fs.writeFileSync(path.join(fixture, 'P1001.cpp'), P1001_CPP, 'utf8');
+fs.writeFileSync(path.join(fixture, 'P1001_wrong.cpp'), P1001_WRONG_CPP, 'utf8');
+fs.writeFileSync(path.join(problemsDir, 'P1001.md'), P1001_MD, 'utf8');
+
 const messages = [];
 const channels = [];
 let registered = {};
@@ -282,7 +363,6 @@ await check('有同名题面的文件既不多问，也不写「沿用上次的�
 });
 
 // ---- MLE：只有题面写了内存限制才判，采样只报峰值不猜 ----
-const problemsDir = path.join(fixture, '.olympia', 'problems');
 
 /** 答得对，但一口吃掉 24 MB 并抱着 1.2 秒——足够被采样看到。 */
 const MEMORY_HOG = [

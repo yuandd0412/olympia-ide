@@ -30,7 +30,6 @@ const requireCoach = createRequire(new URL('coach.js', coachOut));
 
 const CONTEST_COMMAND = 'olympia.contestMode';
 const IS_RUNNING_COMMAND = 'olympia.contest.isRunning';
-const RUNNING_CONTEXT = 'olympia.contest.running';
 const ENDS_AT_KEY = 'olympia.contest.endsAt';
 
 // 比赛模式的两条时间线只能靠假时钟演：跨零点提醒一次、关窗期间结束的要把状态清掉。
@@ -39,9 +38,10 @@ let clockOffset = 0;
 Date.now = () => realNow() + clockOffset;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-const contexts = [];
 const registered = new Map();
 const warnings = [];
+/** 教练跨扩展问比赛状态的次数：用来证明「锁」是问出来的，不是猜出来的。 */
+let contestStateQueries = 0;
 let modelListCalls = 0;
 /** 教练那一轮能看到的模型；空表 = 这台机器还没配模型，走 NO_MODEL 那条文案。 */
 let listedModels = [];
@@ -80,7 +80,10 @@ const vscodeStub = {
 			return new Disposable(() => registered.delete(id));
 		},
 		executeCommand: async (id, ...args) => {
-			if (id === 'setContext') { contexts.push({ key: args[0], value: args[1] }); return undefined; }
+			// 教练在另一个扩展里，问比赛状态只有这条命令一个出口
+			//（olympia-coach 的 CONTEST_STATE_COMMAND = 'olympia.contest.isRunning'）。
+			// 计数放在这一层，门才分得出「教练真的去问了」和「教练自己判的」。
+			if (id === IS_RUNNING_COMMAND) { contestStateQueries++; }
 			const handler = registered.get(id);
 			return handler ? handler(...args) : undefined;
 		}
@@ -125,8 +128,6 @@ async function askCoach() {
 	return written.join('\n');
 }
 
-const publishedRunning = () => contexts.filter(c => c.key === RUNNING_CONTEXT).map(c => c.value);
-
 let failed = 0;
 async function check(name, fn) {
 	try {
@@ -140,34 +141,36 @@ async function check(name, fn) {
 
 const disposables = contest.registerContestMode(fakeContext());
 
-await check('没在比赛时：上下文键是 false，教练正常去取模型', async () => {
-	contexts.length = 0;
+await check('没在比赛时：教练不被锁，正常去取模型', async () => {
 	modelListCalls = 0;
 	const text = await askCoach();
 	assert.ok(!text.includes('比赛模式进行中'), `没在比赛却被锁：${text}`);
 	assert.strictEqual(modelListCalls, 1, '教练应该去取模型列表');
 });
 
-await check('开始比赛：setContext 写 true，isRunning 回答 true', async () => {
-	contexts.length = 0;
+// 比赛状态是模块级状态，对外只有一条命令口（olympia.contest.isRunning）。
+// 这条门以前还断言「setContext 写了 olympia.contest.running」——那是产品早先的机制。
+// 现在产品只注册命令（oss/extensions/olympia-onboarding/src/contestMode.ts 的 registerContestMode），
+// 全仓已经没有这个 context key（grep 过，零引用）。
+// 断言一个已退役的机制 = 门天天红，而门的名字还在骗人：看着像「比赛模式坏了」，其实是「门过期了」。
+await check('开始比赛：比赛状态经 isRunning 命令回答 true', async () => {
 	await registered.get(CONTEST_COMMAND)();
-	assert.deepStrictEqual(publishedRunning(), [true], `只看到：${JSON.stringify(publishedRunning())}`);
-	assert.strictEqual(await registered.get(IS_RUNNING_COMMAND)(), true);
+	assert.strictEqual(await registered.get(IS_RUNNING_COMMAND)(), true, '开赛后 isRunning 还没回答 true');
 });
 
 await check('比赛进行中：教练只回禁用提示，不碰模型列表', async () => {
 	modelListCalls = 0;
+	const asked = contestStateQueries;
 	const text = await askCoach();
 	assert.ok(text.includes('比赛模式进行中'), `没有禁用提示：${text}`);
 	assert.ok(text.includes('Ctrl+Alt+C'), '禁用提示要告诉学生怎么退出');
 	assert.strictEqual(modelListCalls, 0, '比赛进行中不该去取模型');
+	assert.ok(contestStateQueries > asked, '教练没有去问比赛状态：这一条锁是猜出来的');
 });
 
-await check('退出比赛：上下文回到 false，教练恢复', async () => {
-	contexts.length = 0;
+await check('退出比赛：isRunning 回到 false，教练恢复', async () => {
 	await registered.get(CONTEST_COMMAND)();          // 第二次调用走「结束比赛模式」
-	assert.deepStrictEqual(publishedRunning(), [false], `只看到：${JSON.stringify(publishedRunning())}`);
-	assert.strictEqual(await registered.get(IS_RUNNING_COMMAND)(), false);
+	assert.strictEqual(await registered.get(IS_RUNNING_COMMAND)(), false, '退出后 isRunning 还在回答 true');
 	modelListCalls = 0;
 	const text = await askCoach();
 	assert.ok(!text.includes('比赛模式进行中'), `退出后还被锁：${text}`);

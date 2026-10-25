@@ -17,7 +17,7 @@
  *   - 卡片上显示的必须是**真值**（洛谷 / GCC 15.1.0 / C++23 / 真实编译命令）
  *   - 卡片导航要能走通（下一步 → 还有 N 张 → 准备好了就开始）
  *   - 引导结束后必须能看见真实工作台
- *   - 控制台不能有 error
+ *   - 控制台不能有**产品侧**的 error（2026-10-25 起按来源分流，见下面「console error 按来源分流」）
  *
  * 用法：node scripts/oneoff/verify-onboarding-no-break.mjs [--product <产品目录>] [--port 9223] [--path normal|skip|both]
  *
@@ -198,12 +198,191 @@ function blocks(img, gridX = 8, gridY = 5) {
 	return res;
 }
 
+// ---------------------------------------------------------------- console error 按来源分流
+//
+// 2026-10-25 实测（同一台机器连跑三次：两次红、一次绿 —— 是竞态，不是稳定复现）：
+// 门禁原来把「控制台里出现任意 console.error」判红，结果 Electron 自带的
+// **沙箱启动噪声**也能把它打红 —— 门禁假红，产品是好的。
+//
+// 那两条 error（真机抓到的原始 CDP 载荷）：
+//   console.error: Electron sandboxed_renderer.bundle.js script failed to run
+//   TypeError: Cannot destructure property 'preloadScripts' of 'binding.startupData' as it is null.
+// 两条的 stackTrace.callFrames[0].url 都是 **node:electron/js2c/sandbox_bundle** ——
+// 100% 是 Electron 自己打进包里的沙箱预加载，不是我们的代码。
+//
+// 交叉验证（同一份真机现场）：
+//   - 产品自己的日志（renderer.log / exthost.log / agenthost.log）零错误
+//   - 扩展宿主正常起来，我们的三个扩展都加载并跑了（AI Coach / 对拍 / 环境自检）
+//   - 引导像素证明全过：洞单调变大、alpha 单调、无黑屏、结束状态正确
+//   - 错误发生在产品启动后 +1.2s，比 overlay 出现还早 → 真实产品启动期就会打出来
+//
+// 所以判据改成**按来源**分流，不按文案猜：
+//   electron-internal：所有栈帧来源都在 Electron 自己的包里 → 只记录，不判红
+//   product：至少一帧来自产品代码 → 判红
+//   unknown：认不出来源 → 判红（保守；不许假绿）
+
+/** 从 CDP 的 stackTrace 里抽出所有调用帧的来源 URL。 */
+function collectUrls(stackTrace) {
+	const frames = stackTrace && Array.isArray(stackTrace.callFrames) ? stackTrace.callFrames : [];
+	return frames.map(f => (f && typeof f.url === 'string' ? f.url : '')).filter(u => u.length > 0);
+}
+
+// Electron 自带的沙箱预加载在 Electron 包里（node:electron/js2c/...），不是我们的代码。
+const ELECTRON_OWN_URL = /^node:electron\//;
+
+/** 给一条 console error 定性：'electron-internal' | 'product' | 'unknown'。 */
+function classifyErrorOrigin(urls) {
+	if (!Array.isArray(urls) || urls.length === 0) return 'unknown';
+	if (urls.every(u => ELECTRON_OWN_URL.test(u))) return 'electron-internal';
+	return 'product';
+}
+
+/** 定性 → 判不判红。只有 electron-internal 不判红；unknown 一律判红。 */
+function isFatalOrigin(origin) {
+	return origin !== 'electron-internal';
+}
+
+// ---------------------------------------------------------------- 判据自检
+//
+// 分流判据自己必须有牙：判错了，这条门要么永远假绿、要么永远假红。
+// 夹具用的是**真机上抓到的原始来源**，不是自己编的。
+const SELFTEST_CASES = [
+	{
+		name: '真机抓到的 Electron 沙箱噪声（来源全在 node:electron/js2c/）',
+		urls: ['node:electron/js2c/sandbox_bundle'],
+		want: 'electron-internal'
+	},
+	// 真机抓到的原始 URL 里带本机绝对路径（安装目录随机器变）。路径部分与定性**无关** ——
+	// 分类器只认「是不是全部落在 node:electron/ 下」，所以这里只保留真实抓到的
+	// **协议 + 文件形状**，把机器相关的根换成占位符：公开仓不留本机绝对路径，
+	// 夹具在任何机器上都能复现。
+	{
+		name: '产品 workbench 抛的 error',
+		urls: ['vscode-file://vscode-app/<install-dir>/resources/app/out/vs/code/electron-browser/workbench/workbench.html'],
+		want: 'product'
+	},
+	{
+		name: '扩展宿主里抛的 error',
+		urls: ['file:///<install-dir>/resources/app/extensions/olympia-onboarding/out/onboarding.js'],
+		want: 'product'
+	},
+	{
+		name: '认不出来源的 error（没有栈帧）必须保守判红',
+		urls: [],
+		want: 'unknown'
+	},
+	{
+		name: '混来源（Electron + 产品）必须按产品错判',
+		urls: ['node:electron/js2c/sandbox_bundle', 'vscode-file://vscode-app/<install-dir>/olympiaOnboarding.ts'],
+		want: 'product'
+	}
+];
+
+function runSelfTest() {
+	let bad = 0;
+	console.log('=== 判据自检：console error 按来源分流 ===');
+	for (const c of SELFTEST_CASES) {
+		const got = classifyErrorOrigin(c.urls);
+		const ok = got === c.want;
+		if (!ok) bad++;
+		console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${c.name} → ${got}（期望 ${c.want}）`);
+	}
+	for (const [origin, wantFatal] of [['electron-internal', false], ['product', true], ['unknown', true]]) {
+		const got = isFatalOrigin(origin);
+		const ok = got === wantFatal;
+		if (!ok) bad++;
+		console.log(`  ${ok ? 'ok  ' : 'FAIL'} 判红映射 ${origin} → 判红=${got}（期望 ${wantFatal}）`);
+	}
+	if (bad) {
+		console.error(`\n判据自检失败 ${bad} 项 —— 判据没有牙，不能拿它去判真机数据`);
+		process.exit(1);
+	}
+	console.log('\n判据自检全部通过 ✓');
+	process.exit(0);
+}
+
+// ---------------------------------------------------------------- 牙齿证明：注入一条产品侧 console.error
+//
+// 分流判据最怕「把产品自己的错也当成 Electron 噪声放过去」—— 那样这条门就只剩装饰。
+// 做法：**在真机上故意从产品页面里打一条 console.error**，它的来源就是产品自己的 URL，
+// 判据必须把它判红。判不红 = 判据没牙。
+const SENTINEL = 'OLYMPIA_GATE_PROBE_CONSOLE_ERROR';
+
+/** 按 --user-data-dir 特征反查并结束本次拉起的残留进程。 */
+function killByProfile(profile) {
+	try {
+		const ps = execFileSync('powershell.exe', ['-NoProfile', '-Command',
+			`$p = $env:OLYMPIA_PROFILE_MARK; Get-CimInstance Win32_Process -Filter "Name='Olympia.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($p) } | ForEach-Object { $_.ProcessId }`],
+			{ encoding: 'utf8', env: { ...process.env, OLYMPIA_PROFILE_MARK: profile } });
+		const pids = ps.split(/\r?\n/).map(s => parseInt(s.trim(), 10)).filter(n => n > 0);
+		for (const pid of pids) { try { process.kill(pid); } catch { /* ignore */ } }
+		return pids.length;
+	} catch { return 0; }
+}
+
+async function runInjectConsoleError() {
+	const outDir = arg('--out', path.join(os.tmpdir(), 'olympia-console-inject-' + STAMP));
+	const profile = path.join(outDir, 'profile');
+	fs.mkdirSync(profile, { recursive: true });
+	console.log('=== 牙齿证明：故意从产品页面注入一条 console.error ===');
+	console.log('  产品  :', PRODUCT);
+	console.log('  profile:', profile);
+	const child = spawn(PRODUCT, [`--user-data-dir=${profile}`, '--remote-debugging-port=0'], { stdio: 'ignore' });
+	console.log('  进程 PID:', child.pid);
+	let ws = null;
+	let bad = 0;
+	try {
+		const port = await resolveDevToolsPort(profile);
+		const target = await findPageTarget(port);
+		ws = new WebSocket(target.webSocketDebuggerUrl);
+		await new Promise((res, rej) => {
+			const timer = setTimeout(() => rej(new Error('CDP WebSocket 15s 内没连上')), 15000);
+			const once = (fn) => (ev) => { clearTimeout(timer); fn(ev); };
+			ws.addEventListener('open', once(res), { once: true });
+			ws.addEventListener('error', once(rej), { once: true });
+		});
+		const cdp = new CDP(ws);
+		await cdp.send('Runtime.enable');
+		await cdp.send('Page.enable');
+		await sleep(500);
+		await cdp.eval(`console.error(${JSON.stringify(SENTINEL)})`);
+		await sleep(1200);
+		const mine = (cdp.errorRecords || []).filter(r => String(r.text).includes(SENTINEL));
+		if (!mine.length) {
+			bad++;
+			console.error('  ✗ 没抓到注入的 error —— 采集层没接住，判据无从验证');
+		} else {
+			for (const r of mine) {
+				const origin = classifyErrorOrigin(r.urls);
+				const fatal = isFatalOrigin(origin);
+				console.log(`  来源判定：${origin}（判红=${fatal}）  栈帧 ${JSON.stringify(r.urls)}`);
+				if (!fatal) bad++;
+			}
+		}
+	} catch (e) {
+		bad++;
+		console.error('  异常:', e.message);
+	} finally {
+		try { if (ws) ws.close(); } catch { }
+		const killed = killByProfile(profile);
+		if (killed) console.log(`  清理了 ${killed} 个残留进程`);
+	}
+	if (bad) {
+		console.error('\n  ✗ 注入自证失败：产品侧 console.error 没被判红 —— 判据没牙');
+		process.exit(1);
+	}
+	console.log('\n  ✓ 注入自证通过：产品侧 console.error 被判红（判据有牙）');
+	process.exit(0);
+}
+
 // ---------------------------------------------------------------- CDP 客户端
 
 class CDP {
 	constructor(ws) {
 		this.ws = ws; this.id = 0; this.pending = new Map();
 		this.consoleErrors = [];
+		// 每条 error 连同**来源 URL** 一起存：判红要靠「谁抛的」，不能靠文案猜。
+		this.errorRecords = [];
 		ws.addEventListener('message', (ev) => {
 			const msg = JSON.parse(ev.data);
 			if (msg.id !== undefined) {
@@ -213,9 +392,14 @@ class CDP {
 					msg.error ? p.reject(new Error(JSON.stringify(msg.error))) : p.resolve(msg.result);
 				}
 			} else if (msg.method === 'Runtime.exceptionThrown') {
-				this.consoleErrors.push('exception: ' + (msg.params.exceptionDetails?.exception?.description || msg.params.exceptionDetails?.text));
+				const det = msg.params.exceptionDetails || {};
+				const text = 'exception: ' + (det.exception?.description || det.text);
+				this.consoleErrors.push(text);
+				this.errorRecords.push({ kind: 'exceptionThrown', text, urls: collectUrls(det.stackTrace) });
 			} else if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
-				this.consoleErrors.push('console.error: ' + msg.params.args.map(a => a.value ?? a.description ?? '').join(' '));
+				const text = 'console.error: ' + msg.params.args.map(a => a.value ?? a.description ?? '').join(' ');
+				this.consoleErrors.push(text);
+				this.errorRecords.push({ kind: 'console.error', text, urls: collectUrls(msg.params.stackTrace) });
 			}
 		});
 	}
@@ -289,6 +473,13 @@ async function findPageTarget(port, timeoutMs = 90000) {
 // 一旦写进去，同一个目录第二次跑就**不会再显示引导**，阶段 A 直接判失败。
 // 所以 profile 由父进程按路径分配，**不**接受外部指定（外部指定的会被当成
 // 两条路径共用，第二条必然是「profile 被污染」的假失败）。
+if (has('--selftest')) {
+	runSelfTest();
+}
+if (has('--inject-console-error')) {
+	await runInjectConsoleError();
+}
+
 if (PATH_KIND === 'both') {
 	if (has('--keep-open')) {
 		console.error('「--keep-open」在两条路径的编排模式下没有意义（第二条路径会被第一条留下的进程挡住），已忽略。');
@@ -665,10 +856,30 @@ try {
 	}
 
 	report.consoleErrors = cdp.consoleErrors;
+	// 控制台错误**按来源**分流：Electron 自带的沙箱启动噪声只记录不判红；
+	// 产品代码抛的一律判红；来源认不出的也判红（不许假绿）。
+	const errorRecords = cdp.errorRecords || [];
+	const origins = errorRecords.map(r => ({ ...r, origin: classifyErrorOrigin(r.urls) }));
+	const fatalErrors = origins.filter(r => isFatalOrigin(r.origin));
+	const internalErrors = origins.filter(r => !isFatalOrigin(r.origin));
+	report.consoleErrorOrigins = origins.map(r => ({
+		kind: r.kind, origin: r.origin, urls: r.urls, text: String(r.text).slice(0, 400)
+	}));
+	report.consoleElectronInternalCount = internalErrors.length;
 	console.log('\n=== 控制台错误 ===');
-	if (cdp.consoleErrors.length) {
-		cdp.consoleErrors.forEach(e => console.log('  ✗ ' + String(e).slice(0, 400)));
-		problems.push('控制台有 ' + cdp.consoleErrors.length + ' 条 error');
+	if (origins.length) {
+		for (const r of origins) {
+			const why = r.origin === 'electron-internal'
+				? '（Electron 自带沙箱启动噪声，只记录不判红）'
+				: (r.origin === 'unknown' ? '（认不出来源，按产品错判红）' : '（产品代码）');
+			console.log(`  ${isFatalOrigin(r.origin) ? '✗' : '·'} [${r.origin}] ${why} ${String(r.text).slice(0, 300)}`);
+			if (r.urls.length) console.log('      来源 ' + r.urls.join(' | '));
+		}
+	}
+	if (fatalErrors.length) {
+		problems.push('控制台有 ' + fatalErrors.length + ' 条产品侧 error');
+	} else if (internalErrors.length) {
+		console.log(`  （另有 ${internalErrors.length} 条 Electron 内部启动噪声，已如实记进报告）`);
 	} else console.log('  （无）');
 
 	const shot2 = await cdp.send('Page.captureScreenshot', { format: 'png' });

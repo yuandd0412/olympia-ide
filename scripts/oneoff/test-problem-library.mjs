@@ -59,8 +59,13 @@ const vscodeStub = {
 		joinPath: (base, ...parts) => uri(path.join(base.fsPath, ...parts)),
 		parse: text => uri(text)
 	},
-	Disposable: {
-		from: (...items) => ({ dispose() { for (const item of items) { item?.dispose?.(); } } })
+	// vscode.Disposable 真实 API 是个**类**（能被 new），另外带静态 from。
+	// 之前这里只给了一个带 from 的对象字面量 → 产品里 `new vscode.Disposable(...)` 直接炸，
+	// 门在加载模块时就崩，后面那些断言一条都没跑到过。
+	Disposable: class Disposable {
+		constructor(fn) { this.fn = fn; }
+		dispose() { this.fn?.(); }
+		static from(...items) { return new Disposable(() => { for (const item of items) { item?.dispose?.(); } }); }
 	},
 	EventEmitter: class {
 		constructor() { this.listeners = []; this.event = listener => { this.listeners.push(listener); return { dispose() { } }; }; }
@@ -98,7 +103,10 @@ const vscodeStub = {
 		},
 		onDidChangeConfiguration: () => ({ dispose() { } }),
 		onDidSaveTextDocument: () => ({ dispose() { } }),
-		onDidChangeWorkspaceFolders: () => ({ dispose() { } })
+		onDidChangeWorkspaceFolders: () => ({ dispose() { } }),
+		// 真实 API：文档内容变了就通知。产品的 precheckState.ts 订阅它（改完源码重新判），
+		// 桩里缺这一条 → 门在加载模块时就崩，后面那些断言一条都没跑到。
+		onDidChangeTextDocument: () => ({ dispose() { } })
 	},
 	window: {
 		activeTextEditor: undefined,
@@ -392,6 +400,9 @@ await check('面板的「题目与模板」里有打开题面库这一行，且�
 	const actions = treeProvider.getChildren(sectionOf('problems'));
 	const row = actions.find(a => a.command === 'olympia.problem.openStatement');
 	assert.ok(row, '面板里没有打开题面库的入口');
+	// 文案必须钉死整串，不能只判「有这一行」：命令面板里的标题就是「打开题面库」
+	// （olympia-contest/package.json），两边各写各的，学生会以为是两个功能。
+	assert.equal(row.label, '打开题面库', '面板这一行的名字和命令面板里的对不上，学生会当成两个功能');
 	assert.equal(row.key, 'Ctrl+Alt+O', '界面写了按钮却不写键位，学生就只能猜');
 });
 

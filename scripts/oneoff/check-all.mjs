@@ -63,6 +63,22 @@ const GATES = [
 		args: (productDir) => ['--product', productDir]
 	},
 	{
+		file: 'scripts/oneoff/verify-onboarding-no-break.mjs',
+		name: '控制台来源分流判据自检',
+		保证: '控制台 error 按来源分流这条判据自己有牙：Electron 自带沙箱启动噪声必须判成「内部」不判红，产品来源 / 认不出来源必须判红',
+		args: () => ['--selftest']
+	},
+	{
+		file: 'scripts/oneoff/verify-onboarding-no-break.mjs',
+		name: '控制台来源分流在真机上的牙（注入自证）',
+		保证: '真机上故意从产品页面打一条 console.error（来源是产品自己的 URL），分流判据必须把它判红 —— 判不红，上面那条分流判据就只是装饰',
+		needsBuild: true,
+		// 注意：这一条**不是** expectFailure。
+		// --inject-console-error 的语义是「脚本自己注入一条产品侧 error，再验证判据抓住了它」，
+		// 自证通过时脚本自己 exit 0 —— 它自己也会把那条注入的 error 判红（那正是它要证明的）。
+		args: (productDir) => ['--product', productDir, '--inject-console-error']
+	},
+	{
 		file: 'scripts/oneoff/analyze-sweep-bands.mjs',
 		name: '扫光几何+像素门禁',
 		保证: '五道扫光真的扫在目标部件上（DOM 真几何：位移在 [-B,E]、单调、横穿；按设计从屏外进场/出场的那一瞬豁免），并且像素上真的看得见、正差区间并集盖过部件的 35%、在往一个方向动（时序差分，不是「峰值−中位数」那种会被内容喂饱的假绿）；几何与像素的结论合并成一条，不许只判几何',
@@ -139,6 +155,90 @@ const GATES = [
 	// 命令面板一次都打不开（2026-10-18 实测 0/17），而它必须"每次都能跑"才有意义。
 	// 结论目前靠 .scratch/ui/kb-sweep.mjs 在已走完首启的 profile 上手工跑（17/17 一致）。
 	// 要接进门里得先解决首启阻塞：要么复用已首启的 profile，要么把那个界面 dismiss 掉。
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// 2026-10-25 审计补登的 27 条（之前写了一堆门，却没人跑 —— 等于没有门）。
+	//
+	// 分诊结论：审计把 scripts/oneoff/ + build/ 下 221 个 .mjs 全枚举了一遍，
+	// 筛出 30 个真门禁候选逐个实跑（绿 23 / 红 6 / 超时 1）。那 6 条红**全是门禁侧缺陷，
+	// 产品是对的**，已逐条修门禁（桩缺 API / 夹具不自足 / 变异字面量过期 / 断言的是
+	// 已退役机制），修完每条都做了「改坏→红在指定断言上→产物逐字节还原」的牙齿证明。
+	//
+	// 登记规则：
+	//   · 读**编译产物**的（oss/extensions/*/out、oss/out、产品目录）→ needsBuild: true。
+	//     否则拿上一次的旧产物跑，结论是假绿 —— 这比不跑更坏。
+	//   · 只读**源码**的 → 普通登记。
+	//   · 工具与报表故意不登记：installer-manifest.mjs（生成 DEPLOY.md 表格）、
+	//     measure-card-geometry.mjs（起真机测几何）、nls-residual-ast.mjs（汉化进度报表，
+	//     没有阈值判据，登记进来等于把「翻译进度」当成门禁）。
+	//   · argv 陷阱：check-all 会把产品目录当**位置参数**递给 needsBuild 的门。
+	//     有两条门把 argv[2] 当成别的东西（check-core-copy 当扫描根、verify-shipped-nls
+	//     当目标文件），必须显式给 args: () => []，否则会被喂错参数。
+	// ─────────────────────────────────────────────────────────────────────────
+
+	// 产品与出厂：读产品目录 / 编译产物，必须跟着出包一起跑。
+	{
+		file: 'build/verify-out.mjs',
+		保证: '中文与 Olympia 命令真的编进了 out/ 树：界面文案是中英文原文已消失、product.json 品牌对、copilot 已裁剪、内置工具链没被剪枝误删',
+		needsBuild: true
+	},
+	{
+		file: 'scripts/oneoff/check-extension-copy.mjs',
+		保证: '随包扩展里给用户看的文案都是中文（清单、界面文案、代码片段）',
+		needsBuild: true
+	},
+	{
+		file: 'scripts/oneoff/check-view-containers.mjs',
+		保证: '视图容器的图标文件真实存在，视图在源码里有 provider 注册，出厂产物里带着图标',
+		needsBuild: true
+	},
+	{
+		file: 'scripts/oneoff/verify-shipped-nls.mjs',
+		保证: '出厂产物里带着就地汉化（nls.messages.json 里有中文默认值，source map 里没有旧英文）',
+		needsBuild: true,
+		// argv[2] 在这里是「nls.messages.json 的路径」，不能被产品目录顶掉。
+		args: () => []
+	},
+	{
+		file: 'scripts/oneoff/check-licence-surface.mjs',
+		保证: '许可面：装机的第三方声明文件与实际发出的运行库一一对应（含 NOTICE 目录清单）',
+		needsBuild: true
+	},
+	{
+		file: 'scripts/oneoff/check-core-copy.mjs',
+		保证: '内核改动真的编进了产物并对用户说了中文（文案、开关默认值、欢迎页入口）',
+		needsBuild: true,
+		// argv[2] 在这里是「oss/out 的扫描根」，不能被产品目录顶掉。
+		args: () => []
+	},
+	{ file: 'scripts/oneoff/test-block-check.mjs', 保证: '部件级语法检查：解析器加载失败要落 blocked，不能变成「没错误」', needsBuild: true },
+	{ file: 'scripts/oneoff/test-coach-provider.mjs', 保证: '教练取模型的凭据纪律：没密钥时一个请求都不发；抽取/清洗白名单', needsBuild: true },
+	{ file: 'scripts/oneoff/test-coach-statement.mjs', 保证: '教练带题面：题面正文真的进上下文，抬头说清来源', needsBuild: true },
+	{ file: 'scripts/oneoff/test-judge-samples.mjs', 保证: '跑样例读的题面形状 = 写题面那一边写下来的形状', needsBuild: true },
+	{ file: 'scripts/oneoff/test-my-template.mjs', 保证: '我的模板：清单、面板路径与实际写盘一致', needsBuild: true },
+	{ file: 'scripts/oneoff/test-precheck.mjs', 保证: '提交前体检：正确提交不报、CRLF 不报、关掉的规则不报', needsBuild: true },
+	{ file: 'scripts/oneoff/test-statement-view.mjs', 保证: '题面视图：页眉/chips/正文同页，正文不重复页眉', needsBuild: true },
+	{ file: 'scripts/oneoff/test-syntax-check.mjs', 保证: '语法检查：编译错误报得出来，能编过的不报东西', needsBuild: true },
+	{ file: 'scripts/oneoff/test-cpp-snippets.mjs', 保证: '代码片段：条目数与数据表一致、每条都能编译（关掉的设置一条都不给）', needsBuild: true },
+	{ file: 'scripts/oneoff/test-stress-pipeline.mjs', 保证: '对拍流水线：正解与暴力一致、故意写错能报不一致并留下数据', needsBuild: true },
+	{ file: 'scripts/oneoff/test-settings-panel.mjs', 保证: '设置面板：清单项一一对上、枚举显示中文名、回读的是生效值不是默认值', needsBuild: true },
+	{ file: 'scripts/oneoff/test-problem-library.mjs', 保证: '题面库：面板那一行的名字/命令/键位与命令面板一致，面板说的份数和题库列表不打架', needsBuild: true },
+	{ file: 'scripts/oneoff/test-judge-pipeline.mjs', 保证: '判题流水线：AC/WA 判得对、diff 的诊断表覆盖常见错（夹具自造，不依赖手工目录）', needsBuild: true },
+	{ file: 'scripts/oneoff/test-memory-probe.mjs', 保证: '内存探针：列按位置解析、采样跟得住、祖进程超时要收尾', needsBuild: true },
+	{ file: 'scripts/oneoff/test-contest-gate.mjs', 保证: '比赛模式联动：教练问的是比赛状态命令（isRunning），没在比赛不会被锁', needsBuild: true },
+	{
+		file: 'scripts/oneoff/test-licence-surface.mjs',
+		保证: '上面那条许可面的门自己有牙：逐条变异（写死文件名 / BOM / 指错 LICENSE / NOTICE 目录清单），每条都只红在对应断言上',
+		needsBuild: true
+	},
+
+	// 源码级：只读 oss 源码与清单，不需要出包就能跑。
+	{ file: 'scripts/oneoff/check-build-typecheck.mjs', 保证: 'build/ 的类型错误条数只降不升（不许悄悄涨）' },
+	{ file: 'scripts/oneoff/check-built-in-trim.mjs', 保证: '内置扩展裁剪：表里的每一项都指得到实物，保留下来的不依赖被裁掉的，自家扩展不误伤' },
+	{ file: 'scripts/oneoff/check-chat-product-ids.mjs', 保证: '聊天侧的产品 id：走 walkthrough 命令的那些 id 在内核里真有读者' },
+	{ file: 'scripts/oneoff/check-command-wiring.mjs', 保证: '命令接线：界面点到的每个命令都真有人注册，且面板行文案与命令面板标题同一句（label 漂移守卫）' },
+	{ file: 'scripts/oneoff/check-config-defaults.mjs', 保证: '配置默认值：清单里的默认与代码兜底一致（两处口径不能分家）' },
+	{ file: 'scripts/oneoff/scan-localize-arity.mjs', 保证: '汉化占位符：实参不够会让屏幕留下字面 {n} 的地方必须是 0' },
 ];
 
 const wantBuild = process.argv.includes('--with-build');
@@ -194,7 +294,9 @@ for (const g of GATES) {
 	}
 }
 
-console.log(`\n${GATES.length - skipped - failed}/${GATES.length - skipped} 通过` + (skipped ? `，${skipped} 条按设计跳过（需要 --with-build）` : ''));
+// 跳过的门分两种：要么要出包（needsBuild），要么要一个一次性产物（requiresEnv）。
+// 汇总行只写「需要 --with-build」会把后者说错，所以这里只给个数 + 指路，理由看上面每条。
+console.log(`\n${GATES.length - skipped - failed}/${GATES.length - skipped} 通过` + (skipped ? `，${skipped} 条按设计跳过（原因见上方每条：要出包的加 --with-build，要一次性产物的设对应环境变量）` : ''));
 // 不用 process.exit()：Windows 上它会跟未关闭的 libuv 句柄竞争，崩成
 // 0xC0000409 并把退出码换成 3221226505 —— 门禁失败反而看不出来。
 // process.exitCode 让进程自然退出，失败语义才稳定、可被门禁判读。

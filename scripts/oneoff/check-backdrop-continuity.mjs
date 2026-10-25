@@ -159,18 +159,45 @@ const MIN_FLOW_FRAMES = 8;
  */
 const FLOW_MIN = 0.04;
 /**
- * 背景「连续停滞」的上限（ms）。
+ * 背景「连续停摆」的上限（ms）。
  *
  * 为什么不能只看窗口均值（FLOW_MIN）：均值会把「前面在流、后面冻住」稀释掉。
  * 冻结注入实测：窗口均值 0.05/100ms > FLOW_MIN(0.04) —— 侥幸判绿；
- * 而真机上「进入动画中段背景卡住约 1 秒」恰恰就是这种「开头流、后面停」的形态。
- * 连续停滞长度对这种形态才有牙（真实样本实测最长停滞 0ms，注入 59 帧 ≈ 985ms）。
+ * 而真机上「进入动画中段背景卡住」恰恰就是这种「开头流、后面停」的形态。
+ * 连续停摆长度对这种形态才有牙（真实样本实测最长停摆 0ms，注入 59 帧 ≈ 985ms）。
  *
  * 用毫秒而不是帧数：帧率因机器而异，写死帧数等于把门禁绑死在某台机器的刷新率上
  * （与本文件「变化率必须按时间归一化」的立场一致）。
  * 取 400ms —— 低于「肉眼可见的卡顿」阈值，又远高于真实样本的 0ms。
  */
 const MAX_STALL_MS = 400;
+/**
+ * 「这一帧背景几乎没动」的**绝对**亮度上限（0~255 尺度）。
+ *
+ * 这一条是 C2c 的判据本体，与上面的 MAX_STALL_MS（停摆时长上限）配套使用。
+ *
+ * 为什么必须按「绝对变化量」判，不能按「变化率」判：
+ *
+ * 产品的背景时钟**每帧最多推进 50ms**
+ * （oss/src/vs/workbench/contrib/olympia/browser/olympiaOnboarding.ts:330 的
+ * `Math.min(0.05, ...)` 钳位 —— 防止长时间卡顿之后动画突然跳一大步）。
+ * 于是渲染主线程一旦被阻塞，那一帧的背景画面就**必然**看起来不动 ——
+ * 那是渲染器停顿，不是背景动画坏了。
+ *
+ * 旧判据按「亮度变化率」算（变化量 ÷ 帧间隔），等价于「单帧超过约 580ms
+ * 就判背景冻结」：2026-10-25 真机跑批就因为一次 620ms 的主线程停顿被判红，
+ * 而那一帧画面的实际变化是 0.161 luma —— 比任何正常帧的变化
+ * （实测最小 0.0266）还大 6 倍，背景明明在动，却被判成「背景冻结」。
+ *
+ * 改判「画面到底有没有变」：
+ *   真实背景冻结 = 画面逐像素不变（冻结注入就是拷贝 lm，差值精确为 0）；
+ *   渲染器停顿   = 画面仍然变了（时钟被钳到 50ms，但确实推进了）。
+ *
+ * 阈值实测（2026-10-25，8 轮绿跑共 4147 帧）：
+ *   逐帧平均亮度差全局最小 0.0266、零帧低于 0.025、p50 = 0.0503。
+ * 取 0.01 —— 对健康帧留 2.6 倍余量，对真实冻结（精确 0）仍然一抓一个准。
+ */
+const NO_MOTION_MAX = 0.01;
 /**
  * 帧级「大面积亮度突变」的上限（每 100ms 的平均亮度变化，0~255 尺度）。
  *
@@ -354,16 +381,22 @@ function flow(samples, from, to) {
 }
 
 /**
- * 窗口内的「最长连续停滞」：连续多长时间里，帧级亮度变化都低于 threshold。
+ * 窗口内的「最长连续停摆」：连续多长时间里，帧级**绝对**亮度变化都低于 eps。
  *
- * 这是 C2b（窗口均值）的补充，不是替代：
- * 均值回答「整体在不在流」，连续停滞回答「有没有哪一段彻底停住」。
- * 真实故障形态（背景冻结 ~1 秒）被均值稀释成绿灯，只有这条能抓住。
+ * 与旧版 maxStallRun（按「变化率」判）的区别，是这次修复的全部要点：
+ *
+ * 旧版按「亮度变化 ÷ 帧间隔」判，等价于「单帧超过约 580ms 就判背景冻结」。
+ * 但产品的背景时钟每帧最多推进 50ms（见 NO_MOTION_MAX 的说明），
+ * 渲染主线程被阻塞时背景画面必然「看起来不动」—— 那是平台停顿，不是背景坏掉。
+ * 旧口径因此在真机跑批里把一次 620ms 的主线程停顿判成了背景冻结（假红）。
+ *
+ * 现在判的是「画面到底有没有变」：真实冻结的画面逐像素不变（差值精确为 0），
+ * 渲染器停顿的画面仍然变了（时钟被钳到 50ms 也确实推进了）。
  *
  * 「没采到完整块」的帧（frameDelta 返回 null）按**未知**处理：它会中断连续计数，
  * 而不是被当成「静止」—— 没数据不等于知道它停住了。
  */
-function maxStallRun(samples, from, to, threshold) {
+function maxFrozenRun(samples, from, to, eps) {
 	let best = { ms: 0, frames: 0, from: -1, to: -1 };
 	let runFrames = 0, runMs = 0, runFrom = -1;
 	for (let i = Math.max(1, from); i < to && i < samples.length; i++) {
@@ -373,7 +406,7 @@ function maxStallRun(samples, from, to, threshold) {
 			continue;
 		}
 		const dt = samples[i].t - samples[i - 1].t;
-		if (d.rate < threshold) {
+		if (d.mean < eps) {
 			if (runFrames === 0) { runFrom = i; }
 			runFrames++;
 			runMs += dt;
@@ -383,6 +416,23 @@ function maxStallRun(samples, from, to, threshold) {
 		} else {
 			runFrames = 0; runMs = 0; runFrom = -1;
 		}
+	}
+	return best;
+}
+
+/**
+ * 窗口内最长的**单帧间隔**（ms）—— 渲染主线程停顿了多久。
+ *
+ * 这不是判据，只作报告：主线程停顿是平台级现象（机器负载、GPU 回退、
+ * 工作台初始化），不是背景动画的毛病，所以它不进红绿结论。
+ * 但它必须被如实写进报告里 —— 否则「背景停摆」和「整机卡了一下」
+ * 这两件事就再也分不开了。
+ */
+function maxFrameGap(samples, from, to) {
+	let best = { ms: 0, at: -1 };
+	for (let i = Math.max(1, from); i < to && i < samples.length; i++) {
+		const dt = samples[i].t - samples[i - 1].t;
+		if (dt > best.ms) { best = { ms: dt, at: i }; }
 	}
 	return best;
 }
@@ -509,17 +559,25 @@ export function judge(data, opts = {}) {
 	push('C2b', '进入动画期间背景仍在流动',
 		c2b,
 		`平均亮度变化 ${round2(postFlow.value)}/100ms（下限 ${FLOW_MIN}），参与 ${postFlow.frames} 帧（需 ≥${MIN_FLOW_FRAMES}），窗口到 frame ${postTo}`);
-	// ---- C2c 进入动画期间背景没有长时间停滞
+	// ---- C2c 进入动画期间背景没有停摆
 	//
 	// C2b 看的是**窗口均值**：均值会把「开头在流、后面冻住」稀释掉。
 	// 冻结注入实测均值 0.05/100ms > FLOW_MIN(0.04) —— 侥幸判绿；
-	// 而真机「进入动画中段背景卡住约 1 秒」正是这种形态。
-	// 这里补一条「最长连续停滞」：连续停滞超过 MAX_STALL_MS 即红。
-	const stall = maxStallRun(samples, trigIdx + 1, postTo, FLOW_MIN);
-	const c2c = stall.ms <= MAX_STALL_MS;
-	push('C2c', '进入动画期间背景无长时间停滞',
+	// 而真机「进入动画中段背景卡住」正是这种形态。
+	// 这里补一条「最长连续停摆」：**画面逐帧都没有变化**才算停摆。
+	//
+	// 注意与旧判据的区别（2026-10-25 修复）：旧判据按「变化率」判，
+	// 等价于「单帧超过约 580ms 就判背景冻结」。但产品的背景时钟每帧最多
+	// 推进 50ms（olympiaOnboarding.ts:330 的 Math.min(0.05, ...) 钳位），
+	// 主线程被阻塞时背景画面必然看起来不动 —— 那是渲染器停顿，不是背景坏了。
+	// 实测真机一次 620ms 的主线程停顿，画面变化 0.161 luma，比任何正常帧
+	// 的变化（最小 0.0266）还大 6 倍，背景明明在动。
+	const frozen = maxFrozenRun(samples, trigIdx + 1, postTo, NO_MOTION_MAX);
+	const gap = maxFrameGap(samples, trigIdx + 1, postTo);
+	const c2c = frozen.ms <= MAX_STALL_MS;
+	push('C2c', '进入动画期间背景没有停摆',
 		c2c,
-		`最长连续停滞 ${round2(stall.ms)}ms（${stall.frames} 帧 @frame ${stall.from}→${stall.to}，上限 ${MAX_STALL_MS}ms）`);
+		`最长连续停摆 ${round2(frozen.ms)}ms（${frozen.frames} 帧 @frame ${frozen.from}→${frozen.to}，逐帧画面变化 < ${NO_MOTION_MAX} luma，上限 ${MAX_STALL_MS}ms）；同期最长单帧间隔 ${round2(gap.ms)}ms @frame ${gap.at}（渲染主线程停顿，不计入背景停摆）`);
 
 	// ---- C3 无大面积亮度突变（背景没有被清空 / 闪白 / 换成别的图）
 	//
@@ -604,6 +662,76 @@ function synth(opts = {}) {
 	};
 }
 
+/**
+ * 合成「渲染主线程停顿」样本：正常帧 10ms，某处插一个 620ms 的长帧。
+ *
+ * 背景时钟按产品的做法**钳位** —— 每帧最多推进 50ms
+ * （oss/src/vs/workbench/contrib/olympia/browser/olympiaOnboarding.ts:330
+ * 的 `Math.min(0.05, ...)`），所以长帧那一次画面只推进了 50ms 的运动量：
+ * **画面仍然变了，但远小于墙钟时长**。
+ *
+ * 这正是 2026-10-25 真机失败现场（620ms 主线程停顿）的形态。
+ * 旧判据（按变化率）会把它判成「背景冻结」—— 第 S10 条用例就是防它复辟的。
+ *
+ * 亮度用线性时钟而不是正弦：逐帧变化量与时钟推进量严格成正比，
+ * 「长帧只推进 50ms」这件事在数据上看得见、算得出，不靠调参。
+ */
+function synthClampedClock(opts = {}) {
+	const {
+		frames = 90, dt = 10, longAt = 40, longMs = 620, clampMs = 50,
+		slope = 0.0032, holeGrow = 0,
+	} = opts;
+	const samples = [];
+	let clock = 0;
+	let t = 0;
+	for (let i = 0; i < frames; i++) {
+		const gap = i === longAt ? longMs : dt;
+		t += gap;
+		clock += Math.min(gap, clampMs);
+		const lm = [];
+		const az = [];
+		for (let k = 0; k < NB; k++) {
+			// 斜率按块的奇偶取正负 —— 相邻块反向移动，
+			// 逐块差值的绝对值才恰好是 slope × Δclock。
+			lm.push(20 + (k % 7) * 3 + (k % 2 === 0 ? slope : -slope) * clock);
+			const holeFrac = holeGrow ? Math.min(1, holeGrow * i / frames) : 0;
+			az.push((k / NB) < holeFrac ? 1 : 0);
+		}
+		samples.push({ t, lm, az });
+	}
+	return {
+		grid: [NB_X, NB_Y],
+		triggerAt: 10 * dt,
+		goneAt: (frames - 5) * dt,
+		rebuiltAt: -1,
+		rebuildCount: 0,
+		samples,
+	};
+}
+
+/**
+ * 旧判据的口径（按「变化率」判停滞）—— 只在自检里用。
+ *
+ * 作用是钉住 S10 用例的**性质**：S10 必须是一条「旧口径会判红、
+ * 新口径必须判绿」的用例，否则它随时会退化成一条普通序列，白占一个名额。
+ * 这里保留旧口径，而不是把它从文件里抹掉 —— 假红的成因必须留在案底。
+ */
+function legacyStallMs(samples, from, to, threshold) {
+	let best = 0, runMs = 0;
+	for (let i = Math.max(1, from); i < to && i < samples.length; i++) {
+		const d = frameDelta(samples, i);
+		if (!d) { runMs = 0; continue; }
+		const dt = samples[i].t - samples[i - 1].t;
+		if (d.rate < threshold) {
+			runMs += dt;
+			if (runMs > best) { best = runMs; }
+		} else {
+			runMs = 0;
+		}
+	}
+	return best;
+}
+
 function runSelftest() {
 	const cases = [
 		{ id: 'S1', title: '正常序列必须绿', data: synth({ holeGrow: 0.9 }), expect: true },
@@ -619,9 +747,16 @@ function runSelftest() {
 		// 不能只靠一两帧的平均值就给绿灯。
 		{ id: 'S8', title: '参与帧数不足必须红', data: synth({ holeGrow: 0.9, frames: 60, thinFlow: true }), expect: false, expectCheck: 'C2b' },
 		// 第九颗牙：背景在动画**中段**才冻结（前段在流、后段停住）。
-		// 这正是真机上「进入动画中段背景卡住约 1 秒」的形态 ——
+		// 这正是真机上「进入动画中段背景卡住」的形态 ——
 		// 旧的窗口均值判据会被前段的流动帧稀释成绿灯，只有 C2c 抓得住。
 		{ id: 'S9', title: '背景中段冻结必须红', data: synth({ holeGrow: 0.0, freezeAfter: 30 }), expect: false, expectCheck: 'C2c' },
+		// 第十颗牙：渲染主线程停顿（长帧）**不得**被判成背景冻结。
+		// 2026-10-25 真机跑批就死在这条上：一次 620ms 的主线程停顿被旧判据
+		// （按变化率算）判成「背景冻结」，而那一帧画面实际变化 0.161 luma ——
+		// 比任何正常帧的变化（最小 0.0266）还大 6 倍，背景明明在动。
+		// expectLegacyRed：这条用例必须同时满足「旧口径会红、新口径必须绿」，
+		// 否则它会退化成普通序列，白占一个名额。
+		{ id: 'S10', title: '主线程长帧（背景时钟被钳位推进）必须绿', data: synthClampedClock(), expect: true, expectLegacyRed: true },
 	];
 	let failed = 0;
 	console.log('=== 背景连续性 · 合成自检 ===');
@@ -632,9 +767,21 @@ function runSelftest() {
 		// 靠别的判据偶然变红，等于这条用例没在考它该考的东西。
 		const caught = r.checks.filter(x => !x.ok).map(x => x.id).join(',') || '（无判据变红）';
 		const byExpected = !c.expectCheck || caught.includes(c.expectCheck);
-		const pass = ok && byExpected;
+		// expectLegacyRed：这条用例必须真的踩在旧口径的雷上。
+		// 不满足 → 它已经退化成一条普通序列，白占一个名额 —— 必须判它失败。
+		let legacy = -1;
+		let byLegacy = true;
+		if (c.expectLegacyRed) {
+			const ss = c.data.samples || [];
+			legacy = legacyStallMs(ss, 1, ss.length, FLOW_MIN);
+			byLegacy = legacy > MAX_STALL_MS;
+		}
+		const pass = ok && byExpected && byLegacy;
 		if (!pass) { failed++; }
 		console.log(`  ${pass ? 'PASS' : 'FAIL'}  ${c.id}  ${c.title}`);
+		if (c.expectLegacyRed) {
+			console.log(`        旧口径（按变化率判停滞）在同一份数据上是 ${round2(legacy)}ms —— 必须 >${MAX_STALL_MS}ms，否则这条用例已退化`);
+		}
 		if (!pass) {
 			console.log(`        期望 ${c.expect ? '绿' : '红'}，实际 ${r.ok ? '绿' : '红'}${c.expectCheck ? `；期望由 ${c.expectCheck} 抓住，实际 ${caught}` : ''}`);
 			for (const ch of r.checks) {

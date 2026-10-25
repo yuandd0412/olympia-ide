@@ -116,6 +116,10 @@ const vscodeStub = {
 	},
 	workspace: {
 		getConfiguration: () => ({
+			// config.get 是真实扩展 API，读的是「生效值」（全局 > 默认）。
+			// 产品的 currentValue() 用的是它（不是 globalValue：那一栏要显示学生刚选的值），
+			// 桩里只给 inspect 不给 get → 那条门测的是一个产品根本没写过的调用，红得莫名其妙。
+			get: key => values.has(key) ? values.get(key) : defaultOf(key),
 			inspect: key => ({ key, defaultValue: defaultOf(key), globalValue: values.has(key) ? values.get(key) : undefined }),
 			update: async (key, value, target) => {
 				updates.push({ key, value, target });

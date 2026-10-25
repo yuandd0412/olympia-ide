@@ -135,13 +135,29 @@
 	window.addEventListener('resize', paintProgress, { passive: true });
 	paintProgress();
 
-	/* hero 光标位置跟随鼠标 */
+	/* hero 光标位置跟随鼠标：背景光斑 + 截图微倾斜（各自独立，互不抢 transform） */
 	var hero = document.querySelector('.hero');
 	if (hero) {
+		var heroImg = hero.querySelector('.hero-shot img');
 		hero.addEventListener('pointermove', function (event) {
 			var rect = hero.getBoundingClientRect();
-			hero.style.setProperty('--mx', (event.clientX - rect.left) + 'px');
-			hero.style.setProperty('--my', (event.clientY - rect.top) + 'px');
+			var x = event.clientX - rect.left;
+			var y = event.clientY - rect.top;
+			hero.style.setProperty('--mx', x + 'px');
+			hero.style.setProperty('--my', y + 'px');
+			if (heroImg) {
+				/* 归一化到 [-1, 1]，最大倾角 2.5 度 —— 只够让截图「活」起来，不够让人眩晕 */
+				var nx = (x / rect.width - 0.5) * 2;
+				var ny = (y / rect.height - 0.5) * 2;
+				heroImg.style.setProperty('--tilt-y', (nx * 2.5).toFixed(2) + 'deg');
+				heroImg.style.setProperty('--tilt-x', (-ny * 2.5).toFixed(2) + 'deg');
+			}
+		}, { passive: true });
+		hero.addEventListener('pointerleave', function () {
+			if (heroImg) {
+				heroImg.style.setProperty('--tilt-x', '0deg');
+				heroImg.style.setProperty('--tilt-y', '0deg');
+			}
 		}, { passive: true });
 	}
 

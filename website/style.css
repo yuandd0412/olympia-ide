@@ -332,13 +332,25 @@ details[open] summary { margin-bottom: 14px; }
 }
 .motion .reveal.is-in { opacity: 1; transform: none; }
 
-/* 首屏：不等滚动，直接进场 */
-.motion .hero-copy > *,
+/* 首屏：不等滚动，直接进场。
+   注意这里**不写**基础 opacity:0 —— 起始隐藏态由 keyframes 的 both 填充，
+   动画被关掉（reduced-motion）或 JS 没跑时元素就是普通可见，不会卡在隐形。 */
+.motion .hero-copy > * { animation: fadeUp .55s cubic-bezier(.22, .61, .36, 1) both; }
 .motion .hero-copy > *:nth-child(1) { animation-delay: .05s; }
 .motion .hero-copy > *:nth-child(2) { animation-delay: .13s; }
 .motion .hero-copy > *:nth-child(3) { animation-delay: .21s; }
 .motion .hero-copy > *:nth-child(4) { animation-delay: .29s; }
 .motion .hero-copy > *:nth-child(5) { animation-delay: .37s; }
+
+.motion .hero-shot { animation: fadeUp .7s cubic-bezier(.22, .61, .36, 1) .3s both; }
+
+/* hero 截图跟着鼠标轻微倾斜（角度由 JS 写在 --tilt-x/--tilt-y 上，离开时归零） */
+.motion .hero-shot { perspective: 1200px; }
+.motion .hero-shot img {
+	transition: transform .3s ease, box-shadow .3s ease;
+	transform: rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+	will-change: transform;
+}
 
 @keyframes fadeUp {
 	from { opacity: 0; transform: translateY(14px); }
@@ -392,6 +404,43 @@ details[open] summary { margin-bottom: 14px; }
 /* FAQ 展开时正文跟着淡入 */
 .motion .faq details[open] > p { animation: fadeUp .3s ease both; }
 
+/* 卡片（步骤/功能/下载档位）hover 浮起：不上色不换字，只提一层高度和边框亮度 */
+.motion .step,
+.motion .grid article,
+.motion .edition {
+	transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.motion .step:hover,
+.motion .grid article:hover,
+.motion .edition:hover {
+	transform: translateY(-2px);
+	border-color: var(--fg-dim);
+	box-shadow: 0 14px 30px -22px #000;
+}
+
+/* 大标题的渐变短下划线随 reveal 一起画出来（h2 本身就是 reveal 目标） */
+.motion main > section > h2 { position: relative; }
+.motion main > section > h2::after {
+	content: "";
+	display: block;
+	width: 56px;
+	height: 3px;
+	margin-top: 10px;
+	border-radius: 2px;
+	background: linear-gradient(90deg, var(--blue), var(--purple));
+	transform: scaleX(0);
+	transform-origin: left center;
+	transition: transform .5s cubic-bezier(.22, .61, .36, 1) .15s;
+}
+.motion main > section > h2.is-in::after { transform: scaleX(1); }
+
+/* 结尾下载键的呼吸光晕：只动 box-shadow，幅度压在「看得见但不抢戏」 */
+.motion .cta .btn-primary { animation: ctaGlow 3.2s ease-in-out 1.2s infinite; }
+@keyframes ctaGlow {
+	0%, 100% { box-shadow: 0 6px 20px -10px var(--blue); }
+	50% { box-shadow: 0 6px 30px -8px rgba(97, 175, 239, .55); }
+}
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 940px) {
@@ -428,6 +477,12 @@ details[open] summary { margin-bottom: 14px; }
 	/* 双保险：即便 motion 类被加上了，这里也把动效全部按静态处理 */
 	.motion .reveal,
 	.motion .hero-copy > *,
+	.motion .hero-shot,
+	.motion .cta .btn-primary,
 	.motion .brand svg path { stroke-dashoffset: 0; animation: none; }
+	.motion .hero-shot img { transform: none; }
 	.motion kbd { transition: none; }
+	.motion .step, .motion .grid article, .motion .edition { transition: none; }
+	.motion .step:hover, .motion .grid article:hover, .motion .edition:hover { transform: none; box-shadow: none; }
+	.motion main > section > h2::after { transition: none; transform: scaleX(1); }
 }

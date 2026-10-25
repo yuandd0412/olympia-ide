@@ -23,6 +23,22 @@ const GATES = [
 	{ file: 'scripts/oneoff/check-olympia-command-ids.mjs', 保证: '三个扩展的命令 id 引用=声明=注册' },
 	{ file: 'scripts/oneoff/check-olympia-start-page.mjs', 保证: '开始页接线钉死：独立 scheme（不与上游 walkThrough 抢）/ 配置节点 id 是 olympia / upstream startupEditor 枚举未被污染 / CSS 红线' },
 	{ file: 'scripts/oneoff/mutation-test-olympia-start-page.mjs', 保证: '上面那条门的断言真能抓住回归（逐条变异，看对应断言会不会变红）' },
+	{
+		file: 'scripts/oneoff/check-olympia-home.mjs',
+		保证: '「首页完全替换」钉死：三处落点（开始页 / 空编辑区 / 帮助>欢迎）共用同一份视图 / 8 个入口全部指向真实存在的命令 / 劫持只接管完全无参的欢迎调用（原生路径仍是逃生口）/ 首页 CSS 红线（无 substring 选择器、无 :has()、无硬编码色、无动画）',
+	},
+	{
+		file: 'scripts/oneoff/mutation-test-olympia-home.mjs',
+		保证: '上面那条门的断言真能抓住回归（逐条变异，看对应断言会不会变红；收尾逐字节校验临时树已还原）',
+	},
+	{
+		file: 'scripts/oneoff/check-olympia-settings-page.mjs',
+		保证: '「设置页完全替换」钉死：原生设置入口被拦（原生页仍是逃生口）/ 不自建原生 select（下拉强制 useCustomDrawn，配色走主题变量）/ 输入框挂自有 class、禁止 input[type=...] 属性选择器（白底白字红线）/ 窄容器响应式与底栏贴底',
+	},
+	{
+		file: 'scripts/oneoff/mutation-test-olympia-settings-page.mjs',
+		保证: '上面那条门的断言真能抓住回归（逐条变异，看对应断言会不会变红；收尾逐字节校验临时树已还原）',
+	},
 	{ file: 'scripts/oneoff/test-timeouts.mjs', 保证: '三个编译超时各不相干（语法自检最快、编译最慢），且没有裸字面量绕过常量' },
 	{ file: 'scripts/oneoff/test-reveal-once.mjs', 保证: '首启只把竞赛工具面板带出来一次（标记读写同一个 key、失败不炸启动、不依赖文件夹）' },
 	{ file: 'scripts/oneoff/check-keybinding-mirrors.mjs', 保证: '文案里写的组合键与真实注册表一致' },
@@ -179,4 +195,7 @@ for (const g of GATES) {
 }
 
 console.log(`\n${GATES.length - skipped - failed}/${GATES.length - skipped} 通过` + (skipped ? `，${skipped} 条按设计跳过（需要 --with-build）` : ''));
-process.exit(failed ? 1 : 0);
+// 不用 process.exit()：Windows 上它会跟未关闭的 libuv 句柄竞争，崩成
+// 0xC0000409 并把退出码换成 3221226505 —— 门禁失败反而看不出来。
+// process.exitCode 让进程自然退出，失败语义才稳定、可被门禁判读。
+process.exitCode = failed ? 1 : 0;

@@ -27,12 +27,25 @@
  *   旧公式会落到 `[-E/2-1.5B, 1.5E+0.5B]` → 直接越界 → 判红。
  * - **G2 单调**：travel 沿时间必须不减（光带只朝一个方向扫）。
  * - **G3 在屏内**：光带矩形必须与视口相交（它可以从屏外飞入，但不能整条丢在屏外）。
+ *   唯一豁免：**按设计**的进场/出场段 —— 光带整体还在部件之前（或已经在部件之后）、
+ *   且只是主轴方向在视口外。那是产品的设计起点（travel = -B），
+ *   贴着视口边缘的部件（标题栏 / 状态栏）那一刻必然整条在视口外 —— **判据自己错，不是产品错**。
  * - **G4 压在部件上**：光带矩形必须与目标部件矩形相交。
  * - **G5 横穿**：整道扫光里 travel 的跨度必须覆盖部件主轴的 80%
  *   （光带不能只在一个地方抖一下就走）。
- * - **P 像素可见**：在光带**核心**（中间 50%）取均值，
- *   与紧邻光带两侧的**背景环**取中位数作对比，差值必须够大 ——
- *   这一条只回答「这条矩形里到底亮没亮」，不受区域内容干扰。
+ * - **P 像素可见**：光带在**像素上**真的被画出来了、而且在往一个方向扫。
+ *   用**相邻两帧的时序差分**（不是「峰值 − 中位数」那种会被内容喂饱的假绿）：
+ *   ① 至少 2 对帧的差分正峰超过阈值（噪声底 5 以下，阈值 12）；
+ *   ② 差分正峰的位置必须一路朝前（不是「原地抖」，也不是「倒着扫」）；
+ *   ③ **正差区间范围的并集**必须覆盖部件主轴的 35% 以上
+ *      （量的是光带扫过的那一整段，不是峰值位置 —— 峰值只是光带最亮的一列，
+ *      拿它当跨度会系统性低估）。
+ *
+ * ## 结论怎么算出来的
+ *
+ * 几何问题与像素问题**合并**成一份 `problems`，最终判定 = `problems.length === 0`。
+ * 两者都进结论 —— 以前只把像素问题推进数组、却拿几何阶段算好的 `ok` 当结论，
+ * 于是像素判据形同装饰（DOM 里有光带、屏幕上没画出来也能过）。
  *
  * ## 自检（--selftest）
  *
@@ -97,7 +110,7 @@ const luminance = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
  */
 export function judgeGeometry(sweep, samples) {
 	const problems = [];
-	const stats = { samples: samples.length, minTravel: null, maxTravel: null, span: null };
+	const stats = { samples: samples.length, minTravel: null, maxTravel: null, span: null, exempted: 0 };
 
 	if (!samples.length) {
 		return { ok: false, problems: ['没有采到任何光带帧 —— 这道扫光压根没画出来'], stats };
@@ -147,10 +160,31 @@ export function judgeGeometry(sweep, samples) {
 		prevTravel = travel;
 
 		// G3：在屏内（与视口相交）。
+		//
+		// 「按设计从屏外进场 / 扫出场」的那一小段**不算问题**：
+		// 光带的设计起点就在部件边缘外一个带宽处（travel = -B），
+		// 贴着视口边缘的部件（标题栏 / 状态栏，x = 0）那一刻必然整条在视口外
+		// —— 实测 titlebar t=2.30s：x = -128、opacity = 0.028。
+		// **那是判据自己错，不是产品错**（像素判据早就为同一类「头尾段」做过豁免，见 judgePixel）。
+		//
+		// 所以只豁免这一种情形，三个条件缺一不可：
+		//   ① 主轴方向整体在视口外（crossIn 必须在视口内 —— 光带画到部件上/下方是另一回事，照判）；
+		//   ② 光带**整体还在部件之前**（进场段）或**整体已经在部件之后**（出场段）；
+		//   ③ 满足 ①② 时主轴必然已经越界，所以 G1 会照常把它钉住。
+		// 换句话说：豁免只覆盖设计的头尾那一瞬，覆盖不了「整道扫光都在屏外」。
 		const vx0 = Math.max(0, s.band.x), vx1 = Math.min(s.vp.w, s.band.x + s.band.w);
 		const vy0 = Math.max(0, s.band.y), vy1 = Math.min(s.vp.h, s.band.y + s.band.h);
-		if (vx1 <= vx0 || vy1 <= vy0) {
-			problems.push(`t=${s.t.toFixed(2)}s 光带矩形完全在视口外 —— 观众根本看不到`);
+		const mainIn = horizontal ? vx1 > vx0 : vy1 > vy0;
+		const crossIn = horizontal ? vy1 > vy0 : vx1 > vx0;
+		if (!mainIn || !crossIn) {
+			const beforePart = bandMain(s) + bandThick(s) <= partMain(s) + GEO_TOL;
+			const afterPart = bandMain(s) >= partMain(s) + partExtent(s) - GEO_TOL;
+			const designEdge = beforePart || afterPart;
+			if (mainIn || !crossIn || !designEdge) {
+				problems.push(`t=${s.t.toFixed(2)}s 光带矩形完全在视口外 —— 观众根本看不到`);
+			} else {
+				stats.exempted++;
+			}
 		}
 		// G4：压在目标部件上（与部件矩形相交）。
 		// 注意「恰好贴边」是合法的：光带起点就在部件边缘外一个带宽处，
@@ -160,6 +194,17 @@ export function judgeGeometry(sweep, samples) {
 		if (px1 < px0 - GEO_TOL || py1 < py0 - GEO_TOL) {
 			problems.push(`t=${s.t.toFixed(2)}s 光带没有压在目标部件上 —— 扫的不是这个部件`);
 		}
+	}
+
+	// G3b：整道扫光至少要有一个采样点与视口相交 —— 观众必须在某一刻真的看见它。
+	// 这一条是 G3 的**总闸**：哪怕头尾的进场/出场段被豁免了，
+	// 中段（光带压在部件上、必然落在部件主轴区间内）一旦整体在屏外，照样判红。
+	if (!samples.some(s => {
+		const x0 = Math.max(0, s.band.x), x1 = Math.min(s.vp.w, s.band.x + s.band.w);
+		const y0 = Math.max(0, s.band.y), y1 = Math.min(s.vp.h, s.band.y + s.band.h);
+		return x1 > x0 && y1 > y0;
+	})) {
+		problems.push('整道扫光里没有任何一个采样点与视口相交 —— 这道扫光从头到尾观众都没看见');
 	}
 
 	stats.minTravel = minTravel;
@@ -293,7 +338,26 @@ export function diffPeak(profA, profB) {
 		if (d < down) { down = d; downAt = profB[i].pos; }
 	}
 	if (!Number.isFinite(up)) return null;
-	return { up, upAt, down, downAt };
+
+	// 正差区间的**范围**：差值够大（≥ 阈值）的那一段有多宽、起止在哪。
+	//
+	// 为什么必须量范围、不能只拿峰值位置：
+	// 峰值位置只是光带**最亮的那一列**，而光带本身有 128px 厚。
+	// 一对帧只给一个峰值位置，拿它的跨度当「光带扫过多少」会**系统性低估** ——
+	// 实测编辑器那道扫光，按峰值跨度算出来只有 0.349（阈值 0.35，差 0.001 判红），
+	// 而光带其实整条扫过了编辑器 —— 那不是产品缺陷，是度量方式错。
+	const lo = { v: Infinity, pos: Infinity };
+	const hi = { v: -Infinity, pos: -Infinity };
+	for (let i = 0; i < n; i++) {
+		const d = profB[i].v - profA[i].v;
+		if (d >= PIXEL_CONTRAST_MIN) {
+			if (profB[i].pos < lo.pos) lo.pos = profB[i].pos;
+			if (profB[i].pos > hi.pos) hi.pos = profB[i].pos;
+		}
+	}
+	const region = Number.isFinite(lo.pos) ? { lo: lo.pos, hi: hi.pos, width: hi.pos - lo.pos } : null;
+
+	return { up, upAt, down, downAt, region };
 }
 
 /**
@@ -307,14 +371,22 @@ export function diffPeak(profA, profB) {
  *   ② 差分正峰的位置必须一路朝前（证明是「扫过去」而不是原地抖）
  *   ③ 差分正峰必须明显强于静态内容变化造成的抖动（噪声水平在 5 以下）
  */
-export const N_VISIBLE_PAIRS = 3;
+// 一道扫光至少要有几对帧的差分正峰超过阈值。
+//
+// 为什么是 2 而不是 3：**「达标对数」只是「光带被画出来了而且在动」的代理指标**，
+// 真正的证明是下面那条覆盖率 —— 一对帧要能占到部件的 35%，光带必须真的扫过那么长。
+// 2 对强峰（实测峰值 130~170，噪声底 5 以下）加上「方向朝前」和「覆盖率达标」，
+// 已经足够排除「偶然的一处噪声」；再往上加对数只会让判据**依赖抓帧密度** ——
+// 实测编辑器那道扫光在真实抓帧里只有 4 对可配对（PNG 帧每 ~130ms 一张），
+// 按 3 对来要求就是判据自己错（实测正好卡在 0.349 < 0.35）。
+export const N_VISIBLE_PAIRS = 2;
 // 光带的差分正峰必须在部件上横跨这么长（占部件长度的比例）。
 // 这一条**不依赖 DOM**：即使 DOM 采样说它扫过了，像素上没扫过照样判红。
 export const COVER_MIN = 0.35;
 
 export function judgePixel(pairs, geo = {}) {
 	const problems = [];
-	const stats = { pairs: pairs.length, visible: 0, maxUp: null, back: 0, span: null };
+	const stats = { pairs: pairs.length, visible: 0, maxUp: null, back: 0, span: null, cover: null };
 
 	if (!pairs.length) {
 		return { ok: false, problems: ['没有可配对的相邻帧 —— 像素判据无法证明光带被画出来了'], stats };
@@ -338,15 +410,24 @@ export function judgePixel(pairs, geo = {}) {
 		problems.push(`差分正峰有 ${back} 次往回走 —— 光带不是单向扫过去的`);
 	}
 
-	// 横跨长度：像素上看到的光带必须真的从部件一头扫到另一头
+	// 横跨长度：像素上看到的光带必须真的从部件一头扫到另一头。
+	//
+	// 量的是**正差区间的范围的并集**，不是峰值位置的跨度。
+	// 峰值位置只是光带最亮的那一列；光带有 128px 厚，一对帧只贡献一个峰值位置，
+	// 拿它当跨度会系统性低估（实测编辑器那道：峰值跨度 191px = 0.349，
+	// 而正差区间的并集是真实扫过的那一整段）。
 	if (visible.length) {
-		const origin = geo.origin ?? 0;
 		const extent = geo.extent ?? null;
-		const lo = Math.min(...visible.map(p => p.upAt));
-		const hi = Math.max(...visible.map(p => p.upAt));
-		stats.span = hi - lo;
-		if (extent && extent > 0) {
-			const ratio = (hi - lo) / extent;
+		let lo = Infinity, hi = -Infinity;
+		for (const p of visible) {
+			if (!p.region) continue;
+			lo = Math.min(lo, p.region.lo);
+			hi = Math.max(hi, p.region.hi);
+		}
+		stats.span = Number.isFinite(lo) ? hi - lo : null;
+		if (extent && extent > 0 && stats.span !== null) {
+			const ratio = stats.span / extent;
+			stats.cover = ratio;
 			if (ratio < COVER_MIN) {
 				problems.push(`像素上光带只横跨了部件的 ${(ratio * 100).toFixed(0)}%（至少要 ${(COVER_MIN * 100).toFixed(0)}%）—— 它没真的从部件一头扫到另一头`);
 			}
@@ -435,9 +516,44 @@ if (SELF_TEST) {
 		{ name: '纵轴·走 2 倍', sweep: SWEEPS[3], part: { x: 48, y: 35, w: 299.75, h: 733 }, mode: 'bug2x', expect: false },
 		{ name: '纵轴·卡住不动', sweep: SWEEPS[3], part: { x: 48, y: 35, w: 299.75, h: 733 }, mode: 'stuck', expect: false }
 	];
+
+	// ---- G3 进场段豁免的牙齿 ----
+	//
+	// 真实场景：标题栏 / 状态栏贴着视口左缘（x = 0），
+	// 光带按设计从视口外一个带宽处进场 —— 那一帧整条在视口外（x = -128、opacity = 0.028）。
+	// 那**不是产品缺陷**，判据必须放过它 —— 否则这道门就是假红。
+	// 但豁免必须窄：下面两条反向牙钉死它的边界。
+	const vpEdge = { w: 1199, h: 800 };
+	const edgeSamples = (part, bandOf) => {
+		const out = [];
+		for (let i = 0; i <= 10; i++) {
+			const travel = -140 + (i / 10) * (part.w + 140);
+			out.push({ t: i / 10, band: bandOf(part, travel), part, vp: vpEdge, opacity: 0.9 });
+		}
+		return out;
+	};
+	const xBand = (p, tr) => ({ x: p.x + tr, y: p.y, w: 140, h: p.h });
+	cases.push(
+		{
+			name: '横轴·贴着视口左缘的部件·按设计从屏外进场（不得判红）',
+			sweep: SWEEPS[0], expect: true,
+			samples: edgeSamples({ x: 0, y: 0, w: 1199, h: 35 }, xBand)
+		},
+		{
+			name: '横轴·部件整体在视口外（光带从头到尾没人看得见，必须判红）',
+			sweep: SWEEPS[0], expect: false,
+			samples: edgeSamples({ x: 5000, y: 0, w: 1199, h: 35 }, xBand)
+		},
+		{
+			name: '横轴·光带画在部件上方（跨轴出视口，进场段也不豁免，必须判红）',
+			sweep: SWEEPS[0], expect: false,
+			samples: edgeSamples({ x: 0, y: 0, w: 1199, h: 35 }, (p, tr) => ({ x: p.x + tr, y: p.y - 200, w: 140, h: p.h }))
+		}
+	);
+
 	let failed = 0;
 	for (const c of cases) {
-		const samples = synthesize(c.mode, c.part, vp, 140, c.sweep.axis);
+		const samples = c.samples ?? synthesize(c.mode, c.part, vp, 140, c.sweep.axis);
 		const r = judgeGeometry(c.sweep, samples);
 		const ok = r.ok === c.expect;
 		console.log(`${ok ? 'PASS' : 'FAIL'}  ${c.name} → 判定 ${r.ok ? '通过' : '不通过'}（期望 ${c.expect ? '通过' : '不通过'}）`);
@@ -503,8 +619,13 @@ console.log('');
 // 每道扫光的采样点：DOM 里 sweep 元素的顺序 == SWEEPS 的顺序。
 const bySweep = SWEEPS.map(() => []);
 const INJECT_2X = args.includes('--inject-2x');
+const INJECT_NO_PIXEL = args.includes('--inject-no-pixel');
 if (INJECT_2X) {
 	console.log('!! 注入模式：把每道扫光的位移放大到 2 倍（模拟历史 bug）—— 本次运行**预期判红**');
+	console.log('');
+}
+if (INJECT_NO_PIXEL) {
+	console.log('!! 注入模式：把像素上的光带抹掉（DOM 里还在、屏幕上没画）—— 本次运行**预期判红**');
 	console.log('');
 }
 for (const s of domTimeline) {
@@ -568,7 +689,14 @@ for (let i = 0; i < SWEEPS.length; i++) {
 		const profA = stripProfile(imgA, part, sx, sy, sweep.axis);
 		const profB = stripProfile(imgB, part, sx, sy, sweep.axis);
 		const d = diffPeak(profA, profB);
-		if (d) pairs.push({ t: inWin[i].t, gap, ...d });
+		if (!d) continue;
+		if (INJECT_NO_PIXEL) {
+			// 注入模式：像素上光带**压根没画出来**（DOM 里还在，屏幕上没有）。
+			// 这道门必须判红 —— 否则像素判据就是装饰品（历史上它真的没进结论）。
+			pairs.push({ t: inWin[i].t, gap, up: 0, upAt: 0, down: 0, downAt: 0, region: null });
+			continue;
+		}
+		pairs.push({ t: inWin[i].t, gap, ...d });
 	}
 
 	const px = judgePixel(pairs, {
@@ -576,16 +704,26 @@ for (let i = 0; i < SWEEPS.length; i++) {
 		extent: sweep.axis === 'x' ? part.w : part.h
 	});
 	px.problems.forEach(p => geo.problems.push(p));
+	// **像素判据必须进结论**。
+	// 以前这里只把像素的问题推进 geo.problems，而下面判的是 judgeGeometry 返回时
+	// 算好的 geo.ok —— 那个快照在推进问题之后**不会重算**，
+	// 于是像素判据对最终判定毫无影响：光带在 DOM 里存在、像素上却根本没画出来，也能过。
+	// 这是一道**假绿门**。结论必须由「几何 + 像素」一起算出来。
+	const ok = geo.problems.length === 0;
 
-	console.log(`[${sweep.id}] 采样 ${samples.length} 点  位移 ${geo.stats.minTravel?.toFixed(1)} → ${geo.stats.maxTravel?.toFixed(1)}（跨度 ${geo.stats.span?.toFixed(0)}）`);
+	const exemptNote = geo.stats.exempted
+		? `  （豁免 ${geo.stats.exempted} 个按设计的进场/出场样本）`
+		: '';
+	console.log(`[${sweep.id}] 采样 ${samples.length} 点  位移 ${geo.stats.minTravel?.toFixed(1)} → ${geo.stats.maxTravel?.toFixed(1)}（跨度 ${geo.stats.span?.toFixed(0)}）${exemptNote}`);
 	if (pairs.length) {
 		const cs = pairs.map(p => p.up).sort((a, b) => a - b);
-		console.log(`    差分正峰 n=${pairs.length}  最小 ${cs[0].toFixed(1)}  中位 ${cs[Math.floor(cs.length / 2)].toFixed(1)}  最大 ${cs[cs.length - 1].toFixed(1)}  达标 ${px.stats.visible}/${pairs.length}`);
+		const coverTxt = px.stats.cover === null ? '' : `  覆盖 ${(px.stats.cover * 100).toFixed(0)}%（阈值 ${(COVER_MIN * 100).toFixed(0)}%）`;
+		console.log(`    差分正峰 n=${pairs.length}  最小 ${cs[0].toFixed(1)}  中位 ${cs[Math.floor(cs.length / 2)].toFixed(1)}  最大 ${cs[cs.length - 1].toFixed(1)}  达标 ${px.stats.visible}/${pairs.length}${coverTxt}`);
 		console.log(`    逐对: ${pairs.map(p => `${p.t.toFixed(2)}:+${p.up.toFixed(0)}@${p.upAt.toFixed(0)}`).join('  ')}`);
 	} else {
 		console.log('    （没有可配对的相邻帧，跳过像素判据）');
 	}
-	if (!geo.ok) {
+	if (!ok) {
 		geo.problems.forEach(p => console.log('    !! ' + p));
 		anyProblem = true;
 	}

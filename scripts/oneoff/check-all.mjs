@@ -49,7 +49,7 @@ const GATES = [
 	{
 		file: 'scripts/oneoff/analyze-sweep-bands.mjs',
 		name: '扫光几何+像素门禁',
-		保证: '五道扫光真的扫在目标部件上（DOM 真几何：位移在 [-B,E]、单调、不出屏、横穿），并且像素上真的看得见、在往一个方向动（时序差分，不是「峰值−中位数」那种会被内容喂饱的假绿）',
+		保证: '五道扫光真的扫在目标部件上（DOM 真几何：位移在 [-B,E]、单调、横穿；按设计从屏外进场/出场的那一瞬豁免），并且像素上真的看得见、正差区间并集盖过部件的 35%、在往一个方向动（时序差分，不是「峰值−中位数」那种会被内容喂饱的假绿）；几何与像素的结论合并成一条，不许只判几何',
 		// 这条门读的是「抓帧目录」，不是产品目录树。抓帧是一次性的
 		// （抓完就没了），所以它靠环境变量指路；没给就跳过，
 		// 但必须打印跳过原因 —— 不许塌进「没问题」。
@@ -59,7 +59,7 @@ const GATES = [
 	{
 		file: 'scripts/oneoff/analyze-sweep-bands.mjs',
 		name: '扫光判据自检',
-		保证: '扫光判据自己有牙：正确几何/光带扫过必须通过，走 2 倍/卡住不动/压根没画/倒着扫/只在小范围挪动必须判红',
+		保证: '扫光判据自己有牙：正确几何/光带扫过必须通过，走 2 倍/卡住不动/压根没画/倒着扫/只在小范围挪动必须判红；按设计的进场豁免不得放过「整体在屏外」「跨轴出屏」',
 		args: () => ['--selftest']
 	},
 	{
@@ -69,6 +69,14 @@ const GATES = [
 		requiresEnv: 'OLYMPIA_FRAMES_DIR',
 		expectFailure: true,
 		args: () => ['--frames', process.env.OLYMPIA_FRAMES_DIR, '--inject-2x']
+	},
+	{
+		file: 'scripts/oneoff/analyze-sweep-bands.mjs',
+		name: '扫光门禁在真实数据上的牙（像素没画出来）',
+		保证: '把真实抓帧里的像素光带抹掉（DOM 里还在、屏幕上根本没画）后，这条门必须判红 —— 否则像素判据不进结论，上面那条门对「光带压根没被画出来」就是假绿',
+		requiresEnv: 'OLYMPIA_FRAMES_DIR',
+		expectFailure: true,
+		args: () => ['--frames', process.env.OLYMPIA_FRAMES_DIR, '--inject-no-pixel']
 	},
 	{
 		file: 'scripts/oneoff/check-backdrop-continuity.mjs',

@@ -140,6 +140,40 @@ Headers: X-CSRF-Token: <页面里的 csrf>  +  X-Requested-With: XMLHttpRequest
 上传端点是 `POST /<owner>/<repo>/attach_files/upload_attach?attach_type=release`，
 响应体里有 `attach_id` 和 `url`（`https://foruda.gitee.com/attach_file/...`）。
 
+### 3.2 Gitee 镜像同步（不会自动跑，必须手动触发）
+
+`yuanddMSK/olympia-ide-mirror` 是从 GitHub 导入的镜像仓，**它不会自动同步**：
+2026-10-25 实测，GitHub 上推了 2 个提交后，镜像的 `pushed_at` 仍停在旧提交那一刻。
+公开 API 里也**没有**同步端点（`/mirror/sync`、`/mirror`、`/sync` 全部 404），
+`git push` 到镜像仓不是它该有的用法。
+
+唯一办法是**在已登录 Gitee 的浏览器里点**：
+仓主页「**从 GitHub 同步**」→ 弹窗「**确定**」。
+弹窗正文写的是「确定同步？……Gitee 的仓库将被覆盖，且无法恢复！！！」
+—— **这一步会覆盖镜像仓、不可恢复**，点之前先确认 GitHub 那边已经推完。
+
+仓库里带了一个自动化脚本，用本机已登录 Gitee 的 Chromium 系浏览器（eGO）
+的持久登录态 + CDP 直连走完这一步：
+
+```bash
+# ① 先只读预演：检查登录态、同步按钮、弹窗内容是否对得上，不点「确定」
+node scripts/oneoff/gitee-mirror-sync.mjs --ego "<eGO 可执行文件路径>" --target <sha>
+
+# ② 确认无误再真执行（--confirm 不可省：同步是覆盖式操作）
+node scripts/oneoff/gitee-mirror-sync.mjs --ego "<eGO 可执行文件路径>" --target <sha> --confirm --repo-dir . --verify-file website/DEPLOY.md
+```
+
+要点：
+
+- **不传 `--confirm` 就只预演**：脚本在弹窗安全阀通过后停下，并清掉自己拉起的浏览器进程；
+- 脚本**不碰任何凭据**，登录态来自浏览器自己的 profile；没登录 Gitee 时脚本直接报错退出；
+- 两道弹窗安全阀：弹窗正文必须写明源仓库名与「强制同步」，确认按钮文案必须在白名单内，
+  且按钮要等 Gitee 的远端校验结束（`disabled` 消失）才可点；
+- 同步后要**核对 head 与文件字节**，不能只看脚本自己说成功（`--verify-file` 逐个比 sha256）；
+- 脚本只清理**自己拉起**的浏览器进程，不会误杀你自己开着的窗口。
+
+**推完 GitHub 记得做这一步**，否则镜像仓会一直少几个提交。
+
 ## 4. 官网
 
 **官网不会跟着仓库自动更新** —— 改了 `website\index.html` 不部署 = 没改。

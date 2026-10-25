@@ -37,6 +37,7 @@ function parseArgs(argv) {
     stateFile: '',
     keepOpen: false,
     timeoutSec: 420,
+    verifyOnly: false,
   };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
@@ -55,6 +56,7 @@ function parseArgs(argv) {
       case '--verify-file': out.verifyFiles.push(next()); break;
       case '--confirm': out.confirm = true; break;
       case '--keep-open': out.keepOpen = true; break;
+      case '--verify-only': out.verifyOnly = true; break;
       case '--log': out.logFile = next(); break;
       case '--state': out.stateFile = next(); break;
       case '--timeout': out.timeoutSec = Number(next()); break;
@@ -90,19 +92,23 @@ function die(tag, msg, code = 2) {
 
 if (args.help) {
   log('用法: node scripts/oneoff/gitee-mirror-sync.mjs --ego <路径> --target <sha> [--confirm] [--verify-file <路径>]');
+  log('      node scripts/oneoff/gitee-mirror-sync.mjs --target <sha> --verify-only --repo-dir <目录> [--verify-file <路径>]');
+  log('      （--verify-only 不碰浏览器，只复核远端 head 与关键文件字节）');
   process.exit(0);
 }
 if (typeof WebSocket === 'undefined') die('PRECHECK', 'Node 缺少内置 WebSocket，需要 Node >= 22', 3);
 if (!/^[^/]+\/[^/]+$/.test(args.repo)) die('PRECHECK', `--repo 格式不对: ${args.repo}`);
 if (!/^[^/]+\/[^/]+$/.test(args.source)) die('PRECHECK', `--source 格式不对: ${args.source}`);
-if (!args.ego) die('PRECHECK', '缺少 --ego（或设置环境变量 EGO_PATH）指向本机 eGO 可执行文件');
-if (!fs.existsSync(args.ego)) die('PRECHECK', `eGO 不存在: ${args.ego}`);
+if (!args.verifyOnly) {
+  if (!args.ego) die('PRECHECK', '缺少 --ego（或设置环境变量 EGO_PATH）指向本机 eGO 可执行文件');
+  if (!fs.existsSync(args.ego)) die('PRECHECK', `eGO 不存在: ${args.ego}`);
+}
 if (!args.target) die('PRECHECK', '缺少 --target <sha>');
 if (!/^[0-9a-f]{7,40}$/i.test(args.target)) die('PRECHECK', `--target 不是合法 sha: ${args.target}`);
 if (args.repoDir && !fs.existsSync(args.repoDir)) die('PRECHECK', `--repo-dir 不存在: ${args.repoDir}`);
 log(`[precheck] repo=${args.repo} source=${args.source} target=${args.target}`);
-log(`[precheck] ego=${args.ego}`);
-log(`[precheck] mode=${args.confirm ? 'EXECUTE' : 'DRY-RUN'}`);
+if (!args.verifyOnly) log(`[precheck] ego=${args.ego}`);
+log(`[precheck] mode=${args.verifyOnly ? 'VERIFY-ONLY' : (args.confirm ? 'EXECUTE' : 'DRY-RUN')}`);
 
 const API = `https://gitee.com/api/v5/repos/${args.repo}`;
 const MIRROR_WEB = `https://gitee.com/${args.repo}`;
@@ -112,6 +118,67 @@ async function apiHead() {
   if (!r.ok) return null;
   const j = await r.json();
   return j && j.commit ? j.commit.sha : null;
+}
+
+// ---------------------------------------------------------------- 字节比对
+//
+// 为什么要归一化行尾再比：git 的 core.autocrlf=true 会把工作区签出成 CRLF，
+// 而仓库里（以及 Gitee 镜像里）存的是 LF。直接比「工作区原始字节」和
+// 「远端 raw 字节」，凡是签出过的文件必然对不上 —— 那是假红，不是差异。
+// 所以先比原始字节，再比「行尾归一化后」的字节；只有两者都不同才算真差异。
+//
+// 三态：MATCH（字节完全一致）/ MATCH-EOL（仅行尾不同，内容一致）/ DIFF（真差异）。
+// 读不到（本地或远端）一律算 DIFF —— 复核不了不等于通过。
+
+function compareBytes(localBuf, remoteBuf) {
+  const localSha = sha256(localBuf);
+  const remoteSha = sha256(remoteBuf);
+  if (localSha === remoteSha) return { mode: 'MATCH', localSha, remoteSha };
+  const norm = (b) => Buffer.from(b.toString('utf8').replace(/\r\n/g, '\n'), 'utf8');
+  const nl = norm(localBuf);
+  const nr = norm(remoteBuf);
+  const localNormSha = sha256(nl);
+  const remoteNormSha = sha256(nr);
+  if (localNormSha === remoteNormSha) {
+    return { mode: 'MATCH-EOL', localSha, remoteSha, localNormSha, remoteNormSha };
+  }
+  return { mode: 'DIFF', localSha, remoteSha, localNormSha, remoteNormSha };
+}
+
+async function verifyRemoteFiles() {
+  let bad = 0;
+  const rows = [];
+  for (const f of args.verifyFiles) {
+    const localPath = args.repoDir ? path.join(args.repoDir, f) : '';
+    if (!localPath || !fs.existsSync(localPath)) {
+      bad++;
+      log(`[verify] DIFF ${f} local=<读不到：缺 --repo-dir 或本地不存在>（复核不了不等于通过）`);
+      rows.push({ file: f, mode: 'DIFF', reason: 'local-read-failed' });
+      continue;
+    }
+    const localBuf = fs.readFileSync(localPath);
+    let remoteBuf = null;
+    let remoteStatus = null;
+    for (let i = 0; i < 6; i++) {
+      const res = await fetch(`https://gitee.com/${args.repo}/raw/master/${f}?t=${Date.now()}`);
+      remoteStatus = res.status;
+      if (res.ok) { remoteBuf = Buffer.from(await res.arrayBuffer()); break; }
+      log(`[verify] ${f} http=${res.status}，重试`);
+      await sleep(3000);
+    }
+    if (!remoteBuf) {
+      bad++;
+      log(`[verify] DIFF ${f} local=${sha256(localBuf).slice(0, 12)} gitee=<读不到 http=${remoteStatus}>`);
+      rows.push({ file: f, mode: 'DIFF', reason: 'remote-read-failed' });
+      continue;
+    }
+    const cmp = compareBytes(localBuf, remoteBuf);
+    if (cmp.mode === 'DIFF') bad++;
+    const detail = cmp.mode === 'MATCH-EOL' ? '（仅行尾不同：本地 CRLF / 远端 LF，内容一致）' : '';
+    log(`[verify] ${cmp.mode} ${f} local=${cmp.localSha.slice(0, 12)} gitee=${cmp.remoteSha.slice(0, 12)}${detail}`);
+    rows.push({ file: f, mode: cmp.mode, localSha: cmp.localSha, remoteSha: cmp.remoteSha });
+  }
+  return { bad, rows };
 }
 
 // ---------------------------------------------------------------- eGO 进程管理
@@ -130,8 +197,10 @@ function killPids(pids) {
   }
 }
 
-const PIDS_BEFORE = new Set(egoPids());
-log(`[ego] 启动前已有 eGO 进程: ${PIDS_BEFORE.size}`);
+// --verify-only 根本不碰 eGO，连进程枚举都省掉（省一次 PowerShell 子进程，
+// 也免得日志里出现与本次无关的 eGO 计数）。
+const PIDS_BEFORE = args.verifyOnly ? new Set() : new Set(egoPids());
+if (!args.verifyOnly) log(`[ego] 启动前已有 eGO 进程: ${PIDS_BEFORE.size}`);
 
 // ---------------------------------------------------------------- 最小 CDP 客户端
 
@@ -205,6 +274,9 @@ class Cdp {
 
 // ---------------------------------------------------------------- 主流程
 
+// --verify-only 走完后的正常收场信号（不是错误）
+const VERIFY_ONLY_DONE = Symbol('verify-only-done');
+
 let cdp = null;
 let spawned = null;
 async function cleanup() {
@@ -219,6 +291,26 @@ async function cleanup() {
 try {
   const before = await apiHead();
   log(`BEFORE_HEAD=${before}`);
+
+  // --verify-only：不碰浏览器、不做同步，只复核「远端 head + 关键文件字节」。
+  // 用途：① 同步之后的独立复核；② 门禁牙齿证明（可以在副本目录上故意改坏再跑）。
+  if (args.verifyOnly) {
+    const headOk = !!before && before.startsWith(args.target);
+    if (!headOk) log(`[verify] HEAD 不匹配 target=${args.target} head=${before}`);
+    const { bad, rows } = await verifyRemoteFiles();
+    log(`BAD_COUNT=${bad}`);
+    const ok = bad === 0 && headOk;
+    log(ok ? 'VERDICT=OK reason=verify-only' : `VERDICT=FAIL reason=verify-only bad=${bad} headOk=${headOk}`);
+    if (args.stateFile) {
+      fs.writeFileSync(args.stateFile, JSON.stringify({ ok, reason: 'verify-only', head: before, bad, rows, at: new Date().toISOString() }, null, 2), 'utf8');
+    }
+    // 这里不用 process.exit()：Windows 上 process.exit() 与尚未关闭的 libuv 句柄
+    // 竞争会触发 `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`，
+    // 退出码变成 0xC0000409 而不是我们想要的 11。改用 exitCode 让进程自然退出。
+    process.exitCode = ok ? 0 : 11;
+    throw VERIFY_ONLY_DONE;
+  }
+
   if (before && before.startsWith(args.target)) {
     log(`ALREADY_SYNCED=1 target=${args.target}`);
     log('VERDICT=OK reason=already-synced');
@@ -328,35 +420,23 @@ try {
   }
 
   // 关键文件字节核验（Gitee raw vs 本地）
-  let bad = 0;
-  for (const f of args.verifyFiles) {
-    const localPath = args.repoDir ? path.join(args.repoDir, f) : '';
-    if (!localPath || !fs.existsSync(localPath)) { log(`[verify] SKIP ${f}（缺 --repo-dir 或本地不存在）`); continue; }
-    const localSha = sha256(fs.readFileSync(localPath));
-    let remoteSha = null;
-    for (let i = 0; i < 6; i++) {
-      const res = await fetch(`https://gitee.com/${args.repo}/raw/master/${f}?t=${Date.now()}`);
-      if (res.ok) {
-        remoteSha = sha256(Buffer.from(await res.arrayBuffer()));
-        break;
-      }
-      log(`[verify] ${f} http=${res.status}，重试`);
-      await sleep(3000);
-    }
-    const same = remoteSha === localSha;
-    if (!same) bad++;
-    log(`[verify] ${same ? 'MATCH' : 'DIFF'} ${f} local=${String(localSha).slice(0, 12)} gitee=${String(remoteSha).slice(0, 12)}`);
-  }
+  const { bad, rows } = await verifyRemoteFiles();
 
   log(`BAD_COUNT=${bad}`);
-  log('VERDICT=OK reason=synced');
+  // VERDICT 必须如实反映复核结果 —— 复核没过就不能报 OK（否则日志里全是假绿）。
+  if (bad === 0) log('VERDICT=OK reason=synced');
+  else log(`VERDICT=FAIL reason=verify-mismatch bad=${bad}`);
   if (args.stateFile) {
-    fs.writeFileSync(args.stateFile, JSON.stringify({ ok: bad === 0, reason: 'synced', head: after, bad, at: new Date().toISOString() }, null, 2), 'utf8');
+    fs.writeFileSync(args.stateFile, JSON.stringify({ ok: bad === 0, reason: bad === 0 ? 'synced' : 'verify-mismatch', head: after, bad, rows, at: new Date().toISOString() }, null, 2), 'utf8');
   }
   await cleanup();
   process.exit(bad === 0 ? 0 : 11);
 } catch (e) {
-  log(`[error] ${e && e.message ? e.message : e}`);
-  await cleanup();
-  die('EXCEPTION', '执行中断', 12);
+  if (e === VERIFY_ONLY_DONE) {
+    log('[exit] verify-only 结束（自然退出，不强杀进程）');
+  } else {
+    log(`[error] ${e && e.message ? e.message : e}`);
+    await cleanup();
+    die('EXCEPTION', '执行中断', 12);
+  }
 }

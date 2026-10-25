@@ -66,7 +66,12 @@ const EXPLICIT = [
 	OL + 'olympiaSettingsInterceptor.ts',
 	OL + 'media/olympiaSettings.css',
 	'oss/src/vs/workbench/contrib/preferences/browser/preferences.contribution.ts',
-	'oss/src/vs/workbench/workbench.common.main.ts'
+	'oss/src/vs/workbench/workbench.common.main.ts',
+	// 字体枚举住在扩展宿主：体检脚本要读这三处（命令 id 的单一真源 / 命令注册 / 枚举实现）。
+	// oss/extensions/*/package.json 由 extensionPackageFiles() 自动带上。
+	'oss/extensions/olympia-onboarding/src/commands.ts',
+	'oss/extensions/olympia-onboarding/src/extension.ts',
+	'oss/extensions/olympia-onboarding/src/systemFonts.ts'
 ];
 
 const SRC_ROOT = path.join(REPO, 'oss', 'src', 'vs');
@@ -110,6 +115,21 @@ function cssAtRuleMutate(t, atRule, selector, from, to) {
  */
 function inMethodMutate(t, signature, from, to) {
 	const idx = t.indexOf(signature);
+	if (idx < 0) return t;
+	const head = t.slice(0, idx);
+	const tail = t.slice(idx);
+	const changed = tail.replace(from, to);
+	return changed === tail ? t : head + changed;
+}
+
+/**
+ * 在 schema 里某个控件的**声明块内**换字面量。
+ *
+ * 必须限定到控件块：schema 里每个控件都有一行 `type:`，
+ * 换个等价的写法（拿另一个控件的 type）会被整文件替换误伤到别处。
+ */
+function inControlBlockMutate(t, key, from, to) {
+	const idx = t.indexOf(`key: '${key}'`);
 	if (idx < 0) return t;
 	const head = t.slice(0, idx);
 	const tail = t.slice(idx);
@@ -669,6 +689,122 @@ const MUTATIONS = [
 		// 注释里写的是 `$('input[type=text]')`（没有 <HTMLInputElement> 泛型）；
 		// 改它只会动到注释，代码一行没变。
 		mutate: t => t.replace("input[type=text]'", "input[type=textX]'")
+	},
+
+	// --- G32~G45：字体下拉（本机真实系统字体） --------------------------------
+	{
+		id: 'M63', expect: 'G32',
+		desc: '扩展 CMD 表里的命令 id 拼错（页面调的是另一个命令 → 字体清单永远拿不到）',
+		file: 'oss/extensions/olympia-onboarding/src/commands.ts',
+		mutate: t => t.replace(
+			"listSystemFonts: 'olympia.listSystemFonts',",
+			"listSystemFonts: 'olympia.listSystemFontsTypo',")
+	},
+	{
+		id: 'M64', expect: 'G33',
+		desc: 'editor.fontFamily 的控件类型从 font 退回 string（没有本机字体下拉了）',
+		file: OL + 'olympiaSettingsSchema.ts',
+		mutate: t => inControlBlockMutate(t, 'editor.fontFamily', "type: 'font',", "type: 'string',")
+	},
+	{
+		id: 'M65', expect: 'G33',
+		desc: "控件类型联合里去掉 'font'（这种控件不受支持）",
+		file: OL + 'olympiaSettingsSchema.ts',
+		mutate: t => t.replace("'theme' | 'font'", "'theme'")
+	},
+	{
+		id: 'M66', expect: 'G34',
+		desc: "页面 switch 里没有 case 'font'（字体控件不会被渲染）",
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => t.replace("case 'font':", "case 'fontX':")
+	},
+	{
+		id: 'M67', expect: 'G35',
+		desc: '下拉框不再强制自绘（useCustomDrawn: true → false，会退回原生 <select>）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => inMethodMutate(t, 'private createSelectBox(', 'useCustomDrawn: true,', 'useCustomDrawn: false,')
+	},
+	{
+		id: 'M68', expect: 'G35',
+		desc: '页面里出现了第二个 SelectBox 创建入口（绕过「禁原生下拉」的统一入口）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => inMethodMutate(t, 'private renderDropdown(',
+			'const { wrapper, selectBox } = this.createSelectBox(options, selectedIndex, control, controlId);',
+			'const { wrapper, selectBox } = this.createSelectBox(options, selectedIndex, control, controlId);\n\t\tconst extra = new SelectBox([], 0, this.contextViewService, defaultSelectBoxStyles, {});')
+	},
+	{
+		id: 'M69', expect: 'G36',
+		desc: 'renderFont 不走统一的 createSelectBox（字体下拉绕过了统一入口）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => inMethodMutate(t, 'private renderFont(', 'this.createSelectBox(', 'this.createNativeSelectBox(')
+	},
+	{
+		id: 'M70', expect: 'G37',
+		desc: 'loadSystemFonts 把命令 id 写死成字面量（与扩展侧脱钩，改一边就永远对不上）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => inMethodMutate(t, 'private loadSystemFonts(',
+			'OlympiaSettingsPage.LIST_SYSTEM_FONTS_COMMAND_ID', "'olympia.listSystemFonts'")
+	},
+	{
+		id: 'M71', expect: 'G38',
+		desc: 'buildFontOptions 不读本机字体清单（下拉里永远是空的）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => inMethodMutate(t, 'private buildFontOptions(',
+			'for (const font of this.systemFonts)', 'for (const font of [])')
+	},
+	{
+		id: 'M72', expect: 'G39',
+		desc: '字体清单到达后重画整页（会清空用户正在输入的内容）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => t.replace('private refreshFontDropdowns(): void {',
+			'private refreshFontDropdowns(): void {\n\t\tthis.render();')
+	},
+	{
+		id: 'M73', expect: 'G40',
+		desc: '扩展没有注册这条命令（页面要不到字体清单）',
+		file: 'oss/extensions/olympia-onboarding/src/extension.ts',
+		mutate: t => t.replace('registerCommand(CMD.listSystemFonts,', 'registerCommand(CMD.listSystemFontsRemoved,')
+	},
+	{
+		id: 'M74', expect: 'G41',
+		desc: '字体栈输入框不挂 .olympiaSettings-input（会退回浏览器默认白底）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => inMethodMutate(t, 'private renderFontStackInput(',
+			"input.classList.add('olympiaSettings-input');", '')
+	},
+	{
+		id: 'M75', expect: 'G42',
+		desc: '字体栈留空写成空字符串（editor.fontFamily 会变成非法 font-family）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => inMethodMutate(t, 'private renderFontStackInput(',
+			"raw === '' ? undefined : raw", 'raw')
+	},
+	{
+		id: 'M76', expect: 'G43',
+		desc: '下拉选「系统默认」写成空字符串（editor.fontFamily 会变成非法 font-family）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => inMethodMutate(t, 'private renderFont(',
+			"picked.value === '' ? undefined : picked.value", 'picked.value')
+	},
+	{
+		id: 'M77', expect: 'G44',
+		desc: '字体控件容器改成横排（下拉与字体栈会挤在一行）',
+		file: OL + 'media/olympiaSettings.css',
+		mutate: t => cssRuleMutate(t, '.olympiaSettings-fontControl',
+			b => b.replace('flex-direction: column;', 'flex-direction: row;'))
+	},
+	{
+		id: 'M78', expect: 'G45',
+		desc: 'hasUserOverride 不看工作区里的值（工作区设的字体不被认出来）',
+		file: OL + 'olympiaSettingsPage.ts',
+		mutate: t => inMethodMutate(t, 'private hasUserOverride(',
+			'|| info.workspaceValue !== undefined', '|| false')
+	},
+	{
+		id: 'M79', expect: 'G32',
+		desc: 'package.json 的 contributes.commands 里没有这条命令（扩展不会激活它）',
+		file: 'oss/extensions/olympia-onboarding/package.json',
+		mutate: t => t.replace('"command": "olympia.listSystemFonts"', '"command": "olympia.listSystemFontsV2"')
 	}
 ];
 

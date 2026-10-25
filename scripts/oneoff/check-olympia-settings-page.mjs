@@ -57,6 +57,11 @@ const F_INTERCEPTOR = `${OLYMPIA_BROWSER_DIR}/olympiaSettingsInterceptor.ts`;
 const F_CSS = `${OLYMPIA_BROWSER_DIR}/media/olympiaSettings.css`;
 const F_PREFERENCES = 'oss/src/vs/workbench/contrib/preferences/browser/preferences.contribution.ts';
 const F_MAIN = 'oss/src/vs/workbench/workbench.common.main.ts';
+// 字体枚举住在扩展宿主（VS Code 内核没有字体枚举服务），所以要读扩展侧的文件。
+const F_EXT_COMMANDS = 'oss/extensions/olympia-onboarding/src/commands.ts';
+const F_EXT_EXTENSION = 'oss/extensions/olympia-onboarding/src/extension.ts';
+const F_EXT_FONTS = 'oss/extensions/olympia-onboarding/src/systemFonts.ts';
+const F_EXT_PKG = 'oss/extensions/olympia-onboarding/package.json';
 
 // ---------------------------------------------------------------------------
 // 读取（带 MISSING 报告）
@@ -814,18 +819,82 @@ function cssAtBlock(css, atRule) {
 }
 
 /**
+ * 判断一段文本在某个位置之后**是不是方法结束了**。
+ *
+ * 用途：区分「返回值类型里的对象字面量」和「函数体本身」。
+ * 两者的左花括号长得一模一样，唯一能分辨的是**它们的匹配 `}` 后面跟什么**：
+ *
+ *   private createSelectBox(o: { value: string }[]): { wrapper: HTMLElement } {
+ *        ↑ 类型字面量的 } 后面是 ` {`（函数体开始）
+ *                                             ↑ 函数体的 } 后面是下一个方法声明
+ *
+ * 靠「`{` 后面跟换行」来分辨是不行的 —— 那把断言和代码的换行风格绑死了，
+ * 换个格式写法就假红（代码还是对的，断言却报「找不到函数体」）。
+ */
+function looksLikeMethodEnd(text, afterIdx) {
+	let i = afterIdx;
+	while (i < text.length && /\s/.test(text[i])) { i++; }
+	if (i >= text.length) return true;
+	const c = text[i];
+	if (c === ';' || c === ',' || c === ')' || c === '}') return true;
+	return /^(private|public|protected|readonly|static|async|get|set|abstract|override|declare)\b/.test(text.slice(i, i + 32));
+}
+
+/**
  * 取出 TS 里某个方法/函数的**函数体**（含首尾花括号）。
  *
  * 断言必须落在**使用处**：「整个文件里出现过 input.type = 'text'」太松，
  * 「renderString 的函数体里设了 type」才是真的。
+ *
+ * ## 为什么不能直接取「签名后第一个 `{`」
+ *
+ * 参数表和返回值类型里都可能带**对象类型字面量**：
+ *
+ *   private createSelectBox(options: { value: string; label: string }[], ...): { wrapper: HTMLElement } {
+ *
+ * 这里的第一个 `{` 是**类型**，不是函数体 —— 拿到的「函数体」只有一段类型声明，
+ * 断言于是变成在读类型、在类型里找不到语句 → 假红。
+ *
+ * 所以这里分三步走：
+ *   1. 跳过参数表（用括号配对，里面有 `{}` 也不怕）；
+ *   2. 逐个试候选左花括号，用「匹配 `}` 后面是不是方法结束」分辨类型与函数体；
+ *   3. 认准函数体后返回它的配对块。
  */
 function methodBody(text, signature) {
 	if (text === null) return null;
 	const idx = text.indexOf(signature);
 	if (idx < 0) return null;
-	const open = text.indexOf('{', idx);
-	if (open < 0) return null;
-	return balanced(text, open, '{', '}');
+
+	// ① 跳过参数表
+	//    锚点通常**自带**左括号（'private renderString(' 这种写法），
+	//    左括号就在签名的**最后一个字符**上，不能再往后找。
+	let i = idx + signature.length;
+	let parenIdx = -1;
+	if (signature.endsWith('(')) {
+		parenIdx = idx + signature.length - 1;
+	} else if (text[i] === '(') {
+		parenIdx = i;
+	} else {
+		const m = /^[ \t\r\n]*\(/.exec(text.slice(i, i + 128));
+		if (m) { parenIdx = i + m[0].length - 1; }
+	}
+	if (parenIdx < 0 || text[parenIdx] !== '(') { return null; }
+	const params = balanced(text, parenIdx, '(', ')');
+	if (!params) { return null; }
+	i = parenIdx + params.length;
+
+	// ② 逐个候选左花括号：函数体那个的匹配 `}` 后面是「方法结束」
+	while (i < text.length) {
+		if (text[i] !== '{') { i++; continue; }
+		const block = balanced(text, i, '{', '}');
+		if (!block) { return null; }
+		if (looksLikeMethodEnd(text, i + block.length)) {
+			return block;
+		}
+		// 这是返回值类型里的对象字面量 —— 整块跳过，继续往后找。
+		i += block.length;
+	}
+	return null;
 }
 
 check('G16', '根容器声明 container-type: inline-size（窄容器响应式的前提，没有它 @container 永不生效）', () => {
@@ -998,6 +1067,276 @@ check('G31', "boolean 分支真的调 renderBoolean，且 schema 里确有 boole
 	if (schemaText === null) return `文件不存在（见上面的 MISSING ${F_SCHEMA}）`;
 	const n = (schemaText.match(/type:\s*'boolean'/g) || []).length;
 	if (n === 0) return 'schema 里一个 boolean 控件都没有 —— G27 就没有可保护的对象';
+	return null;
+});
+
+// ===========================================================================
+// G32~G45. 字体下拉（深度定制 (a)：本机真实系统字体）
+// ===========================================================================
+//
+// 这一组的来历：T-081 要把「编辑器字体」从纯文本框换成**本机真实装了的字体**的下拉。
+//
+// 三条前提，任何一条塌了这条功能就是坏的，而且**都不报错**：
+//
+//   1. VS Code 内核**没有**字体枚举服务（grep 过 InstalledFontCollection /
+//      fontListService / IFontListService / listFonts / systemFonts 等，全零命中；
+//      vs/base/browser/fonts.ts 只有几个默认字体常量）。
+//      所以字体清单只能由**扩展宿主**去问操作系统要，走扩展命令。
+//      于是命令 id 必须在「页面 / 扩展 CMD 表 / package.json」三处一字不差 ——
+//      差一个字母的表现是：下拉里永远是空的（扩展那条命令压根没注册）。
+//   2. 下拉必须**自绘**（上游 SelectBox + useCustomDrawn: true）——
+//      原生 <select> 展开是系统弹窗（白底白字 / 白底黑字），是用户点名的红线。
+//   3. 「系统默认」必须是**移除用户设置**（写 undefined），不是写空字符串 ——
+//      上游 editor.fontFamily 的默认值本身就是一串字体栈（fontInfo.ts 的
+//      EDITOR_FONT_DEFAULTS），写空串会让编辑器的 font-family 变成非法值。
+//
+// 另外一条容易踩的：字体清单是**异步**到的。到达时如果重画整页，
+// 会把用户正在输入的编译路径之类内容清掉 —— 所以必须**原地换选项**（setOptions）。
+//
+// 这一组断言锚在**使用处**（方法体 / 规则块），不是文件级 includes：
+// 文件级断言会被「同一份字面量出现在别处」喂绿。
+
+/** 从 TS 里取某个字符串常量的值（形如 `static readonly NAME = 'xxx';`）。 */
+function stringConstantValue(text, name) {
+	if (text === null) return null;
+	const m = new RegExp('\\b' + name + "\\s*=\\s*'([^']+)'").exec(text);
+	return m ? m[1] : null;
+}
+
+/** 从扩展的 CMD 表里取某个条目的命令 id（形如 `key: 'olympia.xxx',`）。 */
+function cmdTableValue(text, key) {
+	if (text === null) return null;
+	const m = new RegExp('\\b' + key + "\\s*:\\s*'([^']+)'").exec(text);
+	return m ? m[1] : null;
+}
+
+/**
+ * 从 schema 里取某个控件的声明块（从 `key: '<key>'` 到下一个 `key: `）。
+ *
+ * 不能只 grep 整个文件里的 `type: 'font'` —— 文件里每个控件都有一行 type，
+ * grep 到的是**别的**控件。断言要问的是「editor.fontFamily 这个控件用的是 font」，
+ * 不是「文件里出现过 font」。
+ */
+function controlBlock(text, key) {
+	if (text === null) return null;
+	const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	const m = new RegExp("key\\s*:\\s*'" + escaped + "'").exec(text);
+	if (!m) return null;
+	const start = m.index;
+	const next = text.indexOf('key:', start + m[0].length);
+	return text.slice(start, next < 0 ? text.length : next);
+}
+
+check('G32', '字体枚举命令 id 在页面、扩展 CMD 表、package.json 三处一字不差', () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const id = stringConstantValue(pageText, 'LIST_SYSTEM_FONTS_COMMAND_ID');
+	if (!id) return '页面里找不到 LIST_SYSTEM_FONTS_COMMAND_ID 的定义';
+	const cmdText = load(F_EXT_COMMANDS);
+	if (cmdText === null) return `文件不存在（见上面的 MISSING ${F_EXT_COMMANDS}）`;
+	const cmdId = cmdTableValue(cmdText, 'listSystemFonts');
+	if (!cmdId) return "扩展的 CMD 表里找不到 listSystemFonts 条目";
+	if (cmdId !== id) {
+		return `扩展 CMD 表是 ${cmdId}，页面用的是 ${id} —— 扩展注册的命令与页面调用的不是同一个`;
+	}
+	const pkgText = load(F_EXT_PKG);
+	if (pkgText === null) return `文件不存在（见上面的 MISSING ${F_EXT_PKG}）`;
+	let pkg = null;
+	try {
+		pkg = JSON.parse(pkgText);
+	} catch (e) {
+		return `package.json 解析失败：${e && e.message ? e.message : String(e)}`;
+	}
+	const cmds = (pkg && pkg.contributes && pkg.contributes.commands) || [];
+	const hits = cmds.filter(c => c && c.command === id);
+	if (hits.length !== 1) {
+		return `package.json 的 contributes.commands 里 '${id}' 出现 ${hits.length} 次（应为 1 次）—— 扩展可能不会激活这条命令`;
+	}
+	return null;
+});
+
+check('G33', "schema 里 'font' 是合法控件类型，且 editor.fontFamily 用的是它", () => {
+	const schema = load(F_SCHEMA);
+	if (schema === null) return `文件不存在（见上面的 MISSING ${F_SCHEMA}）`;
+	const union = /export type OlympiaSettingControlType\s*=[^;]+;/.exec(schema);
+	if (!union) return 'schema 里找不到 OlympiaSettingControlType 联合类型';
+	if (!union[0].includes("'font'")) {
+		return "OlympiaSettingControlType 联合里没有 'font' —— 这种控件不受支持";
+	}
+	const block = controlBlock(schema, 'editor.fontFamily');
+	if (block === null) return "schema 里找不到 editor.fontFamily 控件";
+	if (!/type:\s*'font'/.test(block)) {
+		return `editor.fontFamily 的 type 不是 'font'（实际：${shorten(block, 120)}）`;
+	}
+	return null;
+});
+
+check('G34', "页面 switch 里有 case 'font' 分支，且它调 this.renderFont(control, controlId)", () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const body = methodBody(pageText, 'private renderControl(');
+	if (body === null) return '找不到 renderControl 的函数体';
+	if (!body.includes("case 'font':")) {
+		return "renderControl 里没有 case 'font': 分支 —— 字体控件不会被渲染";
+	}
+	if (!body.includes('append(controlBox, this.renderFont(control, controlId));')) {
+		return 'font 分支没有调 this.renderFont(control, controlId)';
+	}
+	return null;
+});
+
+check('G35', '下拉框只有一个创建入口：createSelectBox，且强制自绘 + 走主题变量', () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const body = methodBody(pageText, 'private createSelectBox(');
+	if (body === null) return '找不到 createSelectBox 的函数体';
+	if (!body.includes('new SelectBox(')) return 'createSelectBox 里没有 new SelectBox(';
+	const total = (pageText.match(/new SelectBox\(/g) || []).length;
+	const inFactory = (body.match(/new SelectBox\(/g) || []).length;
+	if (total !== inFactory) {
+		return `页面里有 ${total} 处 new SelectBox(，但只有 ${inFactory} 处在 createSelectBox 里 —— 下拉框出现了第二个创建入口，「不弹系统菜单」这条红线就漏了`;
+	}
+	if (!body.includes('useCustomDrawn: true')) {
+		return 'createSelectBox 没有强制 useCustomDrawn: true —— macOS 上会退回原生 <select>（系统弹窗）';
+	}
+	if (!body.includes('defaultSelectBoxStyles')) {
+		return 'createSelectBox 没有用 defaultSelectBoxStyles —— 下拉框颜色会和主题脱节';
+	}
+	return null;
+});
+
+check('G36', 'renderFont 走统一的 createSelectBox（不自己 new SelectBox）', () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const body = methodBody(pageText, 'private renderFont(');
+	if (body === null) return '找不到 renderFont 的函数体';
+	if (!body.includes('this.createSelectBox(')) {
+		return 'renderFont 没有调 this.createSelectBox( —— 字体下拉绕过了统一入口';
+	}
+	if (body.includes('new SelectBox(')) {
+		return 'renderFont 自己 new 了 SelectBox —— 绕过了统一入口';
+	}
+	return null;
+});
+
+check('G37', 'loadSystemFonts 用命令 id 常量去要清单（不是硬编码字面量）', () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const body = methodBody(pageText, 'private loadSystemFonts(');
+	if (body === null) return '找不到 loadSystemFonts 的函数体';
+	if (!body.includes('executeCommand')) return 'loadSystemFonts 没有调 executeCommand';
+	if (!body.includes('OlympiaSettingsPage.LIST_SYSTEM_FONTS_COMMAND_ID')) {
+		return 'loadSystemFonts 没有引用 LIST_SYSTEM_FONTS_COMMAND_ID —— 命令 id 被写死了一份';
+	}
+	const hardcoded = /executeCommand[^()]*\(\s*['"]olympia\./.exec(body);
+	if (hardcoded) {
+		return `loadSystemFonts 里出现了硬编码的命令 id（${hardcoded[0]}）—— 与扩展侧对不上就永远要不到清单`;
+	}
+	return null;
+});
+
+check('G38', 'buildFontOptions 的字体项来自本机清单 this.systemFonts', () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const body = methodBody(pageText, 'private buildFontOptions(');
+	if (body === null) return '找不到 buildFontOptions 的函数体';
+	if (!body.includes('this.systemFonts')) {
+		return 'buildFontOptions 没有读 this.systemFonts —— 下拉里不会列出本机字体';
+	}
+	return null;
+});
+
+check('G39', 'refreshFontDropdowns 原地换选项（setOptions），不重画整页', () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const body = methodBody(pageText, 'private refreshFontDropdowns(');
+	if (body === null) return '找不到 refreshFontDropdowns 的函数体';
+	if (!body.includes('setOptions')) {
+		return 'refreshFontDropdowns 没有用 setOptions 原地换选项';
+	}
+	if (body.includes('this.render()')) {
+		return 'refreshFontDropdowns 里调了 this.render() —— 会重画整页，把用户正在输入的内容清掉';
+	}
+	return null;
+});
+
+check('G40', '扩展侧注册了这条命令，且 systemFonts.ts 导出 listSystemFonts', () => {
+	const ext = load(F_EXT_EXTENSION);
+	if (ext === null) return `文件不存在（见上面的 MISSING ${F_EXT_EXTENSION}）`;
+	if (!ext.includes('registerCommand(CMD.listSystemFonts,')) {
+		return '扩展没有注册 CMD.listSystemFonts 命令 —— 页面要不到字体清单';
+	}
+	const fonts = load(F_EXT_FONTS);
+	if (fonts === null) return `文件不存在（见上面的 MISSING ${F_EXT_FONTS}）`;
+	if (!/export\s+async\s+function\s+listSystemFonts\s*\(/.test(fonts)) {
+		return 'systemFonts.ts 没有导出 listSystemFonts';
+	}
+	return null;
+});
+
+check('G41', "renderFontStackInput 的输入框显式设 type='text' 且挂 .olympiaSettings-input", () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const body = methodBody(pageText, 'private renderFontStackInput(');
+	if (body === null) return '找不到 renderFontStackInput 的函数体';
+	if (!body.includes("input.type = 'text';")) {
+		return "renderFontStackInput 没有显式设 input.type = 'text'";
+	}
+	if (!body.includes("input.classList.add('olympiaSettings-input');")) {
+		return "renderFontStackInput 没有挂 .olympiaSettings-input —— 输入框会退回浏览器默认白底";
+	}
+	return null;
+});
+
+check('G42', "字体栈留空 = 移除用户设置（写 undefined），不是写空字符串", () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const body = methodBody(pageText, 'private renderFontStackInput(');
+	if (body === null) return '找不到 renderFontStackInput 的函数体';
+	if (!body.includes("raw === '' ? undefined : raw")) {
+		return "renderFontStackInput 没有把空输入写成 undefined —— 会把 editor.fontFamily 设成空串（非法 font-family）";
+	}
+	return null;
+});
+
+check('G43', "下拉选「系统默认」= 移除用户设置（写 undefined），不是写空字符串", () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const body = methodBody(pageText, 'private renderFont(');
+	if (body === null) return '找不到 renderFont 的函数体';
+	if (!body.includes("picked.value === '' ? undefined : picked.value")) {
+		return "renderFont 没有把「系统默认」写成 undefined —— 会把 editor.fontFamily 设成空串（非法 font-family）";
+	}
+	return null;
+});
+
+check('G44', '字体控件的 CSS 布局就位（竖排容器 + 横排字体栈 + 输入框不被压垮）', () => {
+	if (cssText === null) return `文件不存在（见上面的 MISSING ${F_CSS}）`;
+	const ctrl = cssRule(cssText, '.olympiaSettings-fontControl');
+	if (ctrl === null) return 'CSS 里找不到 .olympiaSettings-fontControl 规则块';
+	if (!/flex-direction:\s*column;/.test(ctrl)) {
+		return '.olympiaSettings-fontControl 不是竖排（flex-direction: column）';
+	}
+	const stack = cssRule(cssText, '.olympiaSettings-fontStack');
+	if (stack === null) return 'CSS 里找不到 .olympiaSettings-fontStack 规则块';
+	if (!/display:\s*flex;/.test(stack)) {
+		return '.olympiaSettings-fontStack 不是 flex 横排';
+	}
+	const input = cssRule(cssText, '.olympiaSettings-rowControl .olympiaSettings-fontStack .olympiaSettings-input');
+	if (input === null) {
+		return 'CSS 里找不到 .olympiaSettings-rowControl .olympiaSettings-fontStack .olympiaSettings-input 规则块';
+	}
+	if (!/width:\s*auto;/.test(input)) {
+		return '字体栈输入框没有 width: auto —— 会被通用 width: 100% 压垮';
+	}
+	if (!/min-width:\s*0;/.test(input)) {
+		return '字体栈输入框没有 min-width: 0 —— 窄容器下撑破布局';
+	}
+	return null;
+});
+
+check('G45', 'hasUserOverride 用 inspect 判用户侧的值，且覆盖四种作用域', () => {
+	if (pageText === null) return `文件不存在（见上面的 MISSING ${F_PAGE}）`;
+	const body = methodBody(pageText, 'private hasUserOverride(');
+	if (body === null) return '找不到 hasUserOverride 的函数体';
+	if (!body.includes('configurationService.inspect')) {
+		return 'hasUserOverride 没有用 configurationService.inspect —— 分不清「用户没设过」和「用户设成了默认值」';
+	}
+	for (const scope of ['userValue', 'workspaceValue', 'workspaceFolderValue', 'memoryValue']) {
+		if (!body.includes('info.' + scope)) {
+			return `hasUserOverride 没有检查 info.${scope} —— 工作区里设的字体不会被认出来`;
+		}
+	}
 	return null;
 });
 

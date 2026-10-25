@@ -450,7 +450,7 @@ const MUTATIONS = [
 	// ---------------------------------------------------------------------------
 	// T-024 审计之后新增的变异。
 	//
-	// 每一���都对应那轮修的一个**真实缺陷**。新加的断言（T1~T6）如果抓不住
+	// 每一条都对应那轮修的一个**真实缺陷**。新加的断言（T1~T6）如果抓不住
 	// 自己的变异，那就是假断言 —— 和当初 M9 打在注释上导致 H13 假绿是同一类错误。
 	// ---------------------------------------------------------------------------
 	{
@@ -504,7 +504,7 @@ const MUTATIONS = [
 	// ---------------------------------------------------------------------------
 	// T-025 审计之后新增的变异。
 	//
-	// 每一���都对应那轮修的一个**真实缺陷**。新加的断言（T7~T11）如果抓不住
+	// 每一条都对应那轮修的一个**真实缺陷**。新加的断言（T7~T11）如果抓不住
 	// 自己的变异，那就是假断言 —— 和当初 M9 打在注释上导致 H13 假绿是同一类错误。
 	// ---------------------------------------------------------------------------
 	{
@@ -1381,6 +1381,66 @@ const MUTATIONS = [
 		desc: '扩展又把每日题量读回来 —— 面板那一行会显示「今日 x/N」',
 		file: 'oss/extensions/olympia-onboarding/src/solveLog.ts',
 		mutate: t => t.replace('export function solvesToday(', 'export function dailyGoal(): number {\n\treturn 3;\n}\n\nexport function solvesToday(')
+	},
+	{
+		// 2026-10-25 新增：默认档（@media 之外）的选择列表 flex 不许被压扁（对应 T111）
+		// —— 来源 T-036(Qoder) 的 Q1b 与 T-039(ZCode) 的 #12，两边独立指认同一个空窗：
+		//    之前只有 T69 钉了 <=420 的紧凑档，默认档一个断言都没有。
+		id: 'M175', expect: 'T111',
+		desc: '默认档把选择列表改成可压缩（flex: 0 0 auto → 0 1 auto）—— 默认档是所有窗口的兜底，flex 的初始值本来就是 0 1 auto（可压缩），选项行会被压扁再被 overflow:hidden 静默裁掉',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => replaceInBaseRule(t, '.olympia-onboarding-choices', 'flex: 0 0 auto;', 'flex: 0 1 auto;')
+	},
+	{
+		// 2026-10-25 新增：486px 档（同属「非矮窗口档」）的选择列表 flex 不许被压扁（对应 T112）
+		// —— T69 只钉 <=420 的档，486 这档是同族缺口。
+		//    锚点用 margin-top: 14px（全文唯一，只有 486 档用它）定位到这一档的 flex 那一行。
+		id: 'M176', expect: 'T112',
+		desc: '486 档把选择列表改成可压缩（flex: 0 0 auto → 0 1 auto）—— 这一档 T69 根本没覆盖，选项行被压扁再被 overflow:hidden 静默裁掉时全部门禁照样绿',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => t.replace(
+			'\t\tmargin-top: 14px;\n\t\t/* 选择列表是功能内容：自己不可伸不可缩，压缩只能靠间距和字号。 */\n\t\tflex: 0 0 auto;',
+			'\t\tmargin-top: 14px;\n\t\t/* 选择列表是功能内容：自己不可伸不可缩，压缩只能靠间距和字号。 */\n\t\tflex: 0 1 auto;')
+	},
+	{
+		// 2026-10-25 新增：卡片本体必须是 flex 纵向列（对应 T113）
+		// —— 来源 T-039 覆盖矩阵的 #8：T60/T104 钉的是选择列表，T110 钉的是定位，
+		//    卡片本体的 display 没人钉。
+		id: 'M177', expect: 'T113',
+		desc: '卡片本体不是 flex（display: flex → display: block）—— 三块内容（标题描述 / 选择列表 / 页脚）改成块级排版，页脚飘到中间',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => replaceInBaseRule(t, '.olympia-onboarding-card', 'display: flex;', 'display: block;')
+	},
+	{
+		// 2026-10-25 新增：卡片本体的 flex-direction（对应 T113 的第二条事实）
+		id: 'M178', expect: 'T113',
+		desc: '卡片本体改成横排（flex-direction: column → row）—— 三块内容横着铺一排',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => replaceInBaseRule(t, '.olympia-onboarding-card', 'flex-direction: column;', 'flex-direction: row;')
+	},
+	{
+		// 2026-10-25 新增：卡片必须铺满轨道（对应 T114）
+		// —— 来源 T-039 覆盖矩阵的 #6：T54 只禁写死 px，删掉 width/height 没有静态也没有变异。
+		id: 'M179', expect: 'T114',
+		desc: '卡片不铺满轨道（width: 100% → width: 352px，写死像素）—— absolute 定位的卡片不再跟随轨道宽度',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => replaceInBaseRule(t, '.olympia-onboarding-card', 'width: 100%;', 'width: 352px;')
+	},
+	{
+		// 2026-10-25 新增：卡片高度同理（对应 T114）
+		id: 'M180', expect: 'T114',
+		desc: '卡片高度塌掉（height: 100% → height: auto）—— absolute 定位在 height 为 auto 时收缩包内容，圆角面板塌成一小块',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => replaceInBaseRule(t, '.olympia-onboarding-card', 'height: 100%;', 'height: auto;')
+	},
+	{
+		// 2026-10-25 新增：页脚钉底的 base 分支也要有变异（对应 T72）
+		// —— T72 钉了 base 规则的 margin-top: auto，但之前没有变异打这一条：
+		//    M140 只打 385 档，删掉 base 那行没有任何变异能抓住。
+		id: 'M181', expect: 'T72',
+		desc: '页脚不再钉底（base 规则 margin-top: auto → margin-top: 12px）—— 页脚跟着内容走，底部留白消失，卡片看着像被挤扁了',
+		file: OL + 'media/olympiaOnboarding.css',
+		mutate: t => replaceInBaseRule(t, '.olympia-onboarding-card-footer', 'margin-top: auto;', 'margin-top: 12px;')
 	},
 ];
 

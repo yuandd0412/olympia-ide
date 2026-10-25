@@ -4465,6 +4465,136 @@ check('T110', `卡片必须绝对定位在轨道原点（position:absolute + lef
 });
 
 // ===========================================================================
+// T111 / T112：选择列表的 flex shrink 因子，在任何档位都必须是 0。
+//
+// 为什么补这两条（来源：T-036 的 Q1b + T-039 的 #12，两边独立指认同一个空窗）：
+//   之前只有 T69 钉了 max-height <= 420 的紧凑档，**默认档（@media 之外的 base 规则）
+//   和 486px 那档都没有任何断言覆盖**。
+//
+//   flex 的初始值是 `0 1 auto`（grow 0 / shrink 1）—— 也就是说「不写 flex」= 允许压缩。
+//   一旦某一档把 shrink 放开，选择列表（功能内容：用户要在这儿做选择）就会被压扁，
+//   再被 overflow:hidden 静默裁掉：用户看到的是选项少了一半、行高扁了，
+//   没有任何报错，静态门禁也全绿。
+//
+//   T111：默认档自身必须显式声明 shrink = 0。
+//   T112：每一档的**生效值**（档内声明优先，没声明就回落默认档）必须 shrink = 0。
+//         用生效值口径，而不是要求「每档都必须自己声明」——
+//         没声明时回落默认档也是对的，真正要禁的是「生效值可以压缩」。
+// ===========================================================================
+
+check('T111', `默认档（不在任何 @media 内）的选择列表不许被压扁（flex 的 shrink 因子必须是 0）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const body = cssBaseRule(stripComments(raw), '.olympia-onboarding-choices');
+	if (body === null) {
+		return `CSS 里找不到 @media 之外的 .olympia-onboarding-choices 规则 —— 默认档没有任何 flex 声明。flex 的初始值是 \`0 1 auto\`（可压缩），窗口一矮选项行就被压扁，再被 overflow:hidden 静默裁掉`;
+	}
+	const flex = cssFlexTriple(body);
+	if (flex === null) {
+		return `默认档的 .olympia-onboarding-choices 的 flex 读不出三元组（读到的是 \`${cssDeclValue(body, 'flex')}\`）—— flex 的初始值是 \`0 1 auto\`（可压缩），选项行会被压扁再被 overflow:hidden 静默裁掉`;
+	}
+	if (flex.shrink !== 0) {
+		return `默认档的 .olympia-onboarding-choices 的 flex 是 \`${flex.raw}\` —— shrink 因子不为 0。选择列表是功能内容（用户要在这儿做选择），不许被压扁；压缩必须全部交给标题/描述/间距`;
+	}
+	return null;
+});
+
+check('T112', `每一档的生效值都不许让选择列表被压扁（生效 flex 的 shrink 因子必须是 0；档内没声明就回落默认档）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const css = stripComments(raw);
+	const base = cssBaseRule(css, '.olympia-onboarding-choices');
+	const baseFlex = base === null ? null : cssFlexTriple(base);
+	const blocks = cssMaxHeightMediaBlocks(css);
+	if (!blocks.length) {
+		return `CSS 里没有任何 max-height 媒体档 —— 窗口一矮卡片就装不下（产品允许的最小窗口是 400x270）`;
+	}
+	let checked = 0;
+	for (const b of blocks) {
+		// 生效值：档内自己声明了就用档内的（同层级后者覆盖前者），没声明就回落默认档。
+		const own = cssLastRule(b.body, '.olympia-onboarding-choices');
+		const ownFlex = own === null ? null : cssFlexTriple(own);
+		const flex = ownFlex !== null ? ownFlex : baseFlex;
+		if (flex === null) {
+			return `max-height:${b.maxHeight}px 档和默认档都没给 .olympia-onboarding-choices 声明可解析的 flex —— 生效值就是 flex 的初始值 \`0 1 auto\`（可压缩），选项行会被压扁再被 overflow:hidden 静默裁掉`;
+		}
+		checked++;
+		if (flex.shrink !== 0) {
+			return `max-height:${b.maxHeight}px 档里 .olympia-onboarding-choices 的生效 flex 是 \`${flex.raw}\`（${ownFlex !== null ? '档内声明' : '回落自默认档'}）—— shrink 因子不为 0，选择列表（功能内容）会被压扁再被 overflow:hidden 静默裁掉`;
+		}
+	}
+	if (!checked) {
+		return `一档都没判到 —— 这一族的检查形同虚设（读不到声明就等于没检查）`;
+	}
+	return null;
+});
+
+// ===========================================================================
+// T113：卡片本体必须是 flex 纵向列。
+//
+// 来源：T-039 覆盖矩阵的 #8 / #9 —— 矩阵指出「卡片 display:flex / flex-direction:column
+// 无人钉」，这条成立：
+//   · T60 钉的是**选择列表**（.olympia-onboarding-choices）的 display/flex-direction；
+//   · T104 钉的也是选择列表；
+//   · T110 钉的是卡片的 position/left/top。
+// 卡片本体的这两条，一条都没有。掉成 row → 三块内容（标题描述 / 选择列表 / 页脚）
+// 横着铺一排；掉成别的 display → 页脚飘到中间。真机几何门能看见，但静态门禁全绿。
+//
+// 用 cssBaseRule（跳过 @media 内的规则）取默认档，而不是 cssRule（全文件第一处匹配）——
+// 后者会被更靠前的同名规则骗到。
+// ===========================================================================
+
+check('T113', `卡片本体必须是 flex 纵向列（display: flex + flex-direction: column）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const body = cssBaseRule(stripComments(raw), '.olympia-onboarding-card');
+	if (body === null) {
+		return `CSS 里找不到 @media 之外的 .olympia-onboarding-card 规则 —— 卡片本体的布局无据可依`;
+	}
+	const show = v => (v === null ? `（没声明）` : `\`${v}\``);
+	const display = cssDeclValue(body, 'display');
+	if (display !== 'flex') {
+		return `卡片 base 规则的 display 是 ${show(display)} —— 必须是 flex：卡片里竖着叠着标题描述 / 选择列表 / 页脚三块，普通块级排版会让页脚飘到中间`;
+	}
+	const dir = cssDeclValue(body, 'flex-direction');
+	if (dir !== 'column') {
+		return `卡片 base 规则的 flex-direction 是 ${show(dir)} —— 必须是 column：三块内容要竖着排，row 会横着铺一排`;
+	}
+	return null;
+});
+
+// ===========================================================================
+// T114：卡片必须填满轨道（width: 100% + height: 100%）。
+//
+// 来源：T-039 覆盖矩阵的 #6 / #7 —— 矩阵指出「T54 只**禁**写死 px，
+// 不钉这条正向声明；删掉 width/height 的路径没有静态断言、也没有变异」，
+// 这条成立：T-110 钉的是定位（position/left/top），没有一条钉尺寸。
+//
+// 卡片是 position:absolute —— 绝对定位元素在 width/height 为 auto 时
+// 会收缩包内容（shrink-to-fit），不再铺满轨道：圆角面板塌成一小块，
+// 轨道左右剩下大片空白。真机 L-center / L-bounds 能看见，但静态门禁全绿。
+// ===========================================================================
+
+check('T114', `卡片必须铺满轨道（width: 100% + height: 100%）`, () => {
+	const raw = load(F_ONB_CSS);
+	if (raw === null) return `文件不存在（见上面的 MISSING ${F_ONB_CSS}）`;
+	const body = cssBaseRule(stripComments(raw), '.olympia-onboarding-card');
+	if (body === null) {
+		return `CSS 里找不到 @media 之外的 .olympia-onboarding-card 规则 —— 卡片尺寸无据可依`;
+	}
+	const show = v => (v === null ? `（没声明）` : `\`${v}\``);
+	const width = cssDeclValue(body, 'width');
+	if (width !== '100%') {
+		return `卡片 base 规则的 width 是 ${show(width)} —— 必须是 100%：卡片是 absolute 定位，width 为 auto 时会收缩包内容，不再铺满轨道`;
+	}
+	const height = cssDeclValue(body, 'height');
+	if (height !== '100%') {
+		return `卡片 base 规则的 height 是 ${show(height)} —— 必须是 100%：卡片是 absolute 定位，height 为 auto 时会收缩包内容，圆角面板塌成一小块`;
+	}
+	return null;
+});
+
+// ===========================================================================
 // 汇总
 // ===========================================================================
 

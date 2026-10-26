@@ -39,7 +39,7 @@ const SOURCES = {
 	big: '#include <bits/stdc++.h>\nusing namespace std;\nint main(){\n  const size_t n = 120ull * 1024 * 1024;\n  char* p = (char*)malloc(n);\n  for (size_t i = 0; i < n; i += 4096) { p[i] = 1; }\n  this_thread::sleep_for(chrono::milliseconds(2500));\n  cout << "touched " << (n / 1024 / 1024) << " MB" << endl;\n  return 0;\n}\n',
 	sleep: '#include <bits/stdc++.h>\nusing namespace std;\nint main(){this_thread::sleep_for(chrono::seconds(3));cout<<"done"<<endl;}\n',
 	// 内存是过一会儿才吃的：采样必须是「查完一次再约下一次」，中间任何一次读不到都得继续
-	late: '#include <bits/stdc++.h>\nusing namespace std;\nint main(){\n  this_thread::sleep_for(chrono::milliseconds(400));\n  const size_t n = 120ull * 1024 * 1024;\n  char* p = (char*)malloc(n);\n  for (size_t i = 0; i < n; i += 4096) { p[i] = 1; }\n  this_thread::sleep_for(chrono::milliseconds(1500));\n  cout << (n / 1024 / 1024) << endl;\n  return 0;\n}\n',
+	late: '#include <bits/stdc++.h>\nusing namespace std;\nint main(){\n  this_thread::sleep_for(chrono::milliseconds(400));\n  const size_t n = 120ull * 1024 * 1024;\n  char* p = (char*)malloc(n);\n  for (size_t i = 0; i < n; i += 4096) { p[i] = 1; }\n  this_thread::sleep_for(chrono::milliseconds(3000));\n  cout << (n / 1024 / 1024) << endl;\n  return 0;\n}\n',
 	// shell 出去调别的程序：我们杀掉父进程之后 cmd.exe 还攥着 stdout，close 不会来
 	holder: '#include <bits/stdc++.h>\nusing namespace std;\nint main(){system("ping -n 6 127.0.0.1 > nul");cout<<"back"<<endl;return 0;}\n',
 	fail: '#include <bits/stdc++.h>\nusing namespace std;\nint main(){cout<<"boom"<<endl;return 3;}\n'
@@ -143,8 +143,11 @@ await check('查不到也要回调一次：不回调的话采样链就停在那�
 	let seen = 'no callback';
 	let patience;
 	await new Promise(resolve => {
-		// 超时只是「别再等了」，断言留到外面写：在定时器里抛异常会把整个检查台炸掉
-		patience = setTimeout(resolve, 1500);
+		// 超时只是「别再等了」，断言留到外面写：在定时器里抛异常会把整个检查台炸掉。
+		// 窗口取 8s：tasklist 单次延迟 2026-10-25 前后是 200ms 量级，2026-10-27 实测这台机器
+		// 退化到 1.65–1.8s（无效 PID 也要跑满这么久，连测 5 次同分布）——1500ms 的旧窗口
+		// 比采样延迟还短，回调「永远赶不上」，是环境阈值不是产品缺陷。
+		patience = setTimeout(resolve, 8000);
 		sampleOnce(0x7FFFFFE0, bytes => { calls++; seen = bytes; clearTimeout(patience); resolve(); });
 	});
 	clearTimeout(patience);

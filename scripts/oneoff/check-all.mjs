@@ -39,6 +39,14 @@ const GATES = [
 		file: 'scripts/oneoff/mutation-test-olympia-settings-page.mjs',
 		保证: '上面那条门的断言真能抓住回归（逐条变异，看对应断言会不会变红；收尾逐字节校验临时树已还原）',
 	},
+	{
+		file: 'scripts/oneoff/check-olympia-chrome.mjs',
+		保证: '「chrome 视觉层」钉死：olympiaChrome.css 挂在常驻贡献点上 / --olympia-radius 在 css 与 stylelint 白名单两处同时存在 / tab 顶部圆角+活动强调线走主题变量 / 列表行圆角不动布局 / 通知选择器逐字对齐上游 / 本层无 :has() 与 [class*=]',
+	},
+	{
+		file: 'scripts/oneoff/mutation-test-olympia-chrome.mjs',
+		保证: '上面那条门的断言真能抓住回归（逐条变异，看对应断言会不会变红；SHA-256 逐字节还原）',
+	},
 	{ file: 'scripts/oneoff/test-timeouts.mjs', 保证: '三个编译超时各不相干（语法自检最快、编译最慢），且没有裸字面量绕过常量' },
 	{ file: 'scripts/oneoff/test-reveal-once.mjs', 保证: '首启只把竞赛工具面板带出来一次（标记读写同一个 key、失败不炸启动、不依赖文件夹）' },
 	{ file: 'scripts/oneoff/check-keybinding-mirrors.mjs', 保证: '文案里写的组合键与真实注册表一致' },

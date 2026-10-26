@@ -364,7 +364,10 @@ await check('有同名题面的文件既不多问，也不写「沿用上次的�
 
 // ---- MLE：只有题面写了内存限制才判，采样只报峰值不猜 ----
 
-/** 答得对，但一口吃掉 24 MB 并抱着 1.2 秒——足够被采样看到。 */
+/** 答得对，但一口吃掉 24 MB 并抱着 4.5 秒——足够被采样看到。
+ *  抱的时长是夹具里内嵌的「采样延迟」假设：2026-10-25 前后 tasklist 一次 ~200ms，
+ *  1.2s 够；2026-10-27 实测这台机器一次 1.65–1.8s，1.2s 的寿命会在第一次采样前就退出
+ *  （表现成「有内存限制却判 AC、峰值没测到」）——夹具必须比采样延迟长，取 4.5s。 */
 const MEMORY_HOG = [
 	'#include <bits/stdc++.h>',
 	'using namespace std;',
@@ -374,7 +377,7 @@ const MEMORY_HOG = [
 	'    const size_t n = 24ull * 1024 * 1024;',
 	'    char* p = (char*)malloc(n);',
 	'    for (size_t i = 0; i < n; i += 4096) { p[i] = 1; }',
-	'    this_thread::sleep_for(chrono::milliseconds(1200));',
+	'    this_thread::sleep_for(chrono::milliseconds(4500));',
 	'    cout << a + b << endl;',
 	'    return 0;',
 	'}',
@@ -409,7 +412,9 @@ function writeHogCase(stem, metaLine) {
 }
 
 await check('题面写了内存限制、程序超了 → 判 MLE 并给出峰值', async () => {
-	writeHogCase('P1001_mem', '> 来源：洛谷 ｜ 时限：1.00s ｜ 内存限制：8.00 MB');
+	// 时限给 10s：tasklist 单次 1.65–1.8s（2026-10-27 实测），第一次采样落在 ~1.7s，
+	// 题面时限必须容纳「至少一次采样 + 抱内存的时长」，否则永远先 TLE、MLE 语义测不到。
+	writeHogCase('P1001_mem', '> 来源：洛谷 ｜ 时限：10.00s ｜ 内存限制：8.00 MB');
 	openFile('P1001_mem.cpp');
 	messages.length = 0;
 	await registered['olympia.judgeSamples']();
@@ -420,7 +425,7 @@ await check('题面写了内存限制、程序超了 → 判 MLE 并给出峰值
 });
 
 await check('题面没写内存限制 → 只报峰值，绝不判 MLE', async () => {
-	writeHogCase('P1001_nomem', '> 来源：洛谷 ｜ 时限：1.00s');
+	writeHogCase('P1001_nomem', '> 来源：洛谷 ｜ 时限：10.00s');
 	openFile('P1001_nomem.cpp');
 	messages.length = 0;
 	await registered['olympia.judgeSamples']();
